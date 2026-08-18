@@ -10,8 +10,8 @@ consumer repository が必要とする provider 向けの小さなファイル�
 - `templates/` は生成ファイルの雛形を保持します。
 - `tooling/` は consumer adapter の合成と検証を担います。
 - `test/fixtures/consumer/` は最小の reference consumer です。
-- `profiles/next-supabase/quality/` は Next.js + Supabase のblocking quality
-  profile と、そのeffective behaviorを確認するguardrail fixtureを保持します。
+- `profiles/next-supabase/quality/` は Next.js + Supabase のblocking quality profileを保持します。
+- `test/fixtures/guardrails/` はprofileのeffective behaviorを確認するguardrail fixtureを保持します。
 
 ## Consumer contract
 
