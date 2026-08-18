@@ -9,6 +9,12 @@ node tooling/bootstrap-next-supabase.mjs --consumer <path>
 
 展開先のファイルはFoundationが所有します。product-domain ruleは追加しません。
 
+## 配置
+
+quality profileの生成元は`profiles/next-supabase/quality/`です。guardrailのeffective
+behaviorを検証するfailure fixtureは`test/fixtures/guardrails/`に置きます。profileの
+設定ファイルと検証fixtureは、用途と配置先を分離して管理します。
+
 ## 必要な依存関係
 
 consumerは次の開発依存を自らの`package.json`へ追加します。bootstrapは

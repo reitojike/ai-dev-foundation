@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -48,4 +48,22 @@ test("sync creates current adapters and check detects both input and output drif
   assert.notEqual(run("check.mjs", consumer).status, 0);
   assert.equal(run("sync.mjs", consumer).status, 0);
   assert.equal(run("check.mjs", consumer).status, 0);
+});
+
+test("bootstrap replaces only its Foundation-owned quality directory", async (t) => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ai-dev-foundation-"));
+  const consumer = path.join(temporaryRoot, "consumer");
+  const qualityDirectory = path.join(consumer, ".ai-dev-foundation", "quality");
+  const staleFile = path.join(qualityDirectory, "stale-foundation-file.txt");
+  const consumerFile = path.join(consumer, "consumer-owned.txt");
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+
+  await mkdir(consumer, { recursive: true });
+  await writeFile(consumerFile, "consumer-owned", "utf8");
+  assert.equal(run("bootstrap-next-supabase.mjs", consumer).status, 0);
+  await writeFile(staleFile, "stale", "utf8");
+
+  assert.equal(run("bootstrap-next-supabase.mjs", consumer).status, 0);
+  await assert.rejects(readFile(staleFile, "utf8"), { code: "ENOENT" });
+  assert.equal(await readFile(consumerFile, "utf8"), "consumer-owned");
 });
