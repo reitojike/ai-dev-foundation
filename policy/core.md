@@ -26,8 +26,3 @@
 
 `AGENTS.md` は三つの composition input から生成されます。直接編集しないでください。
 `CLAUDE.md` は `AGENTS.md` を参照する thin adapter であり、canonical rule を複製しません。
-
-## 文書言語
-
-このrepository内のMarkdown文書とMarkdown templateは、原則として日本語で記述します。
-コード、コマンド、識別子、ファイル名、正式な技術用語は必要に応じて英語のまま記述します。
