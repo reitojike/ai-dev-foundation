@@ -3,7 +3,10 @@ export type Database = {
   public: {
     Tables: {
       todos: {
-        Row: { id: string; title: string };
+        Row: {
+          id: string;
+          title: string;
+        };
       };
     };
   };

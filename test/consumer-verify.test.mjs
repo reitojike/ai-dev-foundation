@@ -40,6 +40,10 @@ test("consumer verify is green and detects generated adapter and profile drift",
   assert.notEqual(verify().status, 0);
 
   await writeFile(typesPath, originalTypes);
+  await writeFile(typesPath, originalTypes.replace("title: string", "title: number"));
+  assert.notEqual(verify().status, 0);
+
+  await writeFile(typesPath, originalTypes);
   const packageJson = JSON.parse(originalPackage);
   delete packageJson.scripts.build;
   await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
