@@ -14,6 +14,7 @@ function verify() {
   return spawnSync(command, arguments_, {
     cwd: fixture,
     encoding: "utf8",
+    timeout: 120_000,
   });
 }
 
@@ -53,8 +54,7 @@ test("consumer verify is green and detects generated adapter and profile drift",
 test("consumer verify fixes the required command set", async () => {
   const packageJson = JSON.parse(await readFile(path.join(fixture, "package.json"), "utf8"));
   const verifyCommand = packageJson.scripts.verify;
-
-  for (const command of [
+  const requiredCommands = [
     "format:check",
     "lint",
     "typecheck",
@@ -62,8 +62,10 @@ test("consumer verify fixes the required command set", async () => {
     "build",
     "foundation:check",
     "verify:profile",
-  ]) {
-    assert.match(verifyCommand, new RegExp(`npm run ${command.replace(":", "\\:")}`));
+  ];
+
+  assert.equal(verifyCommand, requiredCommands.map((command) => `npm run ${command}`).join(" && "));
+  for (const command of requiredCommands) {
     assert.equal(typeof packageJson.scripts[command], "string");
   }
 });

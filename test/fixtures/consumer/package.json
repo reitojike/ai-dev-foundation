@@ -6,7 +6,7 @@
     "format:check": "prettier --config .ai-dev-foundation/quality/prettier.config.mjs --check .",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node --test test/*.test.mjs",
+    "test:unit": "node --experimental-strip-types --test test/*.test.mjs",
     "build": "tsc --project tsconfig.build.json",
     "foundation:check": "node ../../../tooling/check.mjs --consumer .",
     "supabase:types:check": "node scripts/check-generated-supabase-types.mjs",
