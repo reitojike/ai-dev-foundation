@@ -35,6 +35,11 @@
 `AGENTS.md` は三つの composition input から生成されます。直接編集しないでください。
 `CLAUDE.md` は `AGENTS.md` を参照する thin adapter であり、canonical rule を複製しません。
 
+## 文書言語
+
+このrepository内のMarkdown文書とMarkdown templateは、原則として日本語で記述します。
+コード、コマンド、識別子、ファイル名、正式な技術用語は必要に応じて英語のまま記述します。
+
 ## Technology profile: Next.js + Supabase
 
 # Next.js + Supabase profile
@@ -47,6 +52,8 @@ domain terminology、product-specific security decision は consumer product rul
 - generated Supabase types を database type の source of truth として扱います。
 - stack-specific deterministic quality check は Foundation core policy ではなく、
   この profile または関連 tooling に置きます。
+- quality profile の適用方法とblocking/advisoryの区別は `quality/README.md` を
+  正本とします。product-domain rule はそこへ追加しません。
 
 ## Consumer product rules
 

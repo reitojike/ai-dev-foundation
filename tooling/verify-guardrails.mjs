@@ -10,13 +10,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixturesRoot = path.join(root, "test", "fixtures", "guardrails");
 const profileConfig = path.join(root, "profiles", "next-supabase", "quality", "eslint.config.mjs");
 const prettierConfig = path.join(root, "profiles", "next-supabase", "quality", "prettier.config.mjs");
-const expectedFailures = new Set([
-  "architecture-reverse-import",
-  "no-any",
-  "no-assertion",
-  "no-non-null",
-  "no-suppression",
+const expectedLintFailures = new Map([
+  ["architecture-reverse-import", { ruleId: "no-restricted-imports", minimumCount: 1 }],
+  ["no-any", { ruleId: "@typescript-eslint/no-explicit-any", minimumCount: 1 }],
+  ["no-assertion", { ruleId: "no-restricted-syntax", minimumCount: 2 }],
+  ["no-non-null", { ruleId: "@typescript-eslint/no-non-null-assertion", minimumCount: 1 }],
+  ["no-suppression", { ruleId: "foundation/no-suppression", minimumCount: 1 }],
 ]);
+const expectedTypecheckFailures = new Set(["strict-typecheck"]);
 
 const fixtureNames = await readdir(fixturesRoot);
 const profile = await import(pathToFileURL(profileConfig).href);
@@ -39,17 +40,32 @@ for (const name of fixtureNames) {
     ignore: false,
   });
   const lintResults = await eslint.lintFiles(["src"]);
-  const errorCount = lintResults.reduce((total, result) => total + result.errorCount, 0);
-  const shouldFail = expectedFailures.has(name);
+  const lintRuleIds = lintResults.flatMap((result) => result.messages)
+    .filter((message) => message.severity === 2)
+    .map((message) => message.ruleId);
+  const expectedLintFailure = expectedLintFailures.get(name);
 
-  assert.equal(errorCount > 0, shouldFail, `${name}: lint outcome did not match expectation`);
+  if (expectedLintFailure) {
+    const matchingCount = lintRuleIds.filter((ruleId) => ruleId === expectedLintFailure.ruleId).length;
+    assert.ok(
+      matchingCount >= expectedLintFailure.minimumCount,
+      `${name}: expected ${expectedLintFailure.ruleId} at least ${expectedLintFailure.minimumCount} time(s), got ${lintRuleIds.join(", ") || "no ESLint errors"}`,
+    );
+  } else {
+    assert.deepEqual(lintRuleIds, [], `${name}: unexpected ESLint errors: ${lintRuleIds.join(", ")}`);
+  }
 
   const typecheck = spawnSync(
     process.execPath,
     [path.join(root, "node_modules", "typescript", "bin", "tsc"), "--project", fixture, "--pretty", "false"],
     { cwd: root, encoding: "utf8" },
   );
-  assert.equal(typecheck.status, 0, `${name}: TypeScript failed\n${typecheck.error ?? ""}${typecheck.stdout}${typecheck.stderr}`);
+  const typecheckFailed = typecheck.status !== 0;
+  assert.equal(
+    typecheckFailed,
+    expectedTypecheckFailures.has(name),
+    `${name}: TypeScript outcome did not match expectation\n${typecheck.error ?? ""}${typecheck.stdout}${typecheck.stderr}`,
+  );
 
   for (const file of await readdir(sourceDirectory, { recursive: true })) {
     if (typeof file !== "string" || !file.endsWith(".ts")) continue;

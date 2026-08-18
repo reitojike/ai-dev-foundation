@@ -48,7 +48,10 @@ export function nextSupabaseQualityProfile() {
         "foundation/no-suppression": "error",
         "no-restricted-syntax": [
           "error",
-          { selector: "TSAsExpression", message: "Type assertions are forbidden; narrow unknown instead." },
+          {
+            selector: "TSAsExpression:not([typeAnnotation.typeName.name='const'])",
+            message: "Type assertions are forbidden; narrow unknown instead.",
+          },
           { selector: "TSTypeAssertion", message: "Type assertions are forbidden; narrow unknown instead." },
         ],
       },
