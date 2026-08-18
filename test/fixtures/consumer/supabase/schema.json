@@ -1,0 +1,7 @@
+{
+  "table": "todos",
+  "row": {
+    "id": "string",
+    "title": "string"
+  }
+}

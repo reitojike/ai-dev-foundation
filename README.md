@@ -39,6 +39,19 @@ node tooling/check.mjs --consumer path/to/consumer
 
 同梱の reference consumer は `npm test` で検証できます。
 
+consumer fixture自身の一括verifyは次で実行できます。
+実行にはNode.js 22.6.0以上が必要です。
+
+```text
+cd test/fixtures/consumer
+npm run verify
+```
+
+fixtureの`supabase/schema.json`はoffline検証用のsource of truthであり、そこから期待する
+`database.types.ts`を決定的に比較します。これはproduction Supabase接続を模倣するものでは
+ありません。実consumerでは実際のSupabase schemaからtypesを生成し、その生成結果のdriftを
+blocking checkで検知します。
+
 ## Next.js + Supabase quality profile
 
 consumerへprofileを展開するには、Foundation checkoutから次を実行します。
