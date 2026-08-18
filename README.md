@@ -39,6 +39,13 @@ node tooling/check.mjs --consumer path/to/consumer
 
 同梱の reference consumer は `npm test` で検証できます。
 
+consumer fixture自身の一括verifyは次で実行できます。
+
+```text
+cd test/fixtures/consumer
+npm run verify
+```
+
 ## Next.js + Supabase quality profile
 
 consumerへprofileを展開するには、Foundation checkoutから次を実行します。

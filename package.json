@@ -8,7 +8,7 @@
     "check:fixture": "node tooling/check.mjs --consumer test/fixtures/consumer",
     "bootstrap:next-supabase:fixture": "node tooling/bootstrap-next-supabase.mjs --consumer test/fixtures/quality-consumer",
     "test:guardrails": "node tooling/verify-guardrails.mjs",
-    "test": "node --test test/sync-check.test.mjs && npm run test:guardrails"
+    "test": "node --test test/*.test.mjs && npm run test:guardrails"
   },
   "devDependencies": {
     "eslint": "^9.0.0",
