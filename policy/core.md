@@ -1,31 +1,28 @@
 # Foundation core policy
 
-## Source of truth
+## 正本
 
-This directory is the canonical source for Foundation-wide normative rules.
-Consumers receive generated adapters; generated files are not an authoring
-surface.
+この directory は Foundation 全体に適用する規範的なルールの canonical source
+です。consumer は生成された adapter を受け取り、生成ファイルは編集対象ではありません。
 
-Rules are composed in this order:
+ルールは次の順序で合成します。
 
-1. Foundation policy: rules that apply to every consumer.
-2. Technology profile: rules that apply to a chosen stack.
-3. Consumer product rules: rules that are specific to one product.
+1. Foundation policy: すべての consumer に適用するルール
+2. Technology profile: 選択した stack に適用するルール
+3. Consumer product rules: 一つの product に固有のルール
 
-## Separation of responsibilities
+## 責務の分離
 
-- A **policy** states what is required or prohibited.
-- A **skill** explains how to carry out work using a policy; it does not copy
-  normative rules.
-- A **profile** concretizes a policy for a technology or provider; it does not
-  contain product-domain rules.
-- A **generated adapter** distributes the composed rules to a consumer.
+- **policy** は、必須事項または禁止事項を定義します。
+- **skill** は policy を使った作業方法を説明し、規範的なルールを複製しません。
+- **profile** は technology または provider 向けに policy を具体化し、
+  product-domain rule を含めません。
+- **generated adapter** は、合成されたルールを consumer へ配布します。
 
-Do not restate the same normative rule in a Skill, Profile, or generated
-adapter source. Reference the owning rule instead.
+同じ規範的なルールを Skill、Profile、generated adapter の source に再記述せず、
+所有するルールを参照してください。
 
 ## Generated adapters
 
-`AGENTS.md` is generated from the three composition inputs. Do not edit it
-directly. `CLAUDE.md` is a thin adapter that points to `AGENTS.md`; it must not
-duplicate the canonical rules.
+`AGENTS.md` は三つの composition input から生成されます。直接編集しないでください。
+`CLAUDE.md` は `AGENTS.md` を参照する thin adapter であり、canonical rule を複製しません。

@@ -1,38 +1,38 @@
 # ai-dev-foundation
 
-`ai-dev-foundation` keeps normative development rules in one canonical source,
-then generates the small provider-facing files a consumer repository needs.
+`ai-dev-foundation` は、規範的な開発ルールを一つの正本で管理し、
+consumer repository が必要とする provider 向けの小さなファイルを生成します。
 
-## Layout
+## 構成
 
-- `policy/` defines Foundation-wide normative rules.
-- `profiles/` adds technology-specific rules without product-domain rules.
-- `templates/` contains the generated-file shells.
-- `tooling/` composes and validates consumer adapters.
-- `test/fixtures/consumer/` is the minimal reference consumer.
+- `policy/` は Foundation 全体に適用する規範的なルールを定義します。
+- `profiles/` は product-domain rule を含めず、技術固有のルールを追加します。
+- `templates/` は生成ファイルの雛形を保持します。
+- `tooling/` は consumer adapter の合成と検証を担います。
+- `test/fixtures/consumer/` は最小の reference consumer です。
 
 ## Consumer contract
 
-A consumer supplies its product-specific rules at:
+consumer は product-specific rule を次のパスに置きます。
 
 ```text
 .ai-dev-foundation/product-rules.md
 ```
 
-Generate its adapters with:
+adapter を生成するには、次を実行します。
 
 ```text
 node tooling/sync.mjs --consumer path/to/consumer
 ```
 
-Validate them without changing files with:
+ファイルを変更せずに検証するには、次を実行します。
 
 ```text
 node tooling/check.mjs --consumer path/to/consumer
 ```
 
-`check` exits non-zero when either generated file is missing or differs from
-the current canonical inputs. Regenerate after changing a policy, profile, or
-consumer product rule.
+生成ファイルが存在しない、または現在の canonical input と異なる場合、`check`
+は non-zero で終了します。policy、profile、consumer product rule を変更した後は
+再生成してください。
 
-The bundled reference consumer can be exercised with `npm test`.
+同梱の reference consumer は `npm test` で検証できます。

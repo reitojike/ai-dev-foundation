@@ -1,3 +1,3 @@
-# Generated development instructions
+# 生成された開発指示
 
-<!-- This file is a template. The generated consumer AGENTS.md is not edited directly. -->
+<!-- このファイルは template です。生成された consumer AGENTS.md は直接編集しません。 -->

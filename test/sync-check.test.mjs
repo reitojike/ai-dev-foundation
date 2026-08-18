@@ -38,6 +38,7 @@ test("sync creates current adapters and check detects both input and output drif
   assert.match(agents, /Foundation core policy/);
   assert.match(agents, /Reference consumer rules/);
   assert.equal(claude, await readFile(path.join(root, "templates", "CLAUDE.md"), "utf8"));
+  assert.match(claude, /^@AGENTS\.md$/m);
 
   await writeFile(path.join(consumer, "AGENTS.md"), `${agents}\nmanual edit\n`);
   assert.notEqual(run("check.mjs", consumer).status, 0);
