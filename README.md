@@ -40,6 +40,7 @@ node tooling/check.mjs --consumer path/to/consumer
 同梱の reference consumer は `npm test` で検証できます。
 
 consumer fixture自身の一括verifyは次で実行できます。
+実行にはNode.js 22.6.0以上が必要です。
 
 ```text
 cd test/fixtures/consumer
