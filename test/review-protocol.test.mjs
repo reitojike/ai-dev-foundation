@@ -277,6 +277,25 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "review / closure / merge の根拠として使う precondition evidence は、review 対象として確定した（freeze / Selection された）target と一致していなければなりません。",
     ),
   );
+
+  // Range-only target change (Codex P1, commit range for Executable): a commit
+  // range's endpoint moving counts as a target change even if head SHA is
+  // unchanged, so old evidence isn't carried over just because the SHA looks the
+  // same; and the merge-without-closure branch is keyed on the review target
+  // (SHA-and-range), not head SHA alone, so an independent base/range move
+  // cannot slip through as "unchanged."
+  assert.ok(
+    containsText(
+      core,
+      "Selection Contract で commit range を expected target として使う場合、head SHA が不変でも range の endpoint が変われば、それも target の変更です。",
+    ),
+  );
+  assert.ok(core.includes("-> accepted fix が無く review target が変更されていない場合:"));
+  assert.doesNotMatch(
+    core,
+    /accepted fix が無く candidate SHA が変更されていない場合/,
+    "the merge-without-closure branch must key on review target (SHA-and-range), not head SHA alone, or an independent range move could read as unchanged",
+  );
   assert.ok(core.includes("verify target と freeze target の consistency 確認"));
   assert.ok(core.includes("mechanical check target と Selection target の consistency 確認"));
   // Canonical policy: no accepted fix + no SHA change completes via the required
@@ -285,7 +304,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "accepted fix が無く candidate SHA が変更されていない場合は、required review 数の valid discovery と Resolution の完了をもって、新たな closure run を要求せずに merge できます。",
+      "accepted fix が無く review target が変更されていない場合は、required review 数の valid discovery と Resolution の完了をもって、新たな closure run を要求せずに merge できます。",
     ),
   );
   assert.ok(containsText(core, "full discovery は原則 1 round です。"));
@@ -373,6 +392,40 @@ test("review skills document procedure without duplicating normative rules", asy
     assert.ok(reviewCode.includes(phrase), `review-code.md missing: ${phrase}`);
   }
   assert.ok(containsText(reviewCode, "Claude / Codex / CodeRabbit"));
+
+  // Commit range as review target (Codex P1): review target is SHA and,
+  // applicable, commit range, per Selection Contract's own field name — not
+  // reduced to head SHA alone, so a range-only mutation (e.g. base moving) is
+  // covered by the same target mutation semantics as a SHA change.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "review target は Selection Contract に従い、candidate SHA と、applicable な場合は commit range を含みます。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "commit range を review target として使う場合は、対象となる range も同時に freeze し、以降 SHA について述べる target mutation semantics を range にも同じ意味で適用します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "expected target SHA / applicable な commit range を決めます。",
+    ),
+  );
+
+  // A mixed change (accepted-fix-driven head move plus an independently moved
+  // range endpoint) is not closure-eligible for the independent portion — it
+  // routes through Step 2's existing non-fix mutation semantics instead of a new
+  // change-origin taxonomy.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "fix による変更を超えて target が動いた場合（例えば commit range の一方の endpoint が accepted fix と無関係に変わった場合）、その独立した変更分は手順 2 の non-fix target mutation semantics に従い、targeted closure だけでは扱いません。",
+    ),
+  );
 
   // Root cause A, cell A (Code): a completed + valid closure run with findings
   // still gates on Resolution before merge; an accepted closure finding loops back

@@ -274,6 +274,11 @@ classification が要求する precondition check を再成立させ、Selection
 target 変更は、既存の targeted closure（Executable）/ closure verification
 （Normative）の扱いに従います。
 
+Selection Contract で commit range を expected target として使う場合、head
+SHA が不変でも range の endpoint が変われば、それも target の変更です。この
+場合も、old discovery / closure evidence を新しい target の merge /
+completion evidence として使いません。
+
 Code review:
 
 ```text
@@ -299,7 +304,7 @@ deterministic verify
        -> closure completion / acquisition / validity 確認
        -> closure finding の Resolution
        -> merge
-  -> accepted fix が無く candidate SHA が変更されていない場合:
+  -> accepted fix が無く review target が変更されていない場合:
        required review 数の valid discovery と Resolution の完了
        -> merge
 ```
@@ -309,7 +314,7 @@ targeted closure を行い、その review run も Acquisition & Validity Contra
 に従って completion / acquisition / validity を確認します。targeted closure
 の finding も Resolution Contract の対象とし、Resolution が完了するまで
 merge しません。
-accepted fix が無く candidate SHA が変更されていない場合は、
+accepted fix が無く review target が変更されていない場合は、
 required review 数の valid discovery と Resolution の完了をもって、
 新たな closure run を要求せずに merge できます。
 

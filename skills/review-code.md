@@ -8,6 +8,9 @@ stopping rules）を使った実行手順です。規範的なルールはここ
 ## 対象
 
 Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
+review target は Selection Contract に従い、candidate SHA と、applicable
+な場合は commit range を含みます。以降の手順で SHA について述べる箇所は、
+commit range を使う review でも同じ意味で適用します。
 
 ## 手順
 
@@ -16,6 +19,9 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    check:fixture` / consumer `verify` / `git diff --check` 等、Task に応じた
    もの）を実行します。
 2. **Freeze candidate SHA** — review 対象の commit SHA を確定します。
+   commit range を review target として使う場合は、対象となる range も
+   同時に freeze し、以降 SHA について述べる target mutation semantics を
+   range にも同じ意味で適用します。
    手順 1 で記録した verify 対象の SHA と、ここで freeze する SHA が一致する
    ことを確認します。一致しない場合は、freeze した SHA に対して手順 1 の
    deterministic verify を再実行し、成功してから先へ進みます。
@@ -32,7 +38,9 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら
    re-freeze して必要な discovery をやり直します。
 3. **Selection** — Selection Contract に従い、artifact classification、reviewer /
-   capability、required review 数、target artifact set、expected target SHA を決めます。
+   capability、required review 数、target artifact set、expected target
+   SHA / applicable な commit range を決めます。commit range を使う場合は、
+   対象範囲が曖昧にならない形で確定します。
    Executable artifact では原則として独立 reviewer を使います。
 4. **Execution** — Execution Contract に従い、各 reviewer をそれぞれの trigger 方法で
    起動します。trigger 方法と target SHA、渡した required context を記録します。
@@ -56,6 +64,10 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 7. **Batch fix + root-cause** — Resolution Contract に従い、accepted finding が
    あれば root-cause ごとにまとめて fix します。
    accepted finding が無ければ candidate SHA は変更されません。
+   fix による変更を超えて target が動いた場合（例えば commit range の
+   一方の endpoint が accepted fix と無関係に変わった場合）、その独立
+   した変更分は手順 2 の non-fix target mutation semantics に従い、
+   targeted closure だけでは扱いません。
 8. **Deterministic verify** — 手順 7 の batch fix によって candidate SHA が
    変更された場合のみ、fix 後に手順 1 の verify を再実行します。
 9. **Second full discovery（条件付き）** — Review stopping rules
