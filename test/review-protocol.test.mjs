@@ -65,6 +65,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     '"reviewer"',
     '"target_sha"',
     '"status"',
+    '"validity"',
     '"finding_count"',
     '"result_locator"',
     '"started_at"',
@@ -73,6 +74,20 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   ]) {
     assert.ok(core.includes(field), `missing record schema field: ${field}`);
   }
+
+  // The record's target_sha is the reviewed/observed target, not the Selection
+  // Contract's expected target, and completed-but-invalid must be expressible via
+  // status/validity together, without expanding the schema beyond this one field.
+  assert.ok(
+    containsText(
+      core,
+      "record の `target_sha` は、Selection Contract の expected target（SHA / commit range）ではなく、実際に reviewed された SHA / range（observed target）を表します。",
+    ),
+  );
+  assert.ok(containsText(core, "`validity` は少なくとも `valid` / `invalid` / `unknown` を表現します。"));
+  assert.ok(
+    containsText(core, "この場合、record は `status: completed` かつ `validity: invalid` として表現します。"),
+  );
 
   // Resolution Contract
   assert.ok(

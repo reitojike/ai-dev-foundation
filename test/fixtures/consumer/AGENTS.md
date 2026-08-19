@@ -155,6 +155,7 @@ review run ごとに少なくとも次を記録可能にします。
   "reviewer": "...",
   "target_sha": "...",
   "status": "completed",
+  "validity": "valid",
   "finding_count": 0,
   "result_locator": "...",
   "started_at": "...",
@@ -162,6 +163,10 @@ review run ごとに少なくとも次を記録可能にします。
   "failure": null
 }
 ```
+
+record の `target_sha` は、Selection Contract の expected target（SHA / commit
+range）ではなく、実際に reviewed された SHA / range（observed target）を表します。
+`validity` は少なくとも `valid` / `invalid` / `unknown` を表現します。
 
 Completion は少なくとも次を要求します。
 
@@ -177,7 +182,12 @@ Validity はさらに次を要求します。
 - required context へアクセスできた
 - execution / acquisition が途中で欠落していない
 
+Validity の判定は、Selection Contract の expected target と、
+record の `target_sha`（reviewed target）または acquired evidence 上の
+reviewed target を比較して行います。
+
 reviewed SHA / range が target と一致しない場合、completion していても invalid です。
+この場合、record は `status: completed` かつ `validity: invalid` として表現します。
 intended artifact set が review されていない場合も invalid です。
 
 **0 findings は positive evidence を必要とします。** reaction なし、comment なし、
