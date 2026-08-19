@@ -16,9 +16,11 @@ review でも同じ意味で適用します。
 ## 手順
 
 1. **Deterministic verify** — AI review を要求する前に、その時点の candidate SHA
-   を記録した上で、repository が定義する verify（`npm test` / `npm run
-   check:fixture` / consumer `verify` / `git diff --check` 等、Task に応じた
-   もの）を実行します。
+   と、その verify が対象とした artifact / package / repository scope を
+   必要な精度で記録した上で、repository が定義する verify（`npm test` / `npm
+   run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
+   応じたもの）を実行します。repository 全体を対象とする verify であれば
+   repo-wide として記録すれば十分です。
 2. **Freeze candidate SHA** — review 対象の commit SHA を確定します。
    commit range を review target として使う場合は、対象となる range も
    同時に freeze し、以降 SHA について述べる target mutation semantics を
@@ -45,6 +47,12 @@ review でも同じ意味で適用します。
    target artifact set を確定した時点から、その artifact set も review
    target の一部として扱い、手順 2 の target mutation semantics を
    artifact set にも同じ意味で適用します。
+   target artifact set を確定したら、直近の successful deterministic
+   verify evidence が、確定した SHA / range と target artifact set の
+   両方をカバーしているかを確認します。selected artifact set をその
+   verify evidence がカバーしていると確認できない場合は、確定した
+   target に対して手順 1 の deterministic verify を再実行し、成功して
+   から手順 4（Execution）へ進みます。
    Executable artifact では原則として独立 reviewer を使います。
 4. **Execution** — Execution Contract に従い、Selection で確定した expected
    target SHA / applicable な commit range と target artifact set を各
@@ -85,7 +93,12 @@ review でも同じ意味で適用します。
       を使わず、確定した second discovery target に対して
       deterministic verify を行い、成功したら re-freeze して
       Selection / Execution へ進みます。
-   2. Selection Contract をこの second discovery stage へ適用します。
+   2. Selection Contract をこの second discovery stage へ適用し、確定
+      した target artifact set まで直近の successful deterministic
+      verify evidence がカバーしているかを確認します。カバーしていると
+      確認できない場合は、確定した second discovery target に対して
+      deterministic verify を再実行し、成功してから Execution へ
+      進みます。
    3. Execution Contract に従って full discovery（独立 reviewer）を
       起動します。
    4. Acquisition & Validity Contract をこの discovery run に適用します。
@@ -114,7 +127,11 @@ review でも同じ意味で適用します。
     verify evidence を使わず、確定した closure target に対して
     deterministic verify を行い、成功したら re-freeze します。
     Selection Contract に従ってこの closure target を expected target
-    として確定し、Execution Contract に従って closure run を起動します。
+    として確定し、確定した closure artifact set まで直近の successful
+    deterministic verify evidence がカバーしているかを確認します。
+    カバーしていると確認できない場合は、確定した closure target に対
+    して deterministic verify を再実行し、成功してから Execution
+    Contract に従って closure run を起動します。
     Review stopping rules（`policy/core.md`）に従い、fix した箇所に対応
     する範囲のみ再確認します。
 11. **Closure Acquisition & Validity** — この review flow で accepted

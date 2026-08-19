@@ -272,6 +272,14 @@ review / closure / merge の根拠として使う precondition evidence は、re
 一致しない場合はその evidence を根拠にせず、確定した target に対して precondition
 check を再実行します。
 
+この一致確認は SHA / range だけでなく、selected target artifact set にも
+及びます。Selection で確定した target artifact set が、その precondition
+check の対象 scope に含まれることを確認します。precondition check を
+Selection より前に実行した場合は、Selection 後にこの binding を確認し
+ます。selected artifact set を precondition evidence がカバーしていると
+確認できない場合は、確定した target に対して precondition check を
+再実行してから先へ進みます。
+
 precondition evidence だけでなく、discovery / closure evidence も target-specific
 です。valid な discovery の後、accepted-fix による closure target の変更以外の
 理由で review target が変わった場合、その discovery を新しい target の

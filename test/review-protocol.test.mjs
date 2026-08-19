@@ -325,6 +325,30 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
+  // Codex P2 (bind precondition evidence to selected artifact set, not just
+  // SHA/range): a SHA-only match is not enough — the selected target artifact
+  // set must also be within the precondition check's covered scope, checked
+  // after Selection when the check ran before it, with a rerun required
+  // whenever coverage can't be positively confirmed.
+  assert.ok(
+    containsText(
+      core,
+      "この一致確認は SHA / range だけでなく、selected target artifact set にも及びます。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "precondition check を Selection より前に実行した場合は、Selection 後にこの binding を確認します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "selected artifact set を precondition evidence がカバーしていると確認できない場合は、確定した target に対して precondition check を再実行してから先へ進みます。",
+    ),
+  );
+
   // Range-only target change (Codex P1, commit range for Executable): a commit
   // range's endpoint moving counts as a target change even if head SHA is
   // unchanged, so old evidence isn't carried over just because the SHA looks the
@@ -493,6 +517,34 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewCode, "実際に渡した target と artifact set、required context を記録します。"),
   );
 
+  // Codex P2 (bind precondition evidence to selected artifact set, not just
+  // SHA/range): Step 1 records what scope the deterministic verify actually
+  // covered, and Step 3 checks that scope against the confirmed target
+  // artifact set once Selection has run, re-verifying when coverage can't be
+  // confirmed. Artifact set ownership stays with Selection — Step 1/2 only
+  // record evidence metadata, they don't freeze a competing artifact set.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "その verify が対象とした artifact / package / repository scope を必要な精度で記録した上で",
+    ),
+  );
+  assert.ok(
+    containsText(reviewCode, "repository 全体を対象とする verify であれば repo-wide として記録すれば十分です。"),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "target artifact set を確定したら、直近の successful deterministic verify evidence が、確定した SHA / range と target artifact set の両方をカバーしているかを確認します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "selected artifact set をその verify evidence がカバーしていると確認できない場合は、確定した target に対して手順 1 の deterministic verify を再実行し、成功してから手順 4（Execution）へ進みます。",
+    ),
+  );
+
   // A mixed change (accepted-fix-driven head move plus an independently moved
   // range endpoint) is not closure-eligible for the independent portion — it
   // routes through Step 2's existing non-fix mutation semantics instead of a new
@@ -559,7 +611,7 @@ test("review skills document procedure without duplicating normative rules", asy
   // Step 1 must match the frozen candidate SHA at Step 2; a mismatch (a race
   // between verify start and freeze) re-runs verify against the frozen SHA rather
   // than carrying over evidence for a different target.
-  assert.ok(containsText(reviewCode, "その時点の candidate SHA を記録した上で"));
+  assert.ok(containsText(reviewCode, "その時点の candidate SHA"));
   assert.ok(
     containsText(
       reviewCode,
@@ -709,7 +761,18 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "Selection Contract に従ってこの closure target を expected target として確定し、Execution Contract に従って closure run を起動します。",
+      "Selection Contract に従ってこの closure target を expected target として確定し、確定した closure artifact set まで直近の successful deterministic verify evidence がカバーしているかを確認します。",
+    ),
+  );
+
+  // Codex P2 (bind precondition evidence to selected artifact set, not just
+  // SHA/range): targeted closure's artifact-set coverage check re-runs
+  // deterministic verify against the confirmed closure target when coverage
+  // can't be confirmed, before Execution starts the closure run.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "カバーしていると確認できない場合は、確定した closure target に対して deterministic verify を再実行し、成功してから Execution Contract に従って closure run を起動します。",
     ),
   );
   assert.ok(
@@ -760,7 +823,21 @@ test("review skills document procedure without duplicating normative rules", asy
     "Step 9 item 1 must not freeze the latest verify target itself as the second discovery target; it must freeze the current post-fix SHA and check it against the latest verify target",
   );
   assert.ok(
-    containsText(reviewCode, "Selection Contract をこの second discovery stage へ適用します。"),
+    containsText(
+      reviewCode,
+      "Selection Contract をこの second discovery stage へ適用し、確定した target artifact set まで直近の successful deterministic verify evidence がカバーしているかを確認します。",
+    ),
+  );
+
+  // Codex P2 (bind precondition evidence to selected artifact set, not just
+  // SHA/range): second discovery's artifact-set coverage check re-runs
+  // deterministic verify against the confirmed second discovery target when
+  // coverage can't be confirmed, before Execution starts full discovery.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "カバーしていると確認できない場合は、確定した second discovery target に対して deterministic verify を再実行し、成功してから Execution へ進みます。",
+    ),
   );
   assert.ok(
     containsText(reviewCode, "Execution Contract に従って full discovery（独立 reviewer）を"),
@@ -866,11 +943,35 @@ test("review skills document procedure without duplicating normative rules", asy
   // Root cause B, cells G/H (Normative): the mechanical check target captured at
   // Step 1 must match the target confirmed at Step 2's Selection; a mismatch
   // re-runs mechanical check against the confirmed target.
-  assert.ok(containsText(reviewDoc, "その時点の target SHA / range を記録した上で"));
+  assert.ok(containsText(reviewDoc, "その時点の target SHA / range"));
   assert.ok(
     containsText(
       reviewDoc,
       "手順 1 で記録した mechanical check 対象の target と、ここで確定する target が一致することを確認します。一致しない場合は、確定した target に対して手順 1 の mechanical check を再実行してから先へ進みます。",
+    ),
+  );
+
+  // Codex P2 (bind precondition evidence to selected artifact set, not just
+  // SHA/range, Normative sibling): Step 1 records what scope the mechanical
+  // check covered, and Step 2 checks that scope against the confirmed target
+  // artifact set, re-checking when coverage can't be confirmed. Artifact set
+  // ownership stays with Selection — Step 1 only records evidence metadata.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "その mechanical check が対象とした document / artifact scope を必要な精度で記録した上で",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "target artifact set を確定したら、直近の successful mechanical-check evidence が、確定した target SHA / range と target artifact set の両方をカバーしているかを確認します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "selected artifact set をその mechanical check evidence がカバーしていると確認できない場合は、確定した target に対して手順 1 の mechanical check を再実行してから手順 3（semantic discovery）へ進みます。",
     ),
   );
 
@@ -949,11 +1050,22 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "Selection / Execution Contract（`policy/core.md`）を closure review run に適用します。",
+      "Selection Contract（`policy/core.md`）をこの closure review run に適用します。",
     ),
   );
   assert.ok(
     containsText(reviewDoc, "この closure target を expected target として Acquisition & Validity"),
+  );
+
+  // Codex P2 (bind precondition evidence to selected artifact set, not just
+  // SHA/range): Normative closure's artifact-set coverage check re-runs
+  // mechanical check against the confirmed closure target when coverage
+  // can't be confirmed, before Execution starts the closure run.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "確定した closure artifact set を、直近の mechanical-check evidence がカバーしていることを確認します。確認できない場合は、確定した closure target に対して mechanical check を再実行してから、Execution Contract（`policy/core.md`）を closure review run に適用します。",
+    ),
   );
 
   // Finding 3 (Normative): Selection Contract's required review count gates

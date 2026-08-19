@@ -12,15 +12,22 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 
 ## 手順
 
-1. **Mechanical check** — その時点の target SHA / range を記録した上で、
-   markdown の形式チェック（lint / format / link 切れ等、repository が持つ
-   機械的な check）を実行します。
+1. **Mechanical check** — その時点の target SHA / range と、その mechanical
+   check が対象とした document / artifact scope を必要な精度で記録した
+   上で、markdown の形式チェック（lint / format / link 切れ等、repository
+   が持つ機械的な check）を実行します。
 2. **Selection** — Selection Contract（`policy/core.md`）に従い、target SHA /
    range、target artifact set、reviewer / capability、required review 数を
    確定します。
    手順 1 で記録した mechanical check 対象の target と、ここで確定する
    target が一致することを確認します。一致しない場合は、確定した target に
    対して手順 1 の mechanical check を再実行してから先へ進みます。
+   target artifact set を確定したら、直近の successful mechanical-check
+   evidence が、確定した target SHA / range と target artifact set の
+   両方をカバーしているかを確認します。selected artifact set をその
+   mechanical check evidence がカバーしていると確認できない場合は、
+   確定した target に対して手順 1 の mechanical check を再実行してから
+   手順 3（semantic discovery）へ進みます。
    手順 3 の semantic discovery の completion / validity が確定する前に
    target SHA / range または target artifact set が変わった場合、その
    review target / run を現在 target の evidence として扱いません。
@@ -58,8 +65,12 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 7. **Closure** — accepted finding の fix によって target SHA / range が変わった
    場合のみ行います。修正後の target に対して手順 1 の mechanical check を
    再実行し、成功したらその SHA / range を closure target として re-freeze
-   し、Selection / Execution Contract（`policy/core.md`）を closure review
-   run に適用します。
+   し、Selection Contract（`policy/core.md`）をこの closure review run に
+   適用します。確定した closure artifact set を、直近の mechanical-check
+   evidence がカバーしていることを確認します。確認できない場合は、確定
+   した closure target に対して mechanical check を再実行してから、
+   Execution Contract（`policy/core.md`）を closure review run に適用
+   します。
    その上で、triage した finding に対応しているかの closure verification
    のみを行い、full な再 discovery はしません。
    closure verification 自体の completion / acquisition / validity も、
