@@ -39,7 +39,7 @@
 
 Task の canonical context は Issue 本文です。downstream agent への handoff は Issue を短く
 参照し、別の長文 handoff を正本として増やしません。Task Contract は、次の内容を表現できる
-semantic contract です。
+contract です。
 
 - Goal
 - Acceptance Criteria
@@ -57,6 +57,9 @@ Semantic Contract は何を成立させるかを表し、Goal、Acceptance Crite
 Invariants、Verification で構成します。repository、branch、cwd、sandbox、permission、
 available tools、runtime constraints は Execution Envelope として別に扱います。Execution
 Envelope の制約や事故を semantic decision として吸収してはいけません。
+
+Task Contract は Semantic Contract と同義ではありません。Allowed Discretion / Escalate When
+と Execution State は Task Contract の handoff/control context です。
 
 ### Role routing
 
@@ -84,7 +87,9 @@ Task boundary と agent/session boundary は一致しません。一つの Task 
 handoff を毎 Task で義務化しませんが、High role を終える時点では、次の agent が product
 または architecture choice をせず実装できる状態にします。
 
-- **planned handoff** は、固定済みの semantic contract を次の工程または agent に渡すことです。
+- **planned handoff** は、Issue を canonical context として短く参照し、Semantic Contract に
+  加えて Allowed Discretion / Escalate When と Execution State の handoff/control context を
+  失わず次の工程または agent に渡すことです。これは長文 handoff への複製を要求しません。
 - **capability escalation** は、必要な技術的能力、tool、または専門的な adjudication を得ることです。
 - **authority escalation** は、product intent、権限、または受容不能な trade-off を決める
   authority に判断を求めることです。
