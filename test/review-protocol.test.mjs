@@ -392,11 +392,22 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // SHA-change handling during code review: pre-validity change invalidates the run
-  // and re-freezes; a post-discovery fix-driven change proceeds to targeted closure
-  // without restarting discovery from scratch.
+  // SHA-change handling during code review: a pre-validity or post-valid-discovery
+  // non-fix change does not retroactively invalidate the old run's own Validity —
+  // it only stops that run from being used as evidence for the new target,
+  // matching review-doc.md's wording. A post-discovery fix-driven change proceeds
+  // to targeted closure without restarting discovery from scratch.
   assert.ok(
-    containsText(reviewCode, "その review target / run を invalid として扱います。"),
+    countOccurrences(
+      reviewCode,
+      "旧 review target / run を現在 target の evidence として扱いません。",
+    ) === 2,
+    "review-code.md must not retroactively mark a run's own Validity invalid on a candidate SHA change; it must state the run is no longer usable as evidence for the new target",
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /review target \/ run を invalid として扱い/,
+    "review-code.md must not conflate a target change with retroactively invalidating the prior run's own Validity",
   );
   assert.ok(
     containsText(reviewCode, "valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、"),
