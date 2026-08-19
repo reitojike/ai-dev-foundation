@@ -73,6 +73,8 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    accepted な closure finding があれば、手順 6〜7 と同じ procedure（fix ->
    mechanical check -> closure verification -> closure Acquisition &
    Validity）に従って解決します。
+   この cycle が繰り返し発生する場合は、本 skill の停止条件および Review
+   stopping rules（`policy/core.md`）に従います。
    手順 7 の closure が行われなかった場合（accepted fix が無く target も
    変更されていない場合）、この手順は不要です。
 

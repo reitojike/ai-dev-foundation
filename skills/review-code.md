@@ -77,6 +77,9 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
     accepted な closure finding があれば、手順 7〜10 と同じ procedure
     （root-cause を確認した batch fix -> deterministic verify -> targeted
     closure -> Closure Acquisition & Validity）に従って解決します。
+    この cycle が繰り返し発生する場合は無制限に続けず、Review stopping
+    rules（`policy/core.md`）に従って upstream task/design の不安定さを
+    疑い、必要に応じて escalate します。
 12. **Merge** — 手順 7 の batch fix によって candidate SHA が変更されて
     いなければ、required review 数の valid discovery と Resolution が完了
     した時点で merge します。

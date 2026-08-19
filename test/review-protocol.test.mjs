@@ -312,6 +312,16 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
+  // Gap fix: a repeating closure-finding cycle connects to the existing Review
+  // stopping rules (upstream instability / escalate) instead of looping
+  // unbounded; no new closure-specific retry counter or policy was introduced.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "この cycle が繰り返し発生する場合は無制限に続けず、Review stopping rules（`policy/core.md`）に従って upstream task/design の不安定さを疑い、必要に応じて escalate します。",
+    ),
+  );
+
   // Root cause B, cells E/F (Code): the deterministic verify target captured at
   // Step 1 must match the frozen candidate SHA at Step 2; a mismatch (a race
   // between verify start and freeze) re-runs verify against the frozen SHA rather
@@ -478,6 +488,16 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(
       reviewDoc,
       "手順 7 の closure が行われなかった場合（accepted fix が無く target も変更されていない場合）、この手順は不要です。",
+    ),
+  );
+
+  // Gap fix: a repeating closure-finding cycle connects to this skill's existing
+  // stopping condition and Review stopping rules instead of looping unbounded,
+  // without restating the "## 停止条件" section verbatim.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "この cycle が繰り返し発生する場合は、本 skill の停止条件および Review stopping rules（`policy/core.md`）に従います。",
     ),
   );
 
