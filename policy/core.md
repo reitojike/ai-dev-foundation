@@ -321,6 +321,10 @@ deterministic verify
             -> aggregate / triage
             -> accepted finding があれば batch fix
             -> target が変われば deterministic verify
+            -> この fix でさらに追加の full discovery が必要と判断される
+               場合: 3rd full discovery は起動せず、merge もせず、
+               upstream task/design の不安定さを疑い、必要に応じて
+               escalate する
        -> closure target の Selection / Execution
        -> targeted closure
        -> closure completion / acquisition / validity 確認
@@ -347,6 +351,10 @@ required review 数の valid discovery と Resolution の完了をもって、
 full discovery は原則 1 round です。fix が behavior / blast radius を materially
 変えた場合のみ 2 round 目を許容します。それ以上必要な場合は review loop を増やさず、
 upstream task/design の不安定さを疑います。
+2nd discovery の accepted finding を fix した後も、その fix が behavior /
+blast radius をさらに materially 変えた場合は、3rd full discovery を起動
+せず、targeted closure だけで merge へ進まず、upstream task/design の
+不安定さを疑い、必要に応じて escalate します。
 
 Normative document review:
 

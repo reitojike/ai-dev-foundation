@@ -454,7 +454,36 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   );
   assert.ok(containsText(core, "full discovery は原則 1 round です。"));
   assert.ok(containsText(core, "materially 変えた場合のみ 2 round 目を許容します。"));
+
+  // Codex P1 (stop merge after a materially-changing 2nd discovery fix): the
+  // canonical Code review diagram now re-evaluates materiality after the 2nd
+  // discovery's own accepted-finding fix, not just before entering 2nd
+  // discovery — a further material change stops at escalation, not merge.
+  assert.ok(
+    containsText(
+      core,
+      "-> target が変われば deterministic verify -> この fix でさらに追加の full discovery が必要と判断される場合: 3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate する -> closure target の Selection / Execution",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "2nd discovery の accepted finding を fix した後も、その fix が behavior / blast radius をさらに materially 変えた場合は、3rd full discovery を起動せず、targeted closure だけで merge へ進まず、upstream task/design の不安定さを疑い、必要に応じて escalate します。",
+    ),
+  );
+  assert.doesNotMatch(
+    core,
+    /4th full discovery|third full discovery|discovery_round|round counter|Materiality Contract/i,
+    "must not introduce a 3rd discovery phase, round counter, or a new Materiality Contract",
+  );
+
+  // Normative must stay unchanged by this fix: no 2nd semantic discovery round.
   assert.ok(core.includes("semantic discovery（1 round）"));
+  assert.doesNotMatch(
+    core,
+    /semantic discovery（2nd round）|2nd semantic discovery/,
+    "Normative document review must not gain a 2nd semantic discovery round",
+  );
   // Canonical policy: Normative closure is likewise conditioned on an accepted-fix
   // target change, not unconditional (matches skills/review-doc.md's procedure),
   // and re-runs mechanical check against the post-fix target first (Finding 2).
