@@ -62,6 +62,9 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    closure verification 自体の completion / acquisition / validity も、
    この closure target を expected target として Acquisition & Validity
    Contract に従って確認します。
+   closure 用 Selection Contract で required とした review 数ぶんの valid
+   な closure run が揃うまで Closure Resolution へ進みません。不足する
+   run の扱いは Failure / retry（`policy/core.md`）に従います。
    accepted finding の fix が無く target も変更されていない場合（例えば
    0 findings の場合や、finding を false-positive 等として Resolution
    した場合）は、required review 数の valid semantic discovery と

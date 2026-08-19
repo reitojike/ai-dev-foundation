@@ -126,6 +126,13 @@ Review 強度と停止条件は artifact の種類で分けます。
 Review は次の 4 つの provider-neutral な contract で表現します。provider 差分は Review
 Adapter boundary へ閉じ込め、Kernel に固定しません。
 
+各 Contract は discovery だけでなく、同じ Contract を使って起動する closure review run
+にも適用されます。closure target も Selection Contract で expected target として確定し、
+Execution Contract に従って起動します。Selection Contract が required review 数を
+定めた review stage では、discovery か closure かを問わず、その required 数の
+completed かつ valid な run が揃うまで triage / Resolution / merge / review
+completion へ進みません。不足する run の扱いは Failure / retry に従います。
+
 #### Selection Contract
 
 - artifact classification
@@ -258,6 +265,15 @@ review / closure / merge の根拠として使う precondition evidence は、re
 一致しない場合はその evidence を根拠にせず、確定した target に対して precondition
 check を再実行します。
 
+precondition evidence だけでなく、discovery / closure evidence も target-specific
+です。valid な discovery の後、accepted-fix による closure target の変更以外の
+理由で review target が変わった場合、その discovery を新しい target の
+merge / completion evidence として使いません。新しい target について artifact
+classification が要求する precondition check を再成立させ、Selection / Execution
+を再確立した上で、その target に必要な discovery を行います。accepted fix による
+target 変更は、既存の targeted closure（Executable）/ closure verification
+（Normative）の扱いに従います。
+
 Code review:
 
 ```text
@@ -270,6 +286,7 @@ deterministic verify
   -> accepted finding の batch fix で candidate SHA が変更された場合:
        batch fix + root-cause sweep
        -> deterministic verify
+       -> closure target の Selection / Execution
        -> targeted closure
        -> closure completion / acquisition / validity 確認
        -> closure finding の Resolution
@@ -301,6 +318,7 @@ mechanical check
   -> triage / fix
   -> accepted finding の fix で target SHA / range が変更された場合:
        mechanical check
+       -> closure target の Selection / Execution
        -> closure verification
        -> closure completion / acquisition / validity 確認
        -> closure finding の Resolution

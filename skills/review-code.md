@@ -71,6 +71,9 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
     validity を確認します。
     確認できなければ merge せず、その後の扱いは Failure / retry
     （`policy/core.md`）に従います。
+    closure 用 Selection Contract で required とした review 数ぶんの valid
+    な closure run が揃うまで Closure Resolution へ進みません。不足する
+    run の扱いは Failure / retry（`policy/core.md`）に従います。
 11. **Closure Resolution** — targeted closure の finding を Resolution
     Contract（`policy/core.md`）に従って triage します。unresolved の
     finding がある間は merge しません。

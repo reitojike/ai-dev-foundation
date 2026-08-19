@@ -54,6 +54,50 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     assert.ok(core.includes(artifactClass), `missing artifact class: ${artifactClass}`);
   }
 
+  // Principle A (Contract applicability is stage-independent): the 4 Contracts
+  // apply to closure review runs too, not just discovery, and a Selection
+  // Contract's required review count gates closure the same as discovery.
+  assert.ok(
+    containsText(
+      core,
+      "各 Contract は discovery だけでなく、同じ Contract を使って起動する closure review run にも適用されます。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "closure target も Selection Contract で expected target として確定し、Execution Contract に従って起動します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "Selection Contract が required review 数を定めた review stage では、discovery か closure かを問わず、その required 数の completed かつ valid な run が揃うまで triage / Resolution / merge / review completion へ進みません。",
+    ),
+  );
+
+  // Principle B (review evidence is target-specific): discovery evidence, not just
+  // precondition evidence, does not carry over to a new target unless the change
+  // was the accepted-fix-driven closure path.
+  assert.ok(
+    containsText(
+      core,
+      "precondition evidence だけでなく、discovery / closure evidence も target-specific です。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "accepted-fix による closure target の変更以外の理由で review target が変わった場合、その discovery を新しい target の merge / completion evidence として使いません。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "accepted fix による target 変更は、既存の targeted closure（Executable）/ closure verification（Normative）の扱いに従います。",
+    ),
+  );
+
   // Acquisition & Validity invariants
   assert.ok(containsText(core, "CI status は review completion と同義ではありません"));
   assert.ok(containsText(core, "0 findings は positive evidence を必要とします"));
@@ -165,6 +209,14 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
 
   // Stopping rules, including the closure Acquisition & Validity gate before merge
   assert.ok(core.includes("closure completion / acquisition / validity 確認"));
+  // Finding 1: the Code accepted-fix branch re-applies Selection/Execution to the
+  // closure target before targeted closure runs.
+  assert.ok(
+    containsText(
+      core,
+      "deterministic verify -> closure target の Selection / Execution -> targeted closure",
+    ),
+  );
   assert.ok(
     containsText(
       core,
@@ -248,9 +300,15 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "precondition check（Executable の deterministic verify、Normative の mechanical check）を新しい target に対して再成立させます。",
     ),
   );
-  // The Normative accepted-fix branch re-runs mechanical check before closure
-  // verification, without adding a 2nd semantic discovery round.
-  assert.ok(containsText(core, "mechanical check -> closure verification"));
+  // The Normative accepted-fix branch re-runs mechanical check and re-applies
+  // Selection/Execution to the closure target before closure verification,
+  // without adding a 2nd semantic discovery round.
+  assert.ok(
+    containsText(
+      core,
+      "mechanical check -> closure target の Selection / Execution -> closure verification",
+    ),
+  );
 
   // Observed evidence stays a general principle, not a permanent provider rule
   assert.ok(containsText(core, "expected trigger behavior は completion evidence と同義ではありません。"));
@@ -452,6 +510,15 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
+  // Finding 3 (Code): Selection Contract's required review count gates closure
+  // the same as discovery; a shortfall defers to Failure / retry.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "closure 用 Selection Contract で required とした review 数ぶんの valid な closure run が揃うまで Closure Resolution へ進みません。",
+    ),
+  );
+
   // review-doc.md covers the normative document review procedure, including the new
   // Selection / Execution steps (Fix 7) and the closure validity gate (Fix 6)
   for (const phrase of [
@@ -576,6 +643,15 @@ test("review skills document procedure without duplicating normative rules", asy
   );
   assert.ok(
     containsText(reviewDoc, "この closure target を expected target として Acquisition & Validity"),
+  );
+
+  // Finding 3 (Normative): Selection Contract's required review count gates
+  // closure the same as discovery; a shortfall defers to Failure / retry.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "closure 用 Selection Contract で required とした review 数ぶんの valid な closure run が揃うまで Closure Resolution へ進みません。",
+    ),
   );
 
   // Root cause fix (this round, cell C): closure re-runs Step 1's mechanical check
