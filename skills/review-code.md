@@ -61,8 +61,11 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 9. **Second full discovery（条件付き）** — Review stopping rules
    （`policy/core.md`）に従って 2nd full discovery が必要と判断された
    場合のみ、targeted closure の前に行います。
-   1. 手順 8 で verify した post-fix SHA を second discovery target として
-      re-freeze し、手順 8 の verify target との consistency を確認します。
+   1. 直近の successful deterministic verify target を second discovery
+      target として re-freeze し、consistency を確認します。一致しない
+      場合は、その verify evidence を使わず、確定した second discovery
+      target に対して deterministic verify を行い、成功したら re-freeze
+      して Selection / Execution へ進みます。
    2. Selection Contract をこの second discovery stage へ適用します。
    3. Execution Contract に従って full discovery（独立 reviewer）を
       起動します。
@@ -87,9 +90,12 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 10. **Targeted closure** — この review flow で accepted finding の fix
     によって target が変更された場合のみ（手順 9 の second full
     discovery を挟んだ場合を含む）行います。最終的な post-fix SHA を
-    closure target として re-freeze し、Selection Contract に従ってこの
-    closure target を expected target として確定し、Execution Contract
-    に従って closure run を起動します。
+    closure target として re-freeze し、直近の successful deterministic
+    verify target との consistency を確認します。一致しない場合は、その
+    verify evidence を使わず、確定した closure target に対して
+    deterministic verify を行い、成功したら re-freeze します。
+    Selection Contract に従ってこの closure target を expected target
+    として確定し、Execution Contract に従って closure run を起動します。
     Review stopping rules（`policy/core.md`）に従い、fix した箇所に対応
     する範囲のみ再確認します。
 11. **Closure Acquisition & Validity** — この review flow で accepted
@@ -106,10 +112,18 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 12. **Closure Resolution** — targeted closure の finding を Resolution
     Contract（`policy/core.md`）に従って triage します。unresolved の
     finding がある間は merge しません。
-    accepted な closure finding があれば、手順 7・8・10・11 と同じ
-    procedure（root-cause を確認した batch fix -> deterministic verify
-    -> targeted closure -> Closure Acquisition & Validity。手順 9 の
-    second full discovery はこの経路には含みません）に従って解決します。
+    accepted な closure finding があれば、手順 7 と同じ batch fix
+    semantics でまとめて fix し、手順 8 と同じ deterministic verify を
+    行います。
+    その上で Review stopping rules（`policy/core.md`）を再評価します。
+    - この review flow で手順 9 をまだ使っておらず、2nd full discovery
+      が必要と判断される場合は、手順 9 へ進み、完了後に手順 10 へ
+      進みます。
+    - 手順 9 を既に使っており、なお追加の full discovery が必要と
+      判断される場合は、3rd full discovery は起動せず merge もせず、
+      upstream task/design の不安定さを疑い、必要に応じて escalate
+      します。
+    - 追加の full discovery が不要な場合は、手順 10 へ進みます。
     この cycle が繰り返し発生する場合は無制限に続けず、Review stopping
     rules（`policy/core.md`）に従って upstream task/design の不安定さを
     疑い、必要に応じて escalate します。

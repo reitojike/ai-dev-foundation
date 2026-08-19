@@ -384,12 +384,9 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
   assert.ok(
-    containsText(reviewCode, "accepted な closure finding があれば、手順 7・8・10・11 と同じ"),
-  );
-  assert.ok(
     containsText(
       reviewCode,
-      "second full discovery はこの経路には含みません",
+      "accepted な closure finding があれば、手順 7 と同じ batch fix semantics でまとめて fix し、手順 8 と同じ deterministic verify を行います。",
     ),
   );
   assert.ok(
@@ -398,6 +395,25 @@ test("review skills document procedure without duplicating normative rules", asy
       "Closure Acquisition & Validity と Closure Resolution が完了した時点で merge します。",
     ),
   );
+
+  // Follow-up (sibling gap B): a closure finding's fix may now re-enter the
+  // optional Step 9 (2nd full discovery) if it's the first material fix in this
+  // review flow, reusing the same materiality-only, not origin-stage-specific,
+  // exception. If Step 9 was already used and another round is still needed, the
+  // flow escalates instead of silently completing via targeted closure alone.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "この review flow で手順 9 をまだ使っておらず、2nd full discovery が必要と判断される場合は、手順 9 へ進み、完了後に手順 10 へ進みます。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "手順 9 を既に使っており、なお追加の full discovery が必要と判断される場合は、3rd full discovery は起動せず merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate します。",
+    ),
+  );
+  assert.ok(containsText(reviewCode, "追加の full discovery が不要な場合は、手順 10 へ進みます。"));
 
   // Gap fix: a repeating closure-finding cycle connects to the existing Review
   // stopping rules (upstream instability / escalate) instead of looping
@@ -557,13 +573,29 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "最終的な post-fix SHA を closure target として re-freeze し、Selection Contract に従ってこの closure target を expected target として確定し、Execution Contract に従って closure run を起動します。",
+      "最終的な post-fix SHA を closure target として re-freeze し、直近の successful deterministic verify target との consistency を確認します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "Selection Contract に従ってこの closure target を expected target として確定し、Execution Contract に従って closure run を起動します。",
     ),
   );
   assert.ok(
     containsText(
       reviewCode,
       "この closure target を expected target として、targeted closure の review run に手順 5 と同じ Acquisition & Validity Contract を適用し",
+    ),
+  );
+
+  // Sibling gap A (Step 10): a mismatch between the closure target and the latest
+  // successful deterministic verify target must not carry over stale verify
+  // evidence — it re-runs verify against the confirmed closure target instead.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "一致しない場合は、その verify evidence を使わず、確定した closure target に対して deterministic verify を行い、成功したら re-freeze します。",
     ),
   );
 
@@ -577,6 +609,16 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(
       reviewCode,
       "Review stopping rules（`policy/core.md`）に従って 2nd full discovery が必要と判断された場合のみ、targeted closure の前に行います。",
+    ),
+  );
+  // Sibling gap A (Step 9): re-freezing the second discovery target is bound to
+  // the latest successful deterministic verify target, not entry-point-specific
+  // (works whether Step 9 is reached from Step 8 or looped back into from Step
+  // 12); a mismatch discards the stale verify evidence and re-verifies.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "直近の successful deterministic verify target を second discovery target として re-freeze し、consistency を確認します。一致しない場合は、その verify evidence を使わず、確定した second discovery target に対して deterministic verify を行い、成功したら re-freeze して Selection / Execution へ進みます。",
     ),
   );
   assert.ok(
