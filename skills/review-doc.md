@@ -62,15 +62,15 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    仕分けます。
 6. **Fix** — Resolution Contract に従い、accepted finding を batch でまとめて
    fix します。
-7. **Closure** — accepted finding の fix によって target SHA / range が変わった
-   場合のみ行います。修正後の target に対して手順 1 の mechanical check を
-   再実行し、成功したらその SHA / range を closure target として re-freeze
-   し、Selection Contract（`policy/core.md`）をこの closure review run に
-   適用します。確定した closure artifact set を、直近の mechanical-check
-   evidence がカバーしていることを確認します。確認できない場合は、確定
-   した closure target に対して mechanical check を再実行してから、
-   Execution Contract（`policy/core.md`）を closure review run に適用
-   します。
+7. **Closure** — accepted finding の fix によって target SHA / range または
+   target artifact set が変わった場合のみ行います。修正後の target に
+   対して手順 1 の mechanical check を再実行し、成功したらその SHA /
+   range を closure target として re-freeze し、Selection Contract
+   （`policy/core.md`）をこの closure review run に適用します。確定した
+   closure artifact set を、直近の mechanical-check evidence がカバー
+   していることを確認します。確認できない場合は、確定した closure
+   target に対して mechanical check を再実行してから、Execution
+   Contract（`policy/core.md`）を closure review run に適用します。
    その上で、triage した finding に対応しているかの closure verification
    のみを行い、full な再 discovery はしません。
    closure verification 自体の completion / acquisition / validity も、
@@ -79,11 +79,11 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    closure 用 Selection Contract で required とした review 数ぶんの valid
    な closure run が揃うまで Closure Resolution へ進みません。不足する
    run の扱いは Failure / retry（`policy/core.md`）に従います。
-   accepted finding の fix が無く target も変更されていない場合（例えば
-   0 findings の場合や、finding を false-positive 等として Resolution
-   した場合）は、required review 数の valid semantic discovery と
-   Resolution が完了した時点で review procedure を完了とし、新たな
-   closure run を要求しません。
+   accepted finding の fix が無く target SHA / range も target artifact
+   set も変更されていない場合（例えば 0 findings の場合や、finding を
+   false-positive 等として Resolution した場合）は、required review 数の
+   valid semantic discovery と Resolution が完了した時点で review
+   procedure を完了とし、新たな closure run を要求しません。
 8. **Closure Resolution** — closure verification（手順 7）の finding を
    Resolution Contract（`policy/core.md`）に従って triage します。
    unresolved の finding がある間は review procedure を完了としません。
@@ -95,8 +95,9 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    問いません。
    この cycle が繰り返し発生する場合は、本 skill の停止条件および Review
    stopping rules（`policy/core.md`）に従います。
-   手順 7 の closure が行われなかった場合（accepted fix が無く target も
-   変更されていない場合）、この手順は不要です。
+   手順 7 の closure が行われなかった場合（accepted fix が無く target
+   SHA / range も target artifact set も変更されていない場合）、この
+   手順は不要です。
 
 ## 停止条件
 

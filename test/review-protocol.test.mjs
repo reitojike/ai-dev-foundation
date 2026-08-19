@@ -321,8 +321,21 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "accepted finding の batch fix によって candidate SHA が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+      "accepted finding の batch fix によって review target が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
     ),
+  );
+
+  // Codex P2 (unify closure-entry predicates with the canonical review target
+  // definition): the Code review diagram's accepted-fix branch condition is
+  // "review target changed", not a stage-local "candidate SHA changed" that
+  // drifts from the review target definition established just above.
+  assert.ok(
+    containsText(core, "-> accepted finding の batch fix で review target が変更された場合:"),
+  );
+  assert.doesNotMatch(
+    core,
+    /accepted finding の batch fix で candidate SHA が変更された場合/,
+    "the Code review diagram's closure-entry condition must not regress to a bare candidate-SHA predicate",
   );
 
   // Root cause A (closure findings need Resolution too): completed + valid closure
@@ -542,13 +555,48 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "accepted finding の fix によって target SHA / range が変更された場合のみ、新しい target に対して mechanical check を再実行してから closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+      "accepted finding の fix によって review target が変更された場合のみ、新しい target に対して mechanical check を再実行してから closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
     ),
   );
   assert.ok(
     containsText(
       core,
-      "accepted fix が無く target が変更されていない場合は、required review 数の valid semantic discovery と Resolution の完了をもって、新たな closure run を要求せずに review を完了できます。",
+      "accepted fix が無く review target が変更されていない場合は、required review 数の valid semantic discovery と Resolution の完了をもって、新たな closure run を要求せずに review を完了できます。",
+    ),
+  );
+
+  // Codex P2 (unify closure-entry predicates with the canonical review target
+  // definition, Normative sibling): both diagram branches (accepted-fix and
+  // no-change) key on "review target", matching the Code review diagram and
+  // the review target definition established just above, not a stage-local
+  // "target SHA / range" partial predicate.
+  assert.ok(
+    containsText(core, "-> accepted finding の fix で review target が変更された場合:"),
+  );
+  assert.ok(
+    containsText(core, "-> accepted fix が無く review target が変更されていない場合:"),
+  );
+  assert.doesNotMatch(
+    core,
+    /accepted finding の fix で target SHA \/ range が変更された場合/,
+    "the Normative diagram's closure-entry condition must not regress to a bare SHA/range predicate",
+  );
+
+  // Codex P2 (stage-independent closure-cycle stopping semantics): a repeating
+  // closure Resolution -> accepted fix -> closure review cycle (either
+  // artifact) is escalated as upstream/policy instability, distinct from
+  // Failure/retry's retry count — stated once in canonical policy rather than
+  // only referenced from the skills.
+  assert.ok(
+    containsText(
+      core,
+      "closure Resolution で accepted fix が生じ、その fix を closure review で確認する cycle（Executable の targeted closure、Normative の closure verification のいずれも）が繰り返し発生する場合、無制限に継続せず、upstream task/design または policy/document 自体の instability を疑い、必要に応じて escalate します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "これは Failure / retry の retry count とは別の stopping semantics です。",
     ),
   );
 
@@ -1098,7 +1146,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "手順 7 の closure が行われなかった場合（accepted fix が無く target も変更されていない場合）、この手順は不要です。",
+      "手順 7 の closure が行われなかった場合（accepted fix が無く target SHA / range も target artifact set も変更されていない場合）、この手順は不要です。",
     ),
   );
 
@@ -1265,11 +1313,24 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "accepted finding の fix によって target SHA / range が変わった場合のみ行います。",
+      "accepted finding の fix によって target SHA / range または target artifact set が変わった場合のみ行います。",
     ),
   );
   assert.ok(
-    containsText(reviewDoc, "accepted finding の fix が無く target も変更されていない場合"),
+    containsText(
+      reviewDoc,
+      "accepted finding の fix が無く target SHA / range も target artifact set も変更されていない場合",
+    ),
+  );
+
+  // Codex P2 (unify closure-entry predicates with the canonical review target
+  // definition, skills/review-doc.md sibling): the closure predicate covers an
+  // artifact-set-only change too, matching Step 2's mutation semantics and
+  // policy/core.md's "review target" definition, not just target SHA / range.
+  assert.doesNotMatch(
+    reviewDoc,
+    /accepted finding の fix によって target SHA \/ range が変わった場合のみ行います。/,
+    "the Closure step's entry condition must not regress to a bare SHA/range predicate",
   );
   assert.ok(
     containsText(
