@@ -374,6 +374,25 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewDoc, "この closure target を expected target として Acquisition & Validity"),
   );
 
+  // Latent gap (push-before-check E): Closure only fires on an accepted-fix-driven
+  // target change; no accepted fix + no target change completes at Resolution
+  // without requiring a new closure run.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "accepted finding の fix によって target SHA / range が変わった場合のみ行います。",
+    ),
+  );
+  assert.ok(
+    containsText(reviewDoc, "accepted finding の fix が無く target も変更されていない場合"),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "required review 数の valid semantic discovery と Resolution が完了した時点で review procedure を完了とし、新たな closure run を要求しません。",
+    ),
+  );
+
   // review-doc.md must not restate the 2nd-discovery-round prohibition verbatim;
   // it must reference Review stopping rules instead (Fix 2).
   assert.ok(

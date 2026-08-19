@@ -42,14 +42,19 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 6. **Fix** — Resolution Contract に従い、accepted finding を batch でまとめて
    fix します。
 7. **Closure** — accepted finding の fix によって target SHA / range が変わった
-   場合、修正後の SHA / range を closure target として re-freeze し、
-   Selection / Execution Contract（`policy/core.md`）を closure review run に
-   適用します。
-   triage した finding に対応しているかの closure verification のみを
-   行い、full な再 discovery はしません。
+   場合のみ行います。修正後の SHA / range を closure target として re-freeze
+   し、Selection / Execution Contract（`policy/core.md`）を closure review
+   run に適用します。
+   その上で、triage した finding に対応しているかの closure verification
+   のみを行い、full な再 discovery はしません。
    closure verification 自体の completion / acquisition / validity も、
    この closure target を expected target として Acquisition & Validity
    Contract に従って確認します。
+   accepted finding の fix が無く target も変更されていない場合（例えば
+   0 findings の場合や、finding を false-positive 等として Resolution
+   した場合）は、required review 数の valid semantic discovery と
+   Resolution が完了した時点で review procedure を完了とし、新たな
+   closure run を要求しません。
 
 ## 停止条件
 
