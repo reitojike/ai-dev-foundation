@@ -6,9 +6,9 @@
 ## Representative task
 
 - Canonical context: GitHub Issue #8
-- Validation target: worktree based on `70adc6774548d20f33f2142ad157ba412412be38`。
-- Repository rules: repository root の `AGENTS.md`、および生成された consumer の
-  `AGENTS.md` / `CLAUDE.md`
+- Validation target: `59a9db8d363b63746fd56a100ae9b68ddc196e33`。
+- Repository rules: validation target上のrepository root `AGENTS.md` と
+  `policy/core.md`
 - Execution Envelope: repository root を cwd とした新規 CLI process。既存 session の
   resume、長文 handoff、provider 固有の model 指定は使わない。
 
@@ -29,8 +29,9 @@
 
 | Provider | Fresh-session result | Status |
 | --- | --- | --- |
-| Codex | この Issue の実装 session で実施。Issue #8 と root `AGENTS.md` のみから、Task Protocol を `High` と判定し、Task field の全機械必須化・provider 固有 rule・orchestrator の追加を未確定判断として保持した。`npm test` と consumer `npm run verify` を verification として特定した。 | pass |
-| Claude | `claude -p --no-session-persistence` を2回実行したが、認証済みのCLIが120秒以内に応答を返さなかった。sandbox外での再試行では weekly limit に到達したと返された。`--bare` は OAuth 認証を使えず、fresh validationには利用できなかった。成功出力は記録していない。 | runtime pending |
+| Codex | `--ephemeral` の新規CLI processで実施。Issue #8とtarget上のrulesをread-onlyで取得し、Goal / Scope / Invariants、Verification、Escalation条件を復元した。Roleは、canonical composition内の最小配置などにarchitecture choiceが残るという根拠で`High`と判断した。provider固有contractやsilent decisionは追加しなかった。 | final pass |
+| Claude | `--no-session-persistence` の新規CLI processで実施。Issue #8とtarget上のrulesを取得し、Goal / Scope / Invariants、Verification、Escalation条件を復元した。Roleは、主要decisionは固定済みで局所的な実装裁量が残るという根拠で`Balanced`と判断した。provider固有contractやsilent decisionは追加しなかった。 | final pass |
 
-Claude の記録が未完了の場合、Task Protocol の変更ではなく provider runtime がこの実行環境で
-利用可能かどうかの検証待ちとして扱います。
+両sessionは既存sessionをresumeせず、Issue #8とvalidation target上のrepository rulesだけを
+canonical contextとして使用した。Roleの判断はいずれもIssueのrouting heuristicに基づくもので、
+このheuristicは数値スコアや絶対的な不変条件ではない。
