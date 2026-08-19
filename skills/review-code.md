@@ -26,25 +26,26 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    Executable artifact では原則として独立 reviewer を使います。
 4. **Execution** — Execution Contract に従い、各 reviewer をそれぞれの trigger 方法で
    起動します。trigger 方法と target SHA、渡した required context を記録します。
-5. **Acquisition & Validity** — reviewer の run ごとに `policy/core.md` の record
-   schema を埋めます。
-   CI green を review completion の代わりにしない、
-   コメントが無いことを positive evidence なしに `0 findings` と扱わない、
-   completed（success を含む）と混同せず未開始・判定不能・失敗をそれぞれ
-   `none` / `unknown` / `failure` として区別する、を徹底します。
-6. **Aggregate & triage** — valid な run から finding を集約し、Resolution Contract の
-   カテゴリ（fix / false-positive / needs-verification / technical-dispute /
-   intent-question）へ仕分けます。human escalation は product intent / authority の
-   論点に限り、pure technical dispute は技術的な adjudication（別 reviewer の意見等）
-   で解決します。
-7. **Batch fix + root-cause** — accepted finding を root-cause ごとにまとめ、
-   1 件ずつの drip fix にしません。
+5. **Acquisition & Validity** — reviewer の run ごとに Acquisition & Validity
+   Contract（`policy/core.md`）に従って record schema を埋め、run を completion /
+   validity / `none` / `unknown` / `failure` のいずれかに判定します。判定条件は
+   policy の Contract 定義に従い、ここでは再定義しません。
+6. **Aggregate & triage** — valid な run から finding を集約し、Resolution Contract
+   （`policy/core.md`）のカテゴリ（fix / false-positive / needs-verification /
+   technical-dispute / intent-question）へ仕分けます。human escalation と
+   technical dispute の扱い、重大 finding を dismiss する際の確認要否は
+   Resolution Contract に従います。
+7. **Batch fix + root-cause** — Resolution Contract に従い、accepted finding を
+   root-cause ごとにまとめて fix します。
 8. **Deterministic verify** — fix 後に手順 1 の verify を再実行します。
-9. **Targeted closure** — fix した箇所に対応する範囲のみ再確認します。fix が
-   behavior / blast radius を materially 変えた場合のみ、追加で 1 round の discovery
-   を許容します。それ以上 round が必要に見える場合は review を増やさず、upstream の
-   task/design が不安定である可能性を疑い、escalate します。
-10. **Merge** — targeted closure が通った時点で merge します。
+9. **Targeted closure** — Review stopping rules（`policy/core.md`）に従い、fix した
+   箇所に対応する範囲のみ再確認します。追加 discovery の要否も同 stopping rules に
+   従います。
+10. **Closure Acquisition & Validity** — targeted closure の review run も手順 5 と
+    同じ Acquisition & Validity Contract に従って completion / acquisition /
+    validity を確認します。
+    確認できなければ merge せず、targeted closure をやり直します。
+11. **Merge** — Closure Acquisition & Validity が確認できた時点で merge します。
 
 ## Adapter boundary（manual pilot）
 

@@ -165,14 +165,14 @@ review run ごとに少なくとも次を記録可能にします。
 
 Completion は少なくとも次を要求します。
 
-- intended SHA / range を対象にしている
 - run が terminate している
 - required surface を取得済み
 - finding count が known
-- quota / timeout / structural failure がない
+- quota / timeout / structural な execution / acquisition failure がない
 
 Validity はさらに次を要求します。
 
+- reviewed SHA / range が intended target と一致している
 - intended artifact set が review 対象になっている
 - required context へアクセスできた
 - execution / acquisition が途中で欠落していない
@@ -193,6 +193,8 @@ review run の状態は少なくとも `none` / `unknown` / `failure` を区別�
 - human を raw finding の message bus にしない
 - pure technical dispute は technical adjudication で解決する
 - human escalation は product intent / authority に限る
+- P0/P1 相当の重大 finding を dismiss する場合は、
+  必要に応じて独立 reviewer の確認を要求する
 - accepted finding は drip fix せず、root-cause を確認した上で batch で fix する
 - fix 後は全 discovery をやり直さず、targeted closure を基本とする
 - review を新しい scope の探索に使わない
@@ -213,6 +215,9 @@ normalizeFindings()
 workflow log、edited comment 等）は provider capability として扱います。「この provider は
 この surface に出ない」という negative claim を恒久仕様にしてはいけません。
 capability/profile の更新時に再検証可能にします。
+
+収集した evidence は、comment ID / review ID / run ID / timestamp / target SHA
+または commit range を可能な範囲で保持します。
 
 ### Failure / retry
 
@@ -235,8 +240,12 @@ deterministic verify
   -> batch fix + root-cause sweep
   -> deterministic verify
   -> targeted closure
+  -> closure completion / acquisition / validity 確認
   -> merge
 ```
+
+targeted closure の review run も Acquisition & Validity Contract に従って
+completion / acquisition / validity を確認してから merge します。
 
 full discovery は原則 1 round です。fix が behavior / blast radius を materially
 変えた場合のみ 2 round 目を許容します。それ以上必要な場合は review loop を増やさず、
