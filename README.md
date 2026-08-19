@@ -6,6 +6,7 @@ consumer repository が必要とする provider 向けの小さなファイル�
 ## 構成
 
 - `policy/` は Foundation 全体に適用する規範的なルールを定義します。
+- `skills/` は policy を使った作業手順を保持し、規範的なルールを複製しません。
 - `profiles/` は product-domain rule を含めず、技術固有のルールを追加します。
 - `templates/` は生成ファイルの雛形を保持します。
 - `tooling/` は consumer adapter の合成と検証を担います。

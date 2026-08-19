@@ -99,6 +99,342 @@ handoff を毎 Task で義務化しませんが、High role を終える時点�
 人間を message bus にしません。人間への escalation は、product intent、authority、権限、
 または受容不能な trade-off に限ります。
 
+## Review Protocol
+
+Review の canonical context は本節です。
+本節は generated adapter として配布される自己完結した規範的内容であり、
+実行手順（review skill）は Foundation リポジトリ側に別途保持し、
+本節の規範的なルールを複製しません。
+Review Protocol は provider 名や model 名を Kernel に固定しません。
+
+### Artifact classification
+
+Review 強度と停止条件は artifact の種類で分けます。
+
+- **Executable**: TS/TSX/SQL/workflow/config 等、実行される、または実行に影響するコード。
+  deterministic verify を先に実行し、candidate SHA を freeze した上で、原則として独立
+  AI reviewer による discovery -> triage -> batch fix -> verify -> targeted closure を行います。
+- **Normative**: AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 agent や実装を
+  拘束する文書。mechanical markdown check の後、semantic discovery は原則 1 round とし、
+  triage / fix の後は closure verification のみを行います。重要な normative contract は
+  独立 reviewer を 2 系統使ってよいですが、各 reviewer の discovery は 1 回を基本とします。
+- **Informational**: README / research note / log 等。mechanical check を中心とし、
+  open-ended AI review を通常の merge gate にしません。
+
+### Review contracts
+
+Review は次の 4 つの provider-neutral な contract で表現します。provider 差分は Review
+Adapter boundary へ閉じ込め、Kernel に固定しません。
+
+各 Contract は discovery だけでなく、同じ Contract を使って起動する closure review run
+にも適用されます。closure target も Selection Contract で expected target として確定し、
+Execution Contract に従って起動します。Selection Contract が required review 数を
+定めた review stage では、discovery か closure かを問わず、その required 数の
+completed かつ valid な run が揃うまで triage / Resolution / merge / review
+completion へ進みません。不足する run の扱いは Failure / retry に従います。
+
+Selection Contract で required とした review stage（discovery、2nd full
+discovery を含む）の finding は、その stage で accepted fix があったか
+どうかに関係なく、Resolution Contract に従って Resolution が完了するまで
+merge / review completion へ進みません。同じ review flow で複数の
+discovery stage を行った場合は、実行した discovery stage すべての
+Resolution が完了している必要があります。discovery Resolution を closure
+より先に完了させる順序を強制するものではなく、merge / review completion
+の時点で揃っていれば十分です。
+
+#### Selection Contract
+
+- artifact classification
+- reviewer / capability の選択
+- required review 数
+- target artifact set
+- expected target SHA / commit range
+
+#### Execution Contract
+
+- trigger 方法
+- Selection で確定した expected target SHA / commit range
+- Selection で確定した target artifact set
+- required context
+- timeout / retry policy
+
+Selection Contract で確定した expected target（SHA / commit range）と
+target artifact set は、Execution で reviewer の trigger へ渡し、実際に
+渡した target と artifact set を記録します。commit range を選択した場合に
+head SHA だけへ黙って縮退させないのと同様に、target artifact set も途中で
+黙って縮小・変更しません。
+
+provider 固有の surface や capability は adapter/profile 側へ置き、Kernel に固定しません。
+
+#### Acquisition & Validity Contract
+
+**CI status は review completion と同義ではありません。** status/check の green 化のみを
+review 完了の証跡にしてはいけません。
+
+review run ごとに少なくとも次を記録可能にします。
+
+```json
+{
+  "reviewer": "...",
+  "target_sha": "...",
+  "status": "completed",
+  "validity": "valid",
+  "finding_count": 0,
+  "result_locator": "...",
+  "started_at": "...",
+  "completed_at": "...",
+  "failure": null
+}
+```
+
+record の `target_sha` は、Selection Contract の expected target（SHA / commit
+range）ではなく、実際に reviewed された SHA / range（observed target）を表します。
+`validity` は少なくとも `valid` / `invalid` / `unknown` を表現します。
+
+Completion は少なくとも次を要求します。
+
+- run が terminate している
+- required surface を取得済み
+- finding count が known
+- quota / timeout / structural な execution / acquisition failure がない
+
+Validity はさらに次を要求します。
+
+- reviewed SHA / range が intended target と一致している
+- intended artifact set が review 対象になっている
+- required context へアクセスできた
+- execution / acquisition が途中で欠落していない
+
+Validity の判定は、reviewed target を確定させた上で、Selection Contract の
+expected target と比較して行います。reviewed target は次のように確定します。
+
+- record の `target_sha` と acquired evidence 上の reviewed target が
+  両方存在する場合、両者は一致していなければなりません。
+  一致しない場合は invalid です。
+- reviewed target を Validity 判定に必要な精度で確認できない場合は unknown
+  です。
+
+確定した reviewed target が expected target と一致しない場合、
+completion していても invalid です。この場合、record は `status: completed`
+かつ `validity: invalid` として表現します。
+intended artifact set が review されていない場合も invalid です。
+
+**0 findings は positive evidence を必要とします。** reaction なし、comment なし、
+parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
+completion evidence のない empty output は `unknown` として扱います。
+
+review run の状態は少なくとも `none` / `unknown` / `failure` を区別し、混同してはいけません。
+
+#### Resolution Contract
+
+- finding を fix / false-positive / needs-verification / technical-dispute /
+  intent-question へ triage する
+- human を raw finding の message bus にしない
+- pure technical dispute は technical adjudication で解決する
+- human escalation は product intent / authority に限る
+- P0/P1 相当の重大 finding を dismiss する場合は、
+  必要に応じて独立 reviewer の確認を要求する
+- accepted finding は drip fix せず、root-cause を確認した上で batch で fix する
+- fix 後は全 discovery をやり直さず、targeted closure を基本とする
+- review を新しい scope の探索に使わない
+- discovery（2nd full discovery を含む）と targeted closure / closure
+  verification のいずれの finding も Resolution Contract の対象であり、
+  triage category を付けただけでは Resolution 完了ではない。unresolved
+  の finding（未解決の needs-verification / technical-dispute /
+  intent-question 等を含む）が残る間は、その review stage の Resolution
+  は完了せず、merge / review completion の根拠にしない
+
+### Review Adapter boundary
+
+provider 差分は次の 4 つの責務として扱います。Kernel はこの boundary の**形**のみを
+定義し、provider 固有の実装や恒久的な capability 台帳を持ちません。
+
+```text
+trigger()
+pollCompletion()
+collectOutputs()
+normalizeFindings()
+```
+
+収集対象の surface（top-level comment、inline/thread、review submission、status/check、
+workflow log、edited comment 等）は provider capability として扱います。「この provider は
+この surface に出ない」という negative claim を恒久仕様にしてはいけません。
+capability/profile の更新時に再検証可能にします。
+
+収集した evidence は、comment ID / review ID / run ID / timestamp / target SHA
+または commit range を可能な範囲で保持します。
+
+### Failure / retry
+
+- transient failure: bounded retry
+- quota / rate limit: `unknown` または `failure` として明示し、success に潰さない
+- structural capability mismatch: 同じ trigger を無限 retry せず、alternate reviewer /
+  escalation
+- empty output: positive completion evidence がなければ `unknown`
+
+### Review stopping rules
+
+target が変更された場合、その新しい target に対する mechanical / deterministic
+precondition の evidence は自動的に持ち越しません。target 変更後にその target を
+review / closure / merge の根拠とする前に、artifact classification が要求する
+precondition check（Executable の deterministic verify、Normative の mechanical
+check）を新しい target に対して再成立させます。
+review / closure / merge の根拠として使う precondition evidence は、review 対象
+として確定した（freeze / Selection された）target と一致していなければなりません。
+一致しない場合はその evidence を根拠にせず、確定した target に対して precondition
+check を再実行します。
+
+この一致確認は SHA / range だけでなく、selected target artifact set にも
+及びます。Selection で確定した target artifact set が、その precondition
+check の対象 scope に含まれることを確認します。precondition check を
+Selection より前に実行した場合は、Selection 後にこの binding を確認し
+ます。selected artifact set を precondition evidence がカバーしていると
+確認できない場合は、確定した target に対して precondition check を
+再実行してから先へ進みます。
+
+precondition evidence だけでなく、discovery / closure evidence も target-specific
+です。valid な discovery の後、accepted-fix による closure target の変更以外の
+理由で review target が変わった場合、その discovery を新しい target の
+merge / completion evidence として使いません。新しい target について artifact
+classification が要求する precondition check を再成立させ、Selection / Execution
+を再確立した上で、その target に必要な discovery を行います。accepted fix による
+target 変更は、既存の targeted closure（Executable）/ closure verification
+（Normative）の扱いに従います。
+
+この節における review target は、Selection Contract で確定した expected
+target SHA / commit range と target artifact set の組を指します。どちらか
+一方でも変われば review target の変更です。head SHA が不変でも commit
+range の endpoint が変わった場合、また expected target SHA / commit range
+が不変でも target artifact set が変わった場合も、review target の変更と
+して同じ scope です。この場合も、old discovery / closure evidence を
+新しい target の merge / completion evidence として使いません。
+
+closure Resolution で accepted fix が生じ、その fix を closure review で
+確認する cycle（Executable の targeted closure、Normative の closure
+verification のいずれも）が繰り返し発生する場合、無制限に継続せず、
+upstream task/design または policy/document 自体の instability を疑い、
+必要に応じて escalate します。これは Failure / retry の retry count とは
+別の stopping semantics です。
+
+Code review:
+
+```text
+deterministic verify
+  -> freeze candidate SHA
+  -> verify target と freeze target の consistency 確認
+  -> discovery（独立 reviewer）
+  -> completion / acquisition / validity 確認
+  -> aggregate / triage
+  -> accepted finding の batch fix で review target が変更された場合:
+       batch fix + root-cause sweep
+       -> deterministic verify
+       -> fix が behavior / blast radius を materially 変えた場合のみ:
+            second discovery target の Selection / Execution
+            -> full discovery（2nd round、独立 reviewer）
+            -> completion / acquisition / validity 確認
+            -> required review 数の valid run 確認
+            -> aggregate / triage
+            -> accepted finding があれば batch fix
+            -> target が変われば deterministic verify
+            -> この fix でさらに追加の full discovery が必要と判断される
+               場合: 3rd full discovery は起動せず、merge もせず、
+               upstream task/design の不安定さを疑い、必要に応じて
+               escalate する
+       -> closure target の Selection / Execution
+       -> targeted closure
+       -> closure completion / acquisition / validity 確認
+       -> closure finding の Resolution
+       -> accepted closure finding があれば:
+            batch fix
+            -> deterministic verify
+            -> Review stopping rules の再評価
+            -> 2nd full discovery 未使用かつ必要な場合:
+                 second discovery target の Selection / Execution から
+                 上記の full discovery route へ進み、完了後 targeted
+                 closure を再実行する
+            -> 2nd full discovery 使用済みでなお必要な場合:
+                 3rd full discovery は起動せず、merge もせず、
+                 upstream task/design の不安定さを疑い、必要に応じて
+                 escalate する
+            -> 追加の full discovery が不要な場合:
+                 targeted closure を再実行する
+       -> required discovery stage(s) の Resolution 完了
+       -> merge
+  -> accepted fix が無く review target が変更されていない場合:
+       required review 数の valid discovery と Resolution の完了
+       -> merge
+```
+
+accepted finding の batch fix によって review target が変更された場合のみ
+targeted closure を行い、その review run も Acquisition & Validity Contract
+に従って completion / acquisition / validity を確認します。targeted closure
+の finding も Resolution Contract の対象とし、Resolution が完了するまで
+merge しません。
+targeted closure の Resolution に加えて、この review flow で実行した
+discovery stage（2nd full discovery を含む）すべての Resolution が
+完了していることも merge の条件です。完了順序は問いません。
+targeted closure の finding に accepted fix がある場合も、fix 後の
+deterministic verify を経て Review stopping rules を再評価します。2nd
+full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後
+に targeted closure をやり直します。2nd full discovery を使用済みでなお
+full discovery が必要なら、3rd full discovery は起動せず、merge もせず、
+upstream task/design の不安定さを疑い、必要に応じて escalate します。
+追加の full discovery が不要なら、targeted closure をやり直します。
+accepted fix が無く review target が変更されていない場合は、
+required review 数の valid discovery と Resolution の完了をもって、
+新たな closure run を要求せずに merge できます。
+
+full discovery は原則 1 round です。fix が behavior / blast radius を materially
+変えた場合のみ 2 round 目を許容します。それ以上必要な場合は review loop を増やさず、
+upstream task/design の不安定さを疑います。
+2nd discovery の accepted finding を fix した後も、その fix が behavior /
+blast radius をさらに materially 変えた場合は、3rd full discovery を起動
+せず、targeted closure だけで merge へ進まず、upstream task/design の
+不安定さを疑い、必要に応じて escalate します。
+
+Normative document review:
+
+```text
+mechanical check
+  -> mechanical check target と Selection target の consistency 確認
+  -> semantic discovery（1 round）
+  -> triage / fix
+  -> accepted finding の fix で review target が変更された場合:
+       mechanical check
+       -> closure target の Selection / Execution
+       -> closure verification
+       -> closure completion / acquisition / validity 確認
+       -> closure finding の Resolution
+       -> semantic discovery の Resolution 完了
+       -> 完了
+  -> accepted fix が無く review target が変更されていない場合:
+       required review 数の valid semantic discovery と Resolution の完了
+       -> 完了
+```
+
+accepted finding の fix によって review target が変更された場合のみ、
+新しい target に対して mechanical check を再実行してから closure
+verification を行い、その review run も Acquisition & Validity Contract
+に従って completion / acquisition / validity を確認します。closure
+verification の finding も Resolution Contract の対象とし、Resolution が
+完了するまで review を完了しません。
+closure verification の Resolution に加えて、semantic discovery（手順 3）
+の Resolution が完了していることも review completion の条件です。完了
+順序は問いません。
+accepted fix が無く review target が変更されていない場合は、
+required review 数の valid semantic discovery と Resolution の完了をもって、
+新たな closure run を要求せずに review を完了できます。
+
+### Observed evidence is not a permanent provider rule
+
+Review Protocol の contract は実測された failure mode を反映しますが、observed な
+provider 挙動を Kernel の恒久 rule にはしません。expected trigger behavior は
+completion evidence と同義ではありません。expected trigger behavior に反して
+completion evidence が得られない場合は、trigger 前提を疑い、Acquisition & Validity
+Contract に従って `unknown` として扱います。特定 provider が常に特定の trigger 方法を
+要求するという恒久仕様は Kernel に置かず、observed evidence として capability/profile
+側で再検証可能な形にします。
+
 ## Technology profile: Next.js + Supabase
 
 # Next.js + Supabase profile
