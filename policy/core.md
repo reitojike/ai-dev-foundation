@@ -93,9 +93,11 @@ handoff を毎 Task で義務化しませんが、High role を終える時点�
 
 ## Review Protocol
 
-Review の canonical context は本節です。実行手順は `skills/review-code.md` と
-`skills/review-doc.md` に置き、本節の規範的なルールを複製しません。Review Protocol は
-provider 名や model 名を Kernel に固定しません。
+Review の canonical context は本節です。
+本節は generated adapter として配布される自己完結した規範的内容であり、
+実行手順（review skill）は Foundation リポジトリ側に別途保持し、
+本節の規範的なルールを複製しません。
+Review Protocol は provider 名や model 名を Kernel に固定しません。
 
 ### Artifact classification
 

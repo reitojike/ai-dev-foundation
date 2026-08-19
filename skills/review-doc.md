@@ -18,12 +18,17 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    1 回行います。Foundation の重要な normative contract では、独立した 2 系統の
    reviewer を使ってよいですが、各 reviewer の discovery はそれぞれ 1 回のままとし、
    同じ reviewer に discovery を繰り返させて網羅性を上げようとしません。
-3. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
+3. **Acquisition & Validity 確認** — `policy/core.md` の Acquisition & Validity
+   Contract に従い、target SHA / range、target artifact set、completion、
+   acquisition、validity を確認します。
+   確認できない run の finding は triage へ進めず、
+   `unknown` / `failure` として扱います。
+4. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
    false-positive / needs-verification / technical-dispute / intent-question）へ
    仕分けます。
-4. **Fix** — accepted finding を batch でまとめて fix します。1 件ずつの drip fix は
+5. **Fix** — accepted finding を batch でまとめて fix します。1 件ずつの drip fix は
    しません。
-5. **Closure** — triage した finding に対応しているかの closure verification のみを
+6. **Closure** — triage した finding に対応しているかの closure verification のみを
    行い、full な再 discovery はしません。
 
 ## 停止条件

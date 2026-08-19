@@ -14,17 +14,24 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 1. **Deterministic verify** — AI review を要求する前に、repository が定義する verify
    （`npm test` / `npm run check:fixture` / consumer `verify` / `git diff --check` 等、
    Task に応じたもの）を実行します。
-2. **Freeze candidate SHA** — review 対象の commit SHA を確定します。以降にその SHA を
-   変える変更が入った場合、re-freeze して手順を最初からやり直します。
+2. **Freeze candidate SHA** — review 対象の commit SHA を確定します。
+   discovery の completion / validity が確定する前にこの SHA が変わった場合、
+   その review target / run を invalid として扱い、新しい SHA で re-freeze して
+   必要な discovery をやり直します。
+   valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、
+   re-freeze はしますが手順を最初からやり直さず、
+   手順 8〜9（deterministic verify -> targeted closure）に進みます。
 3. **Selection** — Selection Contract に従い、artifact classification、reviewer /
    capability、required review 数、target artifact set、expected target SHA を決めます。
    Executable artifact では原則として独立 reviewer を使います。
 4. **Execution** — Execution Contract に従い、各 reviewer をそれぞれの trigger 方法で
    起動します。trigger 方法と target SHA、渡した required context を記録します。
 5. **Acquisition & Validity** — reviewer の run ごとに `policy/core.md` の record
-   schema を埋めます。CI green を review completion の代わりにしない、コメントが
-   無いことを positive evidence なしに `0 findings` と扱わない、run の状態を
-   `none` / `unknown` / `failure` のいずれかに区別する、を徹底します。
+   schema を埋めます。
+   CI green を review completion の代わりにしない、
+   コメントが無いことを positive evidence なしに `0 findings` と扱わない、
+   completed（success を含む）と混同せず未開始・判定不能・失敗をそれぞれ
+   `none` / `unknown` / `failure` として区別する、を徹底します。
 6. **Aggregate & triage** — valid な run から finding を集約し、Resolution Contract の
    カテゴリ（fix / false-positive / needs-verification / technical-dispute /
    intent-question）へ仕分けます。human escalation は product intent / authority の

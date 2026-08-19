@@ -107,6 +107,11 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   // Observed evidence stays a general principle, not a permanent provider rule
   assert.ok(flat.includes("expected trigger behavior は completion evidence と同義ではありません。"));
   assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+
+  // The generated consumer adapter must be self-contained: it must not reference
+  // Foundation-repo-only skill paths that are never distributed to the consumer.
+  assert.ok(core.includes("実行手順（review skill）は Foundation リポジトリ側に別途保持し、"));
+  assert.doesNotMatch(core, /skills\/review-code\.md|skills\/review-doc\.md/);
 });
 
 test("review skills document procedure without duplicating normative rules", async () => {
@@ -135,11 +140,44 @@ test("review skills document procedure without duplicating normative rules", asy
   }
   assert.match(reviewCode, /Claude.*Codex.*CodeRabbit/);
 
+  // A SHA change before discovery validity is established invalidates the run and
+  // requires a re-freeze + re-discovery; a SHA change from an already-accepted fix
+  // must NOT restart discovery from scratch (targeted closure, per the stopping rule).
+  assert.ok(
+    reviewCode.includes(
+      "その review target / run を invalid として扱い、新しい SHA で re-freeze して",
+    ),
+  );
+  assert.ok(
+    reviewCode.includes("valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、"),
+  );
+  assert.ok(reviewCode.includes("re-freeze はしますが手順を最初からやり直さず、"));
+
+  // Run state (none/unknown/failure) must be distinguished from a completed run, not
+  // presented as an exhaustive 3-state enum that a successful completion also falls into.
+  assert.ok(
+    reviewCode.includes("completed（success を含む）と混同せず未開始・判定不能・失敗をそれぞれ"),
+  );
+
   // review-doc.md covers the normative document review procedure
-  for (const phrase of ["Mechanical check", "Semantic discovery", "Triage", "Fix", "Closure"]) {
+  for (const phrase of [
+    "Mechanical check",
+    "Semantic discovery",
+    "Acquisition & Validity 確認",
+    "Triage",
+    "Fix",
+    "Closure",
+  ]) {
     assert.ok(reviewDoc.includes(phrase), `review-doc.md missing: ${phrase}`);
   }
   assert.ok(flatten(reviewDoc).includes("drip fix"));
+
+  // review-doc.md must confirm completion/acquisition/validity before handing findings
+  // to triage, referencing the policy contract rather than restating it.
+  assert.ok(
+    reviewDoc.includes("target SHA / range、target artifact set、completion、"),
+  );
+  assert.ok(reviewDoc.includes("確認できない run の finding は triage へ進めず、"));
 
   assert.ok(core.length > 0);
 });
