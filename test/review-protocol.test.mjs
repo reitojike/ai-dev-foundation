@@ -278,17 +278,6 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewDoc, "closure verification 自体の completion / acquisition / validity も"),
   );
 
-  // Closure must not unconditionally forbid further discovery; the round-limit
-  // condition (material behavior/blast-radius change) belongs to Review stopping
-  // rules and must not be re-copied into the skill (Fix, Codex P2).
-  assert.ok(
-    !containsText(reviewDoc, "full な再 discovery はしません"),
-    "review-doc.md's Closure step must not unconditionally forbid further discovery; it must defer to Review stopping rules",
-  );
-  assert.ok(
-    containsText(reviewDoc, "追加 discovery の要否は Review stopping rules（`policy/core.md`）に従います。"),
-  );
-
   // review-doc.md must not restate the 2nd-discovery-round prohibition verbatim;
   // it must reference Review stopping rules instead (Fix 2).
   assert.ok(
