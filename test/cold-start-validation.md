@@ -6,7 +6,7 @@
 ## Representative task
 
 - Canonical context: GitHub Issue #8
-- Validation target: `59a9db8d363b63746fd56a100ae9b68ddc196e33`。
+- Validation target: `6a9155216c2784f555935f1e69ebb0de9b603ed3`。
 - Repository rules: validation target上のrepository root `AGENTS.md` と
   `policy/core.md`
 - Execution Envelope: repository root を cwd とした新規 CLI process。既存 session の
@@ -29,8 +29,8 @@
 
 | Provider | Fresh-session result | Status |
 | --- | --- | --- |
-| Codex | `--ephemeral` の新規CLI processで実施。Issue #8とtarget上のrulesをread-onlyで取得し、Goal / Scope / Invariants、Verification、Escalation条件を復元した。Roleは、canonical composition内の最小配置などにarchitecture choiceが残るという根拠で`High`と判断した。provider固有contractやsilent decisionは追加しなかった。 | final pass |
-| Claude | `--no-session-persistence` の新規CLI processで実施。Issue #8とtarget上のrulesを取得し、Goal / Scope / Invariants、Verification、Escalation条件を復元した。Roleは、主要decisionは固定済みで局所的な実装裁量が残るという根拠で`Balanced`と判断した。provider固有contractやsilent decisionは追加しなかった。 | final pass |
+| Codex | `--ephemeral` の新規CLI processで実施。Issue #8とtarget上のrulesをread-onlyで取得し、6項目すべてを復元した。Roleは、主要decisionが固定済みで局所設計の裁量が残るという根拠で`Balanced`と判断した。planned handoffでSemantic Contractに加えAllowed Discretion / Escalate WhenとExecution Stateを失わず、Issueを短く参照することを復元し、provider固有contractやsilent decisionは追加しなかった。 | final pass |
+| Claude | `--no-session-persistence` の新規CLI processで実施。Issue #8とtarget上のrulesを取得し、6項目すべてを復元した。Roleは、主要decisionが固定済みで残りのcorrectnessに解釈裁量が残るという根拠で`Balanced`と判断した。planned handoffでSemantic Contractに加えAllowed Discretion / Escalate WhenとExecution Stateを失わず、Issueを短く参照することを復元し、provider固有contractやsilent decisionは追加しなかった。 | final pass |
 
 両sessionは既存sessionをresumeせず、Issue #8とvalidation target上のrepository rulesだけを
 canonical contextとして使用した。Roleの判断はいずれもIssueのrouting heuristicに基づくもので、
