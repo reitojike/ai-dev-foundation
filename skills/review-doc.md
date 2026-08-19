@@ -35,10 +35,15 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    仕分けます。
 6. **Fix** — Resolution Contract に従い、accepted finding を batch でまとめて
    fix します。
-7. **Closure** — triage した finding に対応しているかの closure verification のみを
+7. **Closure** — accepted finding の fix によって target SHA / range が変わった
+   場合、修正後の SHA / range を closure target として re-freeze し、
+   Selection / Execution Contract（`policy/core.md`）を closure review run に
+   適用します。
+   triage した finding に対応しているかの closure verification のみを
    行い、full な再 discovery はしません。
-   closure verification 自体の completion / acquisition / validity も
-   Acquisition & Validity Contract に従って確認します。
+   closure verification 自体の completion / acquisition / validity も、
+   この closure target を expected target として Acquisition & Validity
+   Contract に従って確認します。
 
 ## 停止条件
 

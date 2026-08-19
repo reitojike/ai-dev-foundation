@@ -273,6 +273,17 @@ test("review skills document procedure without duplicating normative rules", asy
   );
   assert.ok(containsText(reviewCode, "確認できなければ merge せず、その後の扱いは Failure / retry"));
 
+  // Finding 1 (Codex P1): only a Step 7 batch-fix-driven SHA change may take the
+  // targeted-closure-only path; any other SHA change (parallel work, scope
+  // addition, unrelated commits) routes back through Step 2's invalidate/re-freeze/
+  // re-discovery handling instead of a separate SHA-change rule.
+  assert.ok(
+    containsText(reviewCode, "手順 7 の batch fix 以外の理由で candidate SHA が変わった場合"),
+  );
+  assert.ok(
+    containsText(reviewCode, "手順 7 の batch fix によって candidate SHA が変更された場合のみ"),
+  );
+
   // review-doc.md covers the normative document review procedure, including the new
   // Selection / Execution steps (Fix 7) and the closure validity gate (Fix 6)
   for (const phrase of [
@@ -311,6 +322,23 @@ test("review skills document procedure without duplicating normative rules", asy
 
   assert.ok(
     containsText(reviewDoc, "closure verification 自体の completion / acquisition / validity も"),
+  );
+
+  // Finding 2 (Codex P1): a fix that changes target SHA / range re-freezes the
+  // closure target and applies Selection / Execution Contract to the closure
+  // review run, so closure validity is judged against the post-fix target instead
+  // of the pre-fix expected target from Step 2's Selection.
+  assert.ok(
+    containsText(reviewDoc, "修正後の SHA / range を closure target として re-freeze し、"),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "Selection / Execution Contract（`policy/core.md`）を closure review run に適用します。",
+    ),
+  );
+  assert.ok(
+    containsText(reviewDoc, "この closure target を expected target として Acquisition & Validity"),
   );
 
   // review-doc.md must not restate the 2nd-discovery-round prohibition verbatim;

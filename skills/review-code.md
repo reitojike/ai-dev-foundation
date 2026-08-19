@@ -20,7 +20,11 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    必要な discovery をやり直します。
    valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、
    re-freeze はしますが手順を最初からやり直さず、
-   手順 8〜9（deterministic verify -> targeted closure）に進みます。
+   手順 8〜11（deterministic verify -> targeted closure -> merge）に進みます。
+   手順 7 の batch fix 以外の理由で candidate SHA が変わった場合（並行作業や
+   scope 追加、fix と無関係な commit 等）は、valid な discovery の後であっても
+   この review target / run を invalid として扱い、新しい SHA で re-freeze して
+   必要な discovery をやり直します。
 3. **Selection** — Selection Contract に従い、artifact classification、reviewer /
    capability、required review 数、target artifact set、expected target SHA を決めます。
    Executable artifact では原則として独立 reviewer を使います。
@@ -46,18 +50,21 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 7. **Batch fix + root-cause** — Resolution Contract に従い、accepted finding が
    あれば root-cause ごとにまとめて fix します。
    accepted finding が無ければ candidate SHA は変更されません。
-8. **Deterministic verify** — 手順 7 で candidate SHA が変更された場合のみ、
-   fix 後に手順 1 の verify を再実行します。
-9. **Targeted closure** — candidate SHA が変更された場合のみ、Review stopping
-   rules（`policy/core.md`）に従い、fix した箇所に対応する範囲のみ再確認します。
-   追加 discovery の要否も同 stopping rules に従います。
-10. **Closure Acquisition & Validity** — candidate SHA が変更された場合のみ、
-    targeted closure の review run も手順 5 と同じ Acquisition & Validity
-    Contract に従って completion / acquisition / validity を確認します。
+8. **Deterministic verify** — 手順 7 の batch fix によって candidate SHA が
+   変更された場合のみ、fix 後に手順 1 の verify を再実行します。
+9. **Targeted closure** — 手順 7 の batch fix によって candidate SHA が変更
+   された場合のみ、Review stopping rules（`policy/core.md`）に従い、fix した
+   箇所に対応する範囲のみ再確認します。追加 discovery の要否も同 stopping
+   rules に従います。
+10. **Closure Acquisition & Validity** — 手順 7 の batch fix によって
+    candidate SHA が変更された場合のみ、targeted closure の review run も
+    手順 5 と同じ Acquisition & Validity Contract に従って completion /
+    acquisition / validity を確認します。
     確認できなければ merge せず、その後の扱いは Failure / retry
     （`policy/core.md`）に従います。
-11. **Merge** — candidate SHA が変更されていなければ、required review 数の
-    valid discovery と Resolution が完了した時点で merge します。
+11. **Merge** — 手順 7 の batch fix によって candidate SHA が変更されて
+    いなければ、required review 数の valid discovery と Resolution が完了
+    した時点で merge します。
     変更されていれば、Closure Acquisition & Validity が確認できた時点で
     merge します。
 
