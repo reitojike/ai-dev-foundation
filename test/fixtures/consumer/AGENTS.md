@@ -99,6 +99,166 @@ handoff を毎 Task で義務化しませんが、High role を終える時点�
 人間を message bus にしません。人間への escalation は、product intent、authority、権限、
 または受容不能な trade-off に限ります。
 
+## Review Protocol
+
+Review の canonical context は本節です。実行手順は `skills/review-code.md` と
+`skills/review-doc.md` に置き、本節の規範的なルールを複製しません。Review Protocol は
+provider 名や model 名を Kernel に固定しません。
+
+### Artifact classification
+
+Review 強度と停止条件は artifact の種類で分けます。
+
+- **Executable**: TS/TSX/SQL/workflow/config 等、実行される、または実行に影響するコード。
+  deterministic verify を先に実行し、candidate SHA を freeze した上で、原則として独立
+  AI reviewer による discovery -> triage -> batch fix -> verify -> targeted closure を行います。
+- **Normative**: AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 agent や実装を
+  拘束する文書。mechanical markdown check の後、semantic discovery は原則 1 round とし、
+  triage / fix の後は closure verification のみを行います。重要な normative contract は
+  独立 reviewer を 2 系統使ってよいですが、各 reviewer の discovery は 1 回を基本とします。
+- **Informational**: README / research note / log 等。mechanical check を中心とし、
+  open-ended AI review を通常の merge gate にしません。
+
+### Review contracts
+
+Review は次の 4 つの provider-neutral な contract で表現します。provider 差分は Review
+Adapter boundary へ閉じ込め、Kernel に固定しません。
+
+#### Selection Contract
+
+- artifact classification
+- reviewer / capability の選択
+- required review 数
+- target artifact set
+- expected target SHA / commit range
+
+#### Execution Contract
+
+- trigger 方法
+- target SHA
+- required context
+- timeout / retry policy
+
+provider 固有の surface や capability は adapter/profile 側へ置き、Kernel に固定しません。
+
+#### Acquisition & Validity Contract
+
+**CI status は review completion と同義ではありません。** status/check の green 化のみを
+review 完了の証跡にしてはいけません。
+
+review run ごとに少なくとも次を記録可能にします。
+
+```json
+{
+  "reviewer": "...",
+  "target_sha": "...",
+  "status": "completed",
+  "finding_count": 0,
+  "result_locator": "...",
+  "started_at": "...",
+  "completed_at": "...",
+  "failure": null
+}
+```
+
+Completion は少なくとも次を要求します。
+
+- intended SHA / range を対象にしている
+- run が terminate している
+- required surface を取得済み
+- finding count が known
+- quota / timeout / structural failure がない
+
+Validity はさらに次を要求します。
+
+- intended artifact set が review 対象になっている
+- required context へアクセスできた
+- execution / acquisition が途中で欠落していない
+
+reviewed SHA / range が target と一致しない場合、completion していても invalid です。
+intended artifact set が review されていない場合も invalid です。
+
+**0 findings は positive evidence を必要とします。** reaction なし、comment なし、
+parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
+completion evidence のない empty output は `unknown` として扱います。
+
+review run の状態は少なくとも `none` / `unknown` / `failure` を区別し、混同してはいけません。
+
+#### Resolution Contract
+
+- finding を fix / false-positive / needs-verification / technical-dispute /
+  intent-question へ triage する
+- human を raw finding の message bus にしない
+- pure technical dispute は technical adjudication で解決する
+- human escalation は product intent / authority に限る
+- accepted finding は drip fix せず、root-cause を確認した上で batch で fix する
+- fix 後は全 discovery をやり直さず、targeted closure を基本とする
+- review を新しい scope の探索に使わない
+
+### Review Adapter boundary
+
+provider 差分は次の 4 つの責務として扱います。Kernel はこの boundary の**形**のみを
+定義し、provider 固有の実装や恒久的な capability 台帳を持ちません。
+
+```text
+trigger()
+pollCompletion()
+collectOutputs()
+normalizeFindings()
+```
+
+収集対象の surface（top-level comment、inline/thread、review submission、status/check、
+workflow log、edited comment 等）は provider capability として扱います。「この provider は
+この surface に出ない」という negative claim を恒久仕様にしてはいけません。
+capability/profile の更新時に再検証可能にします。
+
+### Failure / retry
+
+- transient failure: bounded retry
+- quota / rate limit: `unknown` または `failure` として明示し、success に潰さない
+- structural capability mismatch: 同じ trigger を無限 retry せず、alternate reviewer /
+  escalation
+- empty output: positive completion evidence がなければ `unknown`
+
+### Review stopping rules
+
+Code review:
+
+```text
+deterministic verify
+  -> freeze candidate SHA
+  -> discovery（独立 reviewer）
+  -> completion / acquisition / validity 確認
+  -> aggregate / triage
+  -> batch fix + root-cause sweep
+  -> deterministic verify
+  -> targeted closure
+  -> merge
+```
+
+full discovery は原則 1 round です。fix が behavior / blast radius を materially
+変えた場合のみ 2 round 目を許容します。それ以上必要な場合は review loop を増やさず、
+upstream task/design の不安定さを疑います。
+
+Normative document review:
+
+```text
+mechanical check
+  -> semantic discovery（1 round）
+  -> triage / fix
+  -> closure
+```
+
+### Observed evidence is not a permanent provider rule
+
+Review Protocol の contract は実測された failure mode を反映しますが、observed な
+provider 挙動を Kernel の恒久 rule にはしません。expected trigger behavior は
+completion evidence と同義ではありません。expected trigger behavior に反して
+completion evidence が得られない場合は、trigger 前提を疑い、Acquisition & Validity
+Contract に従って `unknown` として扱います。特定 provider が常に特定の trigger 方法を
+要求するという恒久仕様は Kernel に置かず、observed evidence として capability/profile
+側で再検証可能な形にします。
+
 ## Technology profile: Next.js + Supabase
 
 # Next.js + Supabase profile
