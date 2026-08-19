@@ -329,6 +329,20 @@ deterministic verify
        -> targeted closure
        -> closure completion / acquisition / validity 確認
        -> closure finding の Resolution
+       -> accepted closure finding があれば:
+            batch fix
+            -> deterministic verify
+            -> Review stopping rules の再評価
+            -> 2nd full discovery 未使用かつ必要な場合:
+                 second discovery target の Selection / Execution から
+                 上記の full discovery route へ進み、完了後 targeted
+                 closure を再実行する
+            -> 2nd full discovery 使用済みでなお必要な場合:
+                 3rd full discovery は起動せず、merge もせず、
+                 upstream task/design の不安定さを疑い、必要に応じて
+                 escalate する
+            -> 追加の full discovery が不要な場合:
+                 targeted closure を再実行する
        -> required discovery stage(s) の Resolution 完了
        -> merge
   -> accepted fix が無く review target が変更されていない場合:
@@ -344,6 +358,13 @@ merge しません。
 targeted closure の Resolution に加えて、この review flow で実行した
 discovery stage（2nd full discovery を含む）すべての Resolution が
 完了していることも merge の条件です。完了順序は問いません。
+targeted closure の finding に accepted fix がある場合も、fix 後の
+deterministic verify を経て Review stopping rules を再評価します。2nd
+full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後
+に targeted closure をやり直します。2nd full discovery を使用済みでなお
+full discovery が必要なら、3rd full discovery は起動せず、merge もせず、
+upstream task/design の不安定さを疑い、必要に応じて escalate します。
+追加の full discovery が不要なら、targeted closure をやり直します。
 accepted fix が無く review target が変更されていない場合は、
 required review 数の valid discovery と Resolution の完了をもって、
 新たな closure run を要求せずに merge できます。

@@ -361,11 +361,63 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   // Codex P1 (resolve discovery findings before merge, Code flow): the
   // accepted-fix diagram branch now requires required discovery stage(s)'
   // Resolution to complete, not just closure Resolution, before merge.
+  assert.ok(core.includes("required discovery stage(s) の Resolution 完了"));
   assert.ok(
     containsText(
       core,
-      "-> closure finding の Resolution -> required discovery stage(s) の Resolution 完了 -> merge",
+      "closure finding の Resolution -> accepted closure finding があれば:",
     ),
+  );
+
+  // Codex P1 (re-evaluate materiality of closure fixes): an accepted closure
+  // finding's fix re-enters Review stopping rules — routing to an unused 2nd
+  // discovery if needed, to escalation (no 3rd discovery, no merge) if 2nd was
+  // already used and still insufficient, or back to targeted closure if the
+  // fix wasn't material — instead of falling straight through to merge.
+  assert.ok(
+    containsText(
+      core,
+      "accepted closure finding があれば: batch fix -> deterministic verify -> Review stopping rules の再評価",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "2nd full discovery 未使用かつ必要な場合: second discovery target の Selection / Execution から上記の full discovery route へ進み、完了後 targeted closure を再実行する",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "2nd full discovery 使用済みでなお必要な場合: 3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate する",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "追加の full discovery が不要な場合: targeted closure を再実行する",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "targeted closure の finding に accepted fix がある場合も、fix 後の deterministic verify を経て Review stopping rules を再評価します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "2nd full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後に targeted closure をやり直します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "2nd full discovery を使用済みでなお full discovery が必要なら、3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate します。",
+    ),
+  );
+  assert.ok(
+    containsText(core, "追加の full discovery が不要なら、targeted closure をやり直します。"),
   );
   assert.ok(
     containsText(
@@ -473,7 +525,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   );
   assert.doesNotMatch(
     core,
-    /4th full discovery|third full discovery|discovery_round|round counter|Materiality Contract/i,
+    /4th full discovery|third full discovery|discovery_round|round counter|Materiality Contract|Closure Materiality Contract/i,
     "must not introduce a 3rd discovery phase, round counter, or a new Materiality Contract",
   );
 
