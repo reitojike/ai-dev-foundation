@@ -144,9 +144,13 @@ completion へ進みません。不足する run の扱いは Failure / retry �
 #### Execution Contract
 
 - trigger 方法
-- target SHA
+- Selection で確定した expected target SHA / commit range
 - required context
 - timeout / retry policy
+
+Selection Contract で commit range を expected target として選択した場合、
+Execution ではその selected range を reviewer の trigger へ渡し、実際に
+渡した target を記録します。head SHA だけへ黙って縮退させません。
 
 provider 固有の surface や capability は adapter/profile 側へ置き、Kernel に固定しません。
 

@@ -76,6 +76,27 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
+  // Codex P2 (pass the selected commit range to Execution): Execution Contract's
+  // target field is bound to Selection's expected target (SHA or commit range),
+  // not reduced to a bare "target SHA" that Selection's range would silently
+  // narrow down to. Since Step 9 (2nd discovery) and Step 10 (targeted closure)
+  // both already say "Execution Contract に従って", fixing the Contract's own
+  // definition is enough to cover them without restating range semantics there.
+  assert.ok(
+    containsText(core, "Selection で確定した expected target SHA / commit range"),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "Selection Contract で commit range を expected target として選択した場合、Execution ではその selected range を reviewer の trigger へ渡し、実際に渡した target を記録します。head SHA だけへ黙って縮退させません。",
+    ),
+  );
+  assert.doesNotMatch(
+    core,
+    /#### Execution Contract\s*\n\s*-\s*trigger 方法\s*\n\s*-\s*target SHA\s*\n/,
+    "Execution Contract must not regress to a bare, Selection-unbound 'target SHA' field",
+  );
+
   // Principle B (review evidence is target-specific): discovery evidence, not just
   // precondition evidence, does not carry over to a new target unless the change
   // was the accepted-fix-driven closure path.
@@ -414,6 +435,22 @@ test("review skills document procedure without duplicating normative rules", asy
       reviewCode,
       "expected target SHA / applicable な commit range を決めます。",
     ),
+  );
+
+  // Codex P2 (pass the selected commit range to Execution): Step 4 must send the
+  // Selection-confirmed target to the reviewer trigger, not just record a bare
+  // target SHA after the fact — recording alone would still let the range
+  // silently narrow to head SHA.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "Execution Contract に従い、Selection で確定した expected target SHA / applicable な commit range を各 reviewer の trigger へ渡して起動します。",
+    ),
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /trigger 方法と target SHA、渡した required context を記録します。/,
+    "Step 4 must pass the Selection-confirmed target to the trigger, not just record target SHA after invocation",
   );
 
   // A mixed change (accepted-fix-driven head move plus an independently moved

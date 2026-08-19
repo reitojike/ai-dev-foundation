@@ -42,8 +42,10 @@ commit range を使う review でも同じ意味で適用します。
    SHA / applicable な commit range を決めます。commit range を使う場合は、
    対象範囲が曖昧にならない形で確定します。
    Executable artifact では原則として独立 reviewer を使います。
-4. **Execution** — Execution Contract に従い、各 reviewer をそれぞれの trigger 方法で
-   起動します。trigger 方法と target SHA、渡した required context を記録します。
+4. **Execution** — Execution Contract に従い、Selection で確定した expected
+   target SHA / applicable な commit range を各 reviewer の trigger へ
+   渡して起動します。trigger 方法、実際に渡した target、required context
+   を記録します。
 5. **Acquisition & Validity** — reviewer の run ごとに Acquisition & Validity
    Contract（`policy/core.md`）に従って record schema を埋めます。
    completion と validity は独立した判定とし、completed な run についてのみ
