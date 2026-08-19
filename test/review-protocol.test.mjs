@@ -43,7 +43,10 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(containsText(core, "CI status は review completion と同義ではありません"));
   assert.ok(containsText(core, "0 findings は positive evidence を必要とします"));
   assert.ok(
-    containsText(core, "reviewed SHA / range が target と一致しない場合、completion していても invalid です。"),
+    containsText(
+      core,
+      "確定した reviewed target が expected target と一致しない場合、completion していても invalid です。",
+    ),
   );
   assert.ok(containsText(core, "intended artifact set が review されていない場合も invalid です。"));
   assert.ok(
@@ -87,6 +90,20 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(containsText(core, "`validity` は少なくとも `valid` / `invalid` / `unknown` を表現します。"));
   assert.ok(
     containsText(core, "この場合、record は `status: completed` かつ `validity: invalid` として表現します。"),
+  );
+
+  // Reviewed-target evidence consistency: when record.target_sha and the acquired
+  // evidence's reviewed target both exist, they must agree; disagreement is invalid,
+  // and an unconfirmable reviewed target is unknown (not silently valid).
+  assert.ok(
+    containsText(
+      core,
+      "record の `target_sha` と acquired evidence 上の reviewed target が両方存在する場合、両者は一致していなければなりません。",
+    ),
+  );
+  assert.ok(containsText(core, "一致しない場合は invalid です。"));
+  assert.ok(
+    containsText(core, "reviewed target を Validity 判定に必要な精度で確認できない場合は unknown です。"),
   );
 
   // Resolution Contract

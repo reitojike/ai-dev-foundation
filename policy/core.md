@@ -174,12 +174,18 @@ Validity はさらに次を要求します。
 - required context へアクセスできた
 - execution / acquisition が途中で欠落していない
 
-Validity の判定は、Selection Contract の expected target と、
-record の `target_sha`（reviewed target）または acquired evidence 上の
-reviewed target を比較して行います。
+Validity の判定は、reviewed target を確定させた上で、Selection Contract の
+expected target と比較して行います。reviewed target は次のように確定します。
 
-reviewed SHA / range が target と一致しない場合、completion していても invalid です。
-この場合、record は `status: completed` かつ `validity: invalid` として表現します。
+- record の `target_sha` と acquired evidence 上の reviewed target が
+  両方存在する場合、両者は一致していなければなりません。
+  一致しない場合は invalid です。
+- reviewed target を Validity 判定に必要な精度で確認できない場合は unknown
+  です。
+
+確定した reviewed target が expected target と一致しない場合、
+completion していても invalid です。この場合、record は `status: completed`
+かつ `validity: invalid` として表現します。
 intended artifact set が review されていない場合も invalid です。
 
 **0 findings は positive evidence を必要とします。** reaction なし、comment なし、
