@@ -286,6 +286,14 @@ deterministic verify
   -> accepted finding の batch fix で candidate SHA が変更された場合:
        batch fix + root-cause sweep
        -> deterministic verify
+       -> fix が behavior / blast radius を materially 変えた場合のみ:
+            second discovery target の Selection / Execution
+            -> full discovery（2nd round、独立 reviewer）
+            -> completion / acquisition / validity 確認
+            -> required review 数の valid run 確認
+            -> aggregate / triage
+            -> accepted finding があれば batch fix
+            -> target が変われば deterministic verify
        -> closure target の Selection / Execution
        -> targeted closure
        -> closure completion / acquisition / validity 確認

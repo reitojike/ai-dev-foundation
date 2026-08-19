@@ -25,7 +25,7 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    re-freeze して必要な discovery をやり直します。
    valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、
    re-freeze はしますが手順を最初からやり直さず、
-   手順 8〜12（deterministic verify -> targeted closure -> merge）に進みます。
+   手順 8〜13（deterministic verify -> targeted closure -> merge）に進みます。
    手順 7 の batch fix 以外の理由で candidate SHA が変わった場合（並行作業や
    scope 追加、fix と無関係な commit 等）は、valid な discovery の後であっても
    その旧 review target / run を現在 target の evidence として扱いません。
@@ -58,36 +58,67 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    accepted finding が無ければ candidate SHA は変更されません。
 8. **Deterministic verify** — 手順 7 の batch fix によって candidate SHA が
    変更された場合のみ、fix 後に手順 1 の verify を再実行します。
-9. **Targeted closure** — 手順 7 の batch fix によって candidate SHA が変更
-   された場合のみ行います。修正後の SHA を closure target として re-freeze
-   し、Selection Contract に従ってこの closure target を expected target
-   として確定し、Execution Contract に従って closure run を起動します。
-   Review stopping rules（`policy/core.md`）に従い、fix した箇所に対応する
-   範囲のみ再確認します。追加 discovery の要否も同 stopping rules に従います。
-10. **Closure Acquisition & Validity** — 手順 7 の batch fix によって
-    candidate SHA が変更された場合のみ、この closure target を expected
-    target として、targeted closure の review run に手順 5 と同じ
-    Acquisition & Validity Contract を適用し、completion / acquisition /
-    validity を確認します。
+9. **Second full discovery（条件付き）** — Review stopping rules
+   （`policy/core.md`）に従って 2nd full discovery が必要と判断された
+   場合のみ、targeted closure の前に行います。
+   1. 手順 8 で verify した post-fix SHA を second discovery target として
+      re-freeze し、手順 8 の verify target との consistency を確認します。
+   2. Selection Contract をこの second discovery stage へ適用します。
+   3. Execution Contract に従って full discovery（独立 reviewer）を
+      起動します。
+   4. Acquisition & Validity Contract をこの discovery run に適用します。
+   5. Selection で required とした review 数ぶんの valid run が揃うまで
+      triage へ進みません。揃わない run の扱いは Failure / retry
+      （`policy/core.md`）に従います。
+   6. valid な run の finding を Resolution Contract で triage します。
+   7. accepted finding があれば、手順 7 と同じ batch fix semantics で
+      まとめて fix します。
+   8. その fix によって target が変わった場合、手順 8 と同じ
+      deterministic verify を行います。
+
+   second discovery の実行中、または completion / validity 確定前後に
+   accepted fix 以外の理由で target が変わった場合は、手順 2 と同じ
+   target-specific evidence の扱いに従います。
+   この second discovery の accepted finding の fix について、さらに
+   追加の discovery round が必要と判断される場合、3rd full discovery は
+   起動せず merge もせず、Review stopping rules（`policy/core.md`）に
+   従って upstream task/design の不安定さを疑い、必要に応じて escalate
+   します。
+10. **Targeted closure** — この review flow で accepted finding の fix
+    によって target が変更された場合のみ（手順 9 の second full
+    discovery を挟んだ場合を含む）行います。最終的な post-fix SHA を
+    closure target として re-freeze し、Selection Contract に従ってこの
+    closure target を expected target として確定し、Execution Contract
+    に従って closure run を起動します。
+    Review stopping rules（`policy/core.md`）に従い、fix した箇所に対応
+    する範囲のみ再確認します。
+11. **Closure Acquisition & Validity** — この review flow で accepted
+    finding の fix によって target が変更された場合のみ（手順 9 を
+    挟んだ場合を含む）、この closure target を expected target として、
+    targeted closure の review run に手順 5 と同じ Acquisition &
+    Validity Contract を適用し、completion / acquisition / validity を
+    確認します。
     確認できなければ merge せず、その後の扱いは Failure / retry
     （`policy/core.md`）に従います。
     closure 用 Selection Contract で required とした review 数ぶんの valid
     な closure run が揃うまで Closure Resolution へ進みません。不足する
     run の扱いは Failure / retry（`policy/core.md`）に従います。
-11. **Closure Resolution** — targeted closure の finding を Resolution
+12. **Closure Resolution** — targeted closure の finding を Resolution
     Contract（`policy/core.md`）に従って triage します。unresolved の
     finding がある間は merge しません。
-    accepted な closure finding があれば、手順 7〜10 と同じ procedure
-    （root-cause を確認した batch fix -> deterministic verify -> targeted
-    closure -> Closure Acquisition & Validity）に従って解決します。
+    accepted な closure finding があれば、手順 7・8・10・11 と同じ
+    procedure（root-cause を確認した batch fix -> deterministic verify
+    -> targeted closure -> Closure Acquisition & Validity。手順 9 の
+    second full discovery はこの経路には含みません）に従って解決します。
     この cycle が繰り返し発生する場合は無制限に続けず、Review stopping
     rules（`policy/core.md`）に従って upstream task/design の不安定さを
     疑い、必要に応じて escalate します。
-12. **Merge** — 手順 7 の batch fix によって candidate SHA が変更されて
-    いなければ、required review 数の valid discovery と Resolution が完了
-    した時点で merge します。
-    変更されていれば、Closure Acquisition & Validity と Closure Resolution
-    が完了した時点で merge します。
+13. **Merge** — この review flow で accepted finding の fix による target
+    変更が一度も発生していなければ、required review 数の valid discovery
+    と Resolution が完了した時点で merge します。
+    target 変更が発生していれば（手順 9 を挟んだ場合を含む）、Closure
+    Acquisition & Validity と Closure Resolution が完了した時点で
+    merge します。
 
 ## Adapter boundary（manual pilot）
 

@@ -211,11 +211,32 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(core.includes("closure completion / acquisition / validity 確認"));
   // Finding 1: the Code accepted-fix branch re-applies Selection/Execution to the
   // closure target before targeted closure runs.
+  assert.ok(core.includes("closure target の Selection / Execution"));
+  assert.ok(core.includes("-> targeted closure"));
+
+  // Codex P2 (route a material fix through a full 2nd discovery): an optional 2nd
+  // full discovery, gated by the same material-fix condition Review stopping
+  // rules already define, sits between the post-fix deterministic verify and
+  // closure target Selection/Execution — reusing the same discovery Contracts,
+  // not a new Second Discovery Contract or round-counter schema.
   assert.ok(
     containsText(
       core,
-      "deterministic verify -> closure target の Selection / Execution -> targeted closure",
+      "deterministic verify -> fix が behavior / blast radius を materially 変えた場合のみ:",
     ),
+  );
+  assert.ok(core.includes("second discovery target の Selection / Execution"));
+  assert.ok(core.includes("full discovery（2nd round、独立 reviewer）"));
+  assert.ok(
+    containsText(
+      core,
+      "required review 数の valid run 確認 -> aggregate / triage -> accepted finding があれば batch fix -> target が変われば deterministic verify",
+    ),
+  );
+  assert.doesNotMatch(
+    core,
+    /discovery_round|round counter|Second Discovery Contract/,
+    "policy/core.md must not introduce a new round-counter schema or a Second Discovery Contract",
   );
   assert.ok(
     containsText(
@@ -362,11 +383,19 @@ test("review skills document procedure without duplicating normative rules", asy
       "targeted closure の finding を Resolution Contract（`policy/core.md`）に従って triage します。unresolved の finding がある間は merge しません。",
     ),
   );
-  assert.ok(containsText(reviewCode, "accepted な closure finding があれば、手順 7〜10 と同じ procedure"));
+  assert.ok(
+    containsText(reviewCode, "accepted な closure finding があれば、手順 7・8・10・11 と同じ"),
+  );
   assert.ok(
     containsText(
       reviewCode,
-      "変更されていれば、Closure Acquisition & Validity と Closure Resolution が完了した時点で merge します。",
+      "second full discovery はこの経路には含みません",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "Closure Acquisition & Validity と Closure Resolution が完了した時点で merge します。",
     ),
   );
 
@@ -471,10 +500,27 @@ test("review skills document procedure without duplicating normative rules", asy
   // Root cause 2: closure (targeted closure / Closure Acquisition & Validity) is
   // required only when the candidate SHA actually changed, not unconditionally.
   assert.ok(containsText(reviewCode, "candidate SHA が変更された場合のみ"));
+
+  // Sibling gap fix: the closure predicate is stabilized to "did this review flow
+  // ever have an accepted-fix-driven target change" (including via the optional
+  // 2nd discovery), not "did Step 7's SHA change specifically" — so a 2nd
+  // discovery with zero accepted findings still requires targeted closure for the
+  // first accepted fix, and merge without closure still requires no target change
+  // at all across the whole flow.
+  assert.ok(
+    countOccurrences(
+      reviewCode,
+      "この review flow で accepted finding の fix によって target が変更された場合のみ",
+    ) === 2,
+    "review-code.md's Targeted closure and Closure Acquisition & Validity steps must gate on whether this review flow ever had an accepted-fix-driven target change, not just Step 7's own SHA change",
+  );
+  assert.ok(
+    containsText(reviewCode, "手順 9 の second full discovery を挟んだ場合を含む"),
+  );
   assert.ok(
     containsText(
       reviewCode,
-      "candidate SHA が変更されていなければ、required review 数の valid discovery と Resolution が完了した時点で merge します。",
+      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution が完了した時点で merge します。",
     ),
   );
 
@@ -511,7 +557,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "修正後の SHA を closure target として re-freeze し、Selection Contract に従ってこの closure target を expected target として確定し、Execution Contract に従って closure run を起動します。",
+      "最終的な post-fix SHA を closure target として re-freeze し、Selection Contract に従ってこの closure target を expected target として確定し、Execution Contract に従って closure run を起動します。",
     ),
   );
   assert.ok(
@@ -519,6 +565,64 @@ test("review skills document procedure without duplicating normative rules", asy
       reviewCode,
       "この closure target を expected target として、targeted closure の review run に手順 5 と同じ Acquisition & Validity Contract を適用し",
     ),
+  );
+
+  // Codex P2 (route a material fix through a full 2nd discovery): Step 9 is an
+  // optional, policy-gated 2nd full discovery inserted before targeted closure,
+  // reusing the same Selection / Execution / Acquisition & Validity / Resolution
+  // Contracts and the required-review-count gate as the first discovery — not a
+  // new Second Discovery Contract or schema.
+  assert.ok(reviewCode.includes("Second full discovery"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "Review stopping rules（`policy/core.md`）に従って 2nd full discovery が必要と判断された場合のみ、targeted closure の前に行います。",
+    ),
+  );
+  assert.ok(
+    containsText(reviewCode, "Selection Contract をこの second discovery stage へ適用します。"),
+  );
+  assert.ok(
+    containsText(reviewCode, "Execution Contract に従って full discovery（独立 reviewer）を"),
+  );
+  assert.ok(
+    containsText(reviewCode, "Acquisition & Validity Contract をこの discovery run に適用します。"),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "Selection で required とした review 数ぶんの valid run が揃うまで triage へ進みません。揃わない run の扱いは Failure / retry",
+    ),
+  );
+  assert.ok(
+    containsText(reviewCode, "accepted finding があれば、手順 7 と同じ batch fix semantics で"),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "その fix によって target が変わった場合、手順 8 と同じ",
+    ),
+  );
+  // Non-fix target mutation inside the 2nd discovery reuses Step 2's semantics
+  // rather than a Second-Discovery-specific mutation rule.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "accepted fix 以外の理由で target が変わった場合は、手順 2 と同じ target-specific evidence の扱いに従います。",
+    ),
+  );
+  // A 3rd full discovery is never triggered; the flow escalates instead, per the
+  // existing Review stopping rules (no new retry counter or round-limit schema).
+  assert.ok(
+    containsText(
+      reviewCode,
+      "3rd full discovery は起動せず merge もせず、Review stopping rules（`policy/core.md`）に従って upstream task/design の不安定さを疑い、必要に応じて escalate します。",
+    ),
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /discovery_round|round counter|Second Discovery Contract/,
+    "review-code.md must not introduce a new round-counter schema or a Second Discovery Contract",
   );
 
   // Finding 3 (Code): Selection Contract's required review count gates closure
