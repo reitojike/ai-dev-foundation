@@ -25,7 +25,7 @@ test("core policy defines the provider-neutral Task Protocol", async () => {
   assert.match(core, /\*\*Balanced\*\*/);
   assert.match(core, /\*\*Fast\*\*/);
   assert.match(core, /Task boundary と agent\/session boundary は一致しません/);
-  assert.match(core, /silent decision を\nしてはいけません/);
-  assert.match(core, /Execution\nEnvelope の制約や事故を semantic decision として吸収してはいけません/);
+  assert.match(core, /silent decision を\s+してはいけません/);
+  assert.match(core, /Execution\s+Envelope の制約や事故を semantic decision として吸収してはいけません/);
   assert.doesNotMatch(core, /claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
 });
