@@ -241,6 +241,38 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(containsText(reviewCode, "Review stopping rules（`policy/core.md`）に従い"));
   assert.ok(containsText(reviewCode, "重大 finding を dismiss する際の確認要否は"));
 
+  // Root cause 1: required review count is a gate on triage, in both skills — a
+  // shortfall (invalid/unknown/failure) defers to Failure / retry, not a separate
+  // "at least one valid run" rule.
+  const requiredReviewGate =
+    "Selection Contract で required とした review 数ぶんの `validity: valid` な run が揃うまで triage へ進みません。";
+  assert.ok(containsText(reviewCode, requiredReviewGate));
+  assert.ok(containsText(reviewDoc, requiredReviewGate));
+  assert.ok(
+    containsText(reviewCode, "揃わない run（invalid / unknown / failure）の扱いは Failure / retry"),
+  );
+  assert.ok(
+    containsText(reviewDoc, "揃わない run（invalid / unknown / failure）の扱いは Failure / retry"),
+  );
+
+  // Root cause 2: closure (targeted closure / Closure Acquisition & Validity) is
+  // required only when the candidate SHA actually changed, not unconditionally.
+  assert.ok(containsText(reviewCode, "candidate SHA が変更された場合のみ"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "candidate SHA が変更されていなければ、required review 数の valid discovery と Resolution が完了した時点で merge します。",
+    ),
+  );
+
+  // Root cause 3: an unconfirmed closure defers to Failure / retry instead of
+  // unconditionally retrying the same closure trigger.
+  assert.ok(
+    !containsText(reviewCode, "targeted closure をやり直します"),
+    "review-code.md must not unconditionally retry the same closure trigger; it must defer to Failure / retry",
+  );
+  assert.ok(containsText(reviewCode, "確認できなければ merge せず、その後の扱いは Failure / retry"));
+
   // review-doc.md covers the normative document review procedure, including the new
   // Selection / Execution steps (Fix 7) and the closure validity gate (Fix 6)
   for (const phrase of [
@@ -255,7 +287,10 @@ test("review skills document procedure without duplicating normative rules", asy
     assert.ok(reviewDoc.includes(phrase), `review-doc.md missing: ${phrase}`);
   }
   assert.ok(
-    containsText(reviewDoc, "target SHA / range、target artifact set、reviewer / capability を確定します。"),
+    containsText(
+      reviewDoc,
+      "target SHA / range、target artifact set、reviewer / capability、required review 数を確定します。",
+    ),
   );
   assert.ok(
     containsText(

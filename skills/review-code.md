@@ -33,22 +33,33 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    は invalid として表現できます）。
    `none` / `unknown` / `failure` は completion / validity と混同せず、Contract
    の定義に従って記録します。
-6. **Aggregate & triage** — valid な run から finding を集約し、Resolution Contract
-   （`policy/core.md`）のカテゴリ（fix / false-positive / needs-verification /
-   technical-dispute / intent-question）へ仕分けます。human escalation と
-   technical dispute の扱い、重大 finding を dismiss する際の確認要否は
-   Resolution Contract に従います。
-7. **Batch fix + root-cause** — Resolution Contract に従い、accepted finding を
-   root-cause ごとにまとめて fix します。
-8. **Deterministic verify** — fix 後に手順 1 の verify を再実行します。
-9. **Targeted closure** — Review stopping rules（`policy/core.md`）に従い、fix した
-   箇所に対応する範囲のみ再確認します。追加 discovery の要否も同 stopping rules に
-   従います。
-10. **Closure Acquisition & Validity** — targeted closure の review run も手順 5 と
-    同じ Acquisition & Validity Contract に従って completion / acquisition /
-    validity を確認します。
-    確認できなければ merge せず、targeted closure をやり直します。
-11. **Merge** — Closure Acquisition & Validity が確認できた時点で merge します。
+6. **Required review gate & aggregate / triage** — Selection Contract で
+   required とした review 数ぶんの `validity: valid` な run が揃うまで triage
+   へ進みません。
+   揃わない run（invalid / unknown / failure）の扱いは Failure / retry
+   （`policy/core.md`）に従います。
+   required 数の valid run が揃ったら、valid な run から finding を集約し、
+   Resolution Contract（`policy/core.md`）のカテゴリ（fix / false-positive /
+   needs-verification / technical-dispute / intent-question）へ仕分けます。
+   human escalation と technical dispute の扱い、重大 finding を dismiss する
+   際の確認要否は Resolution Contract に従います。
+7. **Batch fix + root-cause** — Resolution Contract に従い、accepted finding が
+   あれば root-cause ごとにまとめて fix します。
+   accepted finding が無ければ candidate SHA は変更されません。
+8. **Deterministic verify** — 手順 7 で candidate SHA が変更された場合のみ、
+   fix 後に手順 1 の verify を再実行します。
+9. **Targeted closure** — candidate SHA が変更された場合のみ、Review stopping
+   rules（`policy/core.md`）に従い、fix した箇所に対応する範囲のみ再確認します。
+   追加 discovery の要否も同 stopping rules に従います。
+10. **Closure Acquisition & Validity** — candidate SHA が変更された場合のみ、
+    targeted closure の review run も手順 5 と同じ Acquisition & Validity
+    Contract に従って completion / acquisition / validity を確認します。
+    確認できなければ merge せず、その後の扱いは Failure / retry
+    （`policy/core.md`）に従います。
+11. **Merge** — candidate SHA が変更されていなければ、required review 数の
+    valid discovery と Resolution が完了した時点で merge します。
+    変更されていれば、Closure Acquisition & Validity が確認できた時点で
+    merge します。
 
 ## Adapter boundary（manual pilot）
 

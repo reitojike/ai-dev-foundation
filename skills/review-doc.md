@@ -15,7 +15,8 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 1. **Mechanical check** — markdown の形式チェック（lint / format / link 切れ等、
    repository が持つ機械的な check）を実行します。
 2. **Selection** — Selection Contract（`policy/core.md`）に従い、target SHA /
-   range、target artifact set、reviewer / capability を確定します。
+   range、target artifact set、reviewer / capability、required review 数を
+   確定します。
 3. **Execution & Semantic discovery（1 round）** — Execution Contract に従い
    reviewer を起動し、trigger 方法と required context を記録した上で、独立
    reviewer による意味的な discovery を 1 回行います。round 数の扱いは
@@ -23,6 +24,10 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 4. **Acquisition & Validity 確認** — Acquisition & Validity Contract
    （`policy/core.md`）に従い、target SHA / range、target artifact set、
    completion、acquisition、validity を確認します。
+   Selection Contract で required とした review 数ぶんの `validity: valid`
+   な run が揃うまで triage へ進みません。
+   揃わない run（invalid / unknown / failure）の扱いは Failure / retry
+   （`policy/core.md`）に従います。
    valid な run の finding だけを triage へ進めます。
    invalid / unknown / failure な run の finding は triage に使用しません。
 5. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
