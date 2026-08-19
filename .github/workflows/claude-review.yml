@@ -38,4 +38,3 @@ jobs:
           claude_args: |
             --max-turns 10
             --allowedTools Read,Grep,Glob
-            --disallowedTools Edit,Write,Bash,NotebookEdit
