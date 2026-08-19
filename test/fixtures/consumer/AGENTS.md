@@ -145,12 +145,15 @@ completion へ進みません。不足する run の扱いは Failure / retry �
 
 - trigger 方法
 - Selection で確定した expected target SHA / commit range
+- Selection で確定した target artifact set
 - required context
 - timeout / retry policy
 
-Selection Contract で commit range を expected target として選択した場合、
-Execution ではその selected range を reviewer の trigger へ渡し、実際に
-渡した target を記録します。head SHA だけへ黙って縮退させません。
+Selection Contract で確定した expected target（SHA / commit range）と
+target artifact set は、Execution で reviewer の trigger へ渡し、実際に
+渡した target と artifact set を記録します。commit range を選択した場合に
+head SHA だけへ黙って縮退させないのと同様に、target artifact set も途中で
+黙って縮小・変更しません。
 
 provider 固有の surface や capability は adapter/profile 側へ置き、Kernel に固定しません。
 
@@ -278,10 +281,13 @@ classification が要求する precondition check を再成立させ、Selection
 target 変更は、既存の targeted closure（Executable）/ closure verification
 （Normative）の扱いに従います。
 
-Selection Contract で commit range を expected target として使う場合、head
-SHA が不変でも range の endpoint が変われば、それも target の変更です。この
-場合も、old discovery / closure evidence を新しい target の merge /
-completion evidence として使いません。
+この節における review target は、Selection Contract で確定した expected
+target SHA / commit range と target artifact set の組を指します。どちらか
+一方でも変われば review target の変更です。head SHA が不変でも commit
+range の endpoint が変わった場合、また expected target SHA / commit range
+が不変でも target artifact set が変わった場合も、review target の変更と
+して同じ scope です。この場合も、old discovery / closure evidence を
+新しい target の merge / completion evidence として使いません。
 
 Code review:
 

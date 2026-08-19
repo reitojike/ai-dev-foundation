@@ -22,20 +22,23 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    target が一致することを確認します。一致しない場合は、確定した target に
    対して手順 1 の mechanical check を再実行してから先へ進みます。
    手順 3 の semantic discovery の completion / validity が確定する前に
-   target SHA / range が変わった場合、その review target / run を現在
-   target の evidence として扱いません。
+   target SHA / range または target artifact set が変わった場合、その
+   review target / run を現在 target の evidence として扱いません。
    新しい target に対して手順 1 の mechanical check を再実行し、成功したら
    Selection をやり直し、手順 3 の semantic discovery を新しい target に
    対して行います。
    valid な semantic discovery（手順 3）の後、手順 6 の accepted finding
-   batch fix 以外の理由で target SHA / range が変わった場合（並行作業や
-   scope 追加、finding 対応ではない文書変更、無関係な commit 等）は、
+   batch fix 以外の理由で target SHA / range または target artifact set が
+   変わった場合（並行作業や scope 追加、finding 対応ではない文書変更、
+   無関係な commit 等）は、
    旧 review target / run を現在 target の evidence として扱いません。
    新しい target に対して手順 1 の mechanical check を再実行し、成功したら
    re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic
    discovery を新しい target に対して行います。
-3. **Execution & Semantic discovery（1 round）** — Execution Contract に従い
-   reviewer を起動し、trigger 方法と required context を記録した上で、独立
+3. **Execution & Semantic discovery（1 round）** — Execution Contract に従い、
+   Selection で確定した target SHA / range と target artifact set を
+   reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した
+   target と artifact set、required context を記録した上で、独立
    reviewer による意味的な discovery を 1 回行います。round 数の扱いは
    Artifact classification / Review stopping rules（`policy/core.md`）に従います。
 4. **Acquisition & Validity 確認** — Acquisition & Validity Contract

@@ -8,9 +8,10 @@ stopping rules）を使った実行手順です。規範的なルールはここ
 ## 対象
 
 Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
-review target は Selection Contract に従い、candidate SHA と、applicable
-な場合は commit range を含みます。以降の手順で SHA について述べる箇所は、
-commit range を使う review でも同じ意味で適用します。
+review target は Selection Contract に従い、candidate SHA、applicable な
+場合は commit range、および target artifact set を含みます。以降の手順で
+SHA について述べる箇所は、commit range や target artifact set を使う
+review でも同じ意味で適用します。
 
 ## 手順
 
@@ -41,11 +42,14 @@ commit range を使う review でも同じ意味で適用します。
    capability、required review 数、target artifact set、expected target
    SHA / applicable な commit range を決めます。commit range を使う場合は、
    対象範囲が曖昧にならない形で確定します。
+   target artifact set を確定した時点から、その artifact set も review
+   target の一部として扱い、手順 2 の target mutation semantics を
+   artifact set にも同じ意味で適用します。
    Executable artifact では原則として独立 reviewer を使います。
 4. **Execution** — Execution Contract に従い、Selection で確定した expected
-   target SHA / applicable な commit range を各 reviewer の trigger へ
-   渡して起動します。trigger 方法、実際に渡した target、required context
-   を記録します。
+   target SHA / applicable な commit range と target artifact set を各
+   reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した
+   target と artifact set、required context を記録します。
 5. **Acquisition & Validity** — reviewer の run ごとに Acquisition & Validity
    Contract（`policy/core.md`）に従って record schema を埋めます。
    completion と validity は独立した判定とし、completed な run についてのみ
@@ -67,9 +71,9 @@ commit range を使う review でも同じ意味で適用します。
    あれば root-cause ごとにまとめて fix します。
    accepted finding が無ければ candidate SHA は変更されません。
    fix による変更を超えて target が動いた場合（例えば commit range の
-   一方の endpoint が accepted fix と無関係に変わった場合）、その独立
-   した変更分は手順 2 の non-fix target mutation semantics に従い、
-   targeted closure だけでは扱いません。
+   一方の endpoint や target artifact set が accepted fix と無関係に
+   変わった場合）、その独立した変更分は手順 2 の non-fix target mutation
+   semantics に従い、targeted closure だけでは扱いません。
 8. **Deterministic verify** — 手順 7 の batch fix によって candidate SHA が
    変更された場合のみ、fix 後に手順 1 の verify を再実行します。
 9. **Second full discovery（条件付き）** — Review stopping rules

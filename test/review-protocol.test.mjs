@@ -85,16 +85,42 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(core, "Selection で確定した expected target SHA / commit range"),
   );
-  assert.ok(
-    containsText(
-      core,
-      "Selection Contract で commit range を expected target として選択した場合、Execution ではその selected range を reviewer の trigger へ渡し、実際に渡した target を記録します。head SHA だけへ黙って縮退させません。",
-    ),
-  );
   assert.doesNotMatch(
     core,
     /#### Execution Contract\s*\n\s*-\s*trigger 方法\s*\n\s*-\s*target SHA\s*\n/,
     "Execution Contract must not regress to a bare, Selection-unbound 'target SHA' field",
+  );
+
+  // Codex P1 (invalidate discovery on artifact-set-only target changes): the
+  // review target is explicitly defined as the (SHA/range, artifact set)
+  // pair, and the Execution Contract propagates the confirmed artifact set
+  // to the trigger just like the confirmed SHA/range, instead of silently
+  // dropping it.
+  assert.ok(
+    containsText(
+      core,
+      "この節における review target は、Selection Contract で確定した expected target SHA / commit range と target artifact set の組を指します。どちらか一方でも変われば review target の変更です。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "expected target SHA / commit range が不変でも target artifact set が変わった場合も、review target の変更として同じ scope です。",
+    ),
+  );
+  assert.ok(
+    containsText(core, "Selection で確定した target artifact set"),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "Selection Contract で確定した expected target（SHA / commit range）と target artifact set は、Execution で reviewer の trigger へ渡し、実際に渡した target と artifact set を記録します。",
+    ),
+  );
+  assert.doesNotMatch(
+    core,
+    /#### Execution Contract\s*\n\s*-\s*trigger 方法\s*\n\s*-\s*Selection で確定した expected target SHA \/ commit range\s*\n\s*-\s*required context\s*\n/,
+    "Execution Contract must not regress to omitting the confirmed target artifact set field",
   );
 
   // Principle B (review evidence is target-specific): discovery evidence, not just
@@ -308,7 +334,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "Selection Contract で commit range を expected target として使う場合、head SHA が不変でも range の endpoint が変われば、それも target の変更です。",
+      "head SHA が不変でも commit range の endpoint が変わった場合、また expected target SHA / commit range が不変でも target artifact set が変わった場合も、review target の変更として同じ scope です。",
     ),
   );
   assert.ok(core.includes("-> accepted fix が無く review target が変更されていない場合:"));
@@ -421,7 +447,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "review target は Selection Contract に従い、candidate SHA と、applicable な場合は commit range を含みます。",
+      "review target は Selection Contract に従い、candidate SHA、applicable な場合は commit range、および target artifact set を含みます。",
     ),
   );
   assert.ok(
@@ -444,13 +470,27 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "Execution Contract に従い、Selection で確定した expected target SHA / applicable な commit range を各 reviewer の trigger へ渡して起動します。",
+      "Execution Contract に従い、Selection で確定した expected target SHA / applicable な commit range と target artifact set を各 reviewer の trigger へ渡して起動します。",
     ),
   );
   assert.doesNotMatch(
     reviewCode,
     /trigger 方法と target SHA、渡した required context を記録します。/,
     "Step 4 must pass the Selection-confirmed target to the trigger, not just record target SHA after invocation",
+  );
+
+  // Codex P1 (invalidate discovery on artifact-set-only target changes): Step 3
+  // freezes the artifact set as part of the review target from the moment
+  // Selection confirms it, and Step 4 records what artifact set was actually
+  // sent to the trigger, not just the SHA/range.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "target artifact set を確定した時点から、その artifact set も review target の一部として扱い、手順 2 の target mutation semantics を artifact set にも同じ意味で適用します。",
+    ),
+  );
+  assert.ok(
+    containsText(reviewCode, "実際に渡した target と artifact set、required context を記録します。"),
   );
 
   // A mixed change (accepted-fix-driven head move plus an independently moved
@@ -460,7 +500,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "fix による変更を超えて target が動いた場合（例えば commit range の一方の endpoint が accepted fix と無関係に変わった場合）、その独立した変更分は手順 2 の non-fix target mutation semantics に従い、targeted closure だけでは扱いません。",
+      "fix による変更を超えて target が動いた場合（例えば commit range の一方の endpoint や target artifact set が accepted fix と無関係に変わった場合）、その独立した変更分は手順 2 の non-fix target mutation semantics に従い、targeted closure だけでは扱いません。",
     ),
   );
 
@@ -841,13 +881,24 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "手順 6 の accepted finding batch fix 以外の理由で target SHA / range が変わった場合",
+      "手順 6 の accepted finding batch fix 以外の理由で target SHA / range または target artifact set が変わった場合",
     ),
   );
   assert.ok(
     containsText(
       reviewDoc,
       "re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic discovery を新しい target に対して行います。",
+    ),
+  );
+
+  // Codex P1 (invalidate discovery on artifact-set-only target changes,
+  // Normative sibling): the pre-validity mutation clause must cover an
+  // artifact-set-only change the same way it covers a SHA/range change, not
+  // just the post-validity non-fix clause above.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "手順 3 の semantic discovery の completion / validity が確定する前に target SHA / range または target artifact set が変わった場合、その review target / run を現在 target の evidence として扱いません。",
     ),
   );
 
@@ -862,13 +913,18 @@ test("review skills document procedure without duplicating normative rules", asy
     ) === 2,
     "review-doc.md must re-run mechanical check on target change both before and after semantic discovery validity is confirmed",
   );
+  assert.ok(containsText(reviewDoc, "target SHA / range、target artifact set、"));
+
+  // Codex P1 (invalidate discovery on artifact-set-only target changes,
+  // Normative sibling): Step 3 must pass the Selection-confirmed target SHA
+  // / range AND target artifact set to the reviewer trigger, not just record
+  // required context after the fact.
   assert.ok(
     containsText(
       reviewDoc,
-      "Execution Contract に従い reviewer を起動し、trigger 方法と required context を記録した上で、",
+      "Execution Contract に従い、Selection で確定した target SHA / range と target artifact set を reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した target と artifact set、required context を記録した上で、",
     ),
   );
-  assert.ok(containsText(reviewDoc, "target SHA / range、target artifact set、"));
 
   // Only valid runs' findings may reach triage; invalid/unknown/failure runs must not,
   // matching review-code.md's "valid な run から finding を集約し" gate (Fix, Codex P2).
