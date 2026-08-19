@@ -23,15 +23,16 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 4. **Acquisition & Validity 確認** — Acquisition & Validity Contract
    （`policy/core.md`）に従い、target SHA / range、target artifact set、
    completion、acquisition、validity を確認します。
-   確認できない run の finding は triage へ進めず、
-   `unknown` / `failure` として扱います。
+   valid な run の finding だけを triage へ進めます。
+   invalid / unknown / failure な run の finding は triage に使用しません。
 5. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
    false-positive / needs-verification / technical-dispute / intent-question）へ
    仕分けます。
 6. **Fix** — Resolution Contract に従い、accepted finding を batch でまとめて
    fix します。
-7. **Closure** — triage した finding に対応しているかの closure verification のみを
-   行い、full な再 discovery はしません。
+7. **Closure** — 原則として、triage した finding に対応する範囲の targeted
+   closure verification を行います。追加 discovery の要否は Review stopping
+   rules（`policy/core.md`）に従います。
    closure verification 自体の completion / acquisition / validity も
    Acquisition & Validity Contract に従って確認します。
 

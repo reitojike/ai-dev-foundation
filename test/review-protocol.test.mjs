@@ -264,9 +264,29 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
   assert.ok(containsText(reviewDoc, "target SHA / range、target artifact set、"));
-  assert.ok(containsText(reviewDoc, "確認できない run の finding は triage へ進めず、"));
+
+  // Only valid runs' findings may reach triage; invalid/unknown/failure runs must not,
+  // matching review-code.md's "valid な run から finding を集約し" gate (Fix, Codex P2).
+  assert.ok(
+    !containsText(reviewDoc, "確認できない run の finding は triage へ進めず、"),
+    "review-doc.md must gate on valid (not just 'confirmable'), since invalid is a determinate Validity outcome, not an inability to confirm",
+  );
+  assert.ok(containsText(reviewDoc, "valid な run の finding だけを triage へ進めます。"));
+  assert.ok(containsText(reviewDoc, "invalid / unknown / failure な run の finding は triage に使用しません。"));
+
   assert.ok(
     containsText(reviewDoc, "closure verification 自体の completion / acquisition / validity も"),
+  );
+
+  // Closure must not unconditionally forbid further discovery; the round-limit
+  // condition (material behavior/blast-radius change) belongs to Review stopping
+  // rules and must not be re-copied into the skill (Fix, Codex P2).
+  assert.ok(
+    !containsText(reviewDoc, "full な再 discovery はしません"),
+    "review-doc.md's Closure step must not unconditionally forbid further discovery; it must defer to Review stopping rules",
+  );
+  assert.ok(
+    containsText(reviewDoc, "追加 discovery の要否は Review stopping rules（`policy/core.md`）に従います。"),
   );
 
   // review-doc.md must not restate the 2nd-discovery-round prohibition verbatim;
