@@ -188,9 +188,20 @@ test("review skills document procedure without duplicating normative rules", asy
     !reviewCode.includes("completed（success を含む）と混同せず未開始・判定不能・失敗をそれぞれ"),
     "review-code.md must not restate the none/unknown/failure distinction; it must reference the Acquisition & Validity Contract",
   );
+  // Completion and validity are independent judgments (not a single enum), and a
+  // completed-but-invalid run (e.g. stale/wrong SHA) must remain expressible.
   assert.ok(
-    containsText(reviewCode, "run を completion / validity / `none` / `unknown` / `failure` のいずれかに判定します。"),
+    !containsText(
+      reviewCode,
+      "run を completion / validity / `none` / `unknown` / `failure` のいずれかに判定します。",
+    ),
+    "review-code.md must not collapse completion/validity/none/unknown/failure into a single enum",
   );
+  assert.ok(containsText(reviewCode, "completion と validity は独立した判定とし"));
+  assert.ok(
+    containsText(reviewCode, "target SHA / artifact set 等が一致しない completed run は invalid として表現できます"),
+  );
+  assert.ok(containsText(reviewCode, "`none` / `unknown` / `failure` は completion / validity と混同せず"));
   assert.ok(
     !containsText(reviewCode, "behavior / blast radius を materially"),
     "review-code.md must not restate the discovery round-limit condition; it must reference Review stopping rules",

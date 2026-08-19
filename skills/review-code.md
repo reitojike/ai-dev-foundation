@@ -27,9 +27,12 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 4. **Execution** — Execution Contract に従い、各 reviewer をそれぞれの trigger 方法で
    起動します。trigger 方法と target SHA、渡した required context を記録します。
 5. **Acquisition & Validity** — reviewer の run ごとに Acquisition & Validity
-   Contract（`policy/core.md`）に従って record schema を埋め、run を completion /
-   validity / `none` / `unknown` / `failure` のいずれかに判定します。判定条件は
-   policy の Contract 定義に従い、ここでは再定義しません。
+   Contract（`policy/core.md`）に従って record schema を埋めます。
+   completion と validity は独立した判定とし、completed な run についてのみ
+   validity を判定します（target SHA / artifact set 等が一致しない completed run
+   は invalid として表現できます）。
+   `none` / `unknown` / `failure` は completion / validity と混同せず、Contract
+   の定義に従って記録します。
 6. **Aggregate & triage** — valid な run から finding を集約し、Resolution Contract
    （`policy/core.md`）のカテゴリ（fix / false-positive / needs-verification /
    technical-dispute / intent-question）へ仕分けます。human escalation と
