@@ -53,13 +53,16 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 8. **Deterministic verify** — 手順 7 の batch fix によって candidate SHA が
    変更された場合のみ、fix 後に手順 1 の verify を再実行します。
 9. **Targeted closure** — 手順 7 の batch fix によって candidate SHA が変更
-   された場合のみ、Review stopping rules（`policy/core.md`）に従い、fix した
-   箇所に対応する範囲のみ再確認します。追加 discovery の要否も同 stopping
-   rules に従います。
+   された場合のみ行います。修正後の SHA を closure target として re-freeze
+   し、Selection Contract に従ってこの closure target を expected target
+   として確定し、Execution Contract に従って closure run を起動します。
+   Review stopping rules（`policy/core.md`）に従い、fix した箇所に対応する
+   範囲のみ再確認します。追加 discovery の要否も同 stopping rules に従います。
 10. **Closure Acquisition & Validity** — 手順 7 の batch fix によって
-    candidate SHA が変更された場合のみ、targeted closure の review run も
-    手順 5 と同じ Acquisition & Validity Contract に従って completion /
-    acquisition / validity を確認します。
+    candidate SHA が変更された場合のみ、この closure target を expected
+    target として、targeted closure の review run に手順 5 と同じ
+    Acquisition & Validity Contract を適用し、completion / acquisition /
+    validity を確認します。
     確認できなければ merge せず、その後の扱いは Failure / retry
     （`policy/core.md`）に従います。
 11. **Merge** — 手順 7 の batch fix によって candidate SHA が変更されて

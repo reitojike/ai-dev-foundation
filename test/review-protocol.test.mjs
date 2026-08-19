@@ -284,6 +284,22 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewCode, "手順 7 の batch fix によって candidate SHA が変更された場合のみ"),
   );
 
+  // 2x2 cell A (Executable x accepted fix): closure re-freezes the post-fix SHA as
+  // the closure target and applies Selection / Execution Contract to it, so closure
+  // validity is judged against the post-fix target, not Step 3's original Selection.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "修正後の SHA を closure target として re-freeze し、Selection Contract に従ってこの closure target を expected target として確定し、Execution Contract に従って closure run を起動します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "この closure target を expected target として、targeted closure の review run に手順 5 と同じ Acquisition & Validity Contract を適用し",
+    ),
+  );
+
   // review-doc.md covers the normative document review procedure, including the new
   // Selection / Execution steps (Fix 7) and the closure validity gate (Fix 6)
   for (const phrase of [
@@ -301,6 +317,23 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(
       reviewDoc,
       "target SHA / range、target artifact set、reviewer / capability、required review 数を確定します。",
+    ),
+  );
+
+  // 2x2 cell D (Normative x non-fix change): a target change after valid discovery
+  // that isn't Step 6's accepted-finding fix invalidates the old discovery as
+  // evidence for the new target and restarts from Selection through a fresh
+  // semantic discovery on the new target — not a 2nd round on the same target.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "手順 6 の accepted finding batch fix 以外の理由で target SHA / range が変わった場合",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "新しい target を re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic discovery を新しい target に対して行います。",
     ),
   );
   assert.ok(
