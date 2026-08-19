@@ -611,15 +611,23 @@ test("review skills document procedure without duplicating normative rules", asy
       "Review stopping rules（`policy/core.md`）に従って 2nd full discovery が必要と判断された場合のみ、targeted closure の前に行います。",
     ),
   );
-  // Sibling gap A (Step 9): re-freezing the second discovery target is bound to
-  // the latest successful deterministic verify target, not entry-point-specific
-  // (works whether Step 9 is reached from Step 8 or looped back into from Step
-  // 12); a mismatch discards the stale verify evidence and re-verifies.
+  // Sibling gap A (Step 9), direction fix: the *current* post-fix SHA is frozen
+  // as the second discovery target, then checked against the latest successful
+  // deterministic verify target (matching Step 10's direction) — not the other
+  // way around, which would freeze a stale verify target and miss a candidate
+  // that advanced further before Step 9 ran. Not entry-point-specific (works
+  // whether Step 9 is reached from Step 8 or looped back into from Step 12); a
+  // mismatch discards the stale verify evidence and re-verifies.
   assert.ok(
     containsText(
       reviewCode,
-      "直近の successful deterministic verify target を second discovery target として re-freeze し、consistency を確認します。一致しない場合は、その verify evidence を使わず、確定した second discovery target に対して deterministic verify を行い、成功したら re-freeze して Selection / Execution へ進みます。",
+      "現在の post-fix SHA を second discovery target として re-freeze し、直近の successful deterministic verify target との consistency を確認します。一致しない場合は、その verify evidence を使わず、確定した second discovery target に対して deterministic verify を行い、成功したら re-freeze して Selection / Execution へ進みます。",
     ),
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /直近の successful deterministic verify target を second discovery\s*target として re-freeze/,
+    "Step 9 item 1 must not freeze the latest verify target itself as the second discovery target; it must freeze the current post-fix SHA and check it against the latest verify target",
   );
   assert.ok(
     containsText(reviewCode, "Selection Contract をこの second discovery stage へ適用します。"),

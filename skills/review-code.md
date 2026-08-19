@@ -61,11 +61,12 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 9. **Second full discovery（条件付き）** — Review stopping rules
    （`policy/core.md`）に従って 2nd full discovery が必要と判断された
    場合のみ、targeted closure の前に行います。
-   1. 直近の successful deterministic verify target を second discovery
-      target として re-freeze し、consistency を確認します。一致しない
-      場合は、その verify evidence を使わず、確定した second discovery
-      target に対して deterministic verify を行い、成功したら re-freeze
-      して Selection / Execution へ進みます。
+   1. 現在の post-fix SHA を second discovery target として re-freeze
+      し、直近の successful deterministic verify target との
+      consistency を確認します。一致しない場合は、その verify evidence
+      を使わず、確定した second discovery target に対して
+      deterministic verify を行い、成功したら re-freeze して
+      Selection / Execution へ進みます。
    2. Selection Contract をこの second discovery stage へ適用します。
    3. Execution Contract に従って full discovery（独立 reviewer）を
       起動します。
