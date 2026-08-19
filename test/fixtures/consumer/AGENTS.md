@@ -253,15 +253,23 @@ deterministic verify
   -> discovery（独立 reviewer）
   -> completion / acquisition / validity 確認
   -> aggregate / triage
-  -> batch fix + root-cause sweep
-  -> deterministic verify
-  -> targeted closure
-  -> closure completion / acquisition / validity 確認
-  -> merge
+  -> accepted finding の batch fix で candidate SHA が変更された場合:
+       batch fix + root-cause sweep
+       -> deterministic verify
+       -> targeted closure
+       -> closure completion / acquisition / validity 確認
+       -> merge
+  -> accepted fix が無く candidate SHA が変更されていない場合:
+       required review 数の valid discovery と Resolution の完了
+       -> merge
 ```
 
-targeted closure の review run も Acquisition & Validity Contract に従って
-completion / acquisition / validity を確認してから merge します。
+accepted finding の batch fix によって candidate SHA が変更された場合のみ
+targeted closure を行い、その review run も Acquisition & Validity Contract
+に従って completion / acquisition / validity を確認してから merge します。
+accepted fix が無く candidate SHA が変更されていない場合は、
+required review 数の valid discovery と Resolution の完了をもって、
+新たな closure run を要求せずに merge できます。
 
 full discovery は原則 1 round です。fix が behavior / blast radius を materially
 変えた場合のみ 2 round 目を許容します。それ以上必要な場合は review loop を増やさず、
@@ -273,8 +281,21 @@ Normative document review:
 mechanical check
   -> semantic discovery（1 round）
   -> triage / fix
-  -> closure
+  -> accepted finding の fix で target SHA / range が変更された場合:
+       closure verification
+       -> closure completion / acquisition / validity 確認
+       -> 完了
+  -> accepted fix が無く target が変更されていない場合:
+       required review 数の valid semantic discovery と Resolution の完了
+       -> 完了
 ```
+
+accepted finding の fix によって target SHA / range が変更された場合のみ
+closure verification を行い、その review run も Acquisition & Validity
+Contract に従って completion / acquisition / validity を確認します。
+accepted fix が無く target が変更されていない場合は、
+required review 数の valid semantic discovery と Resolution の完了をもって、
+新たな closure run を要求せずに review を完了できます。
 
 ### Observed evidence is not a permanent provider rule
 

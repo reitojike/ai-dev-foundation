@@ -153,12 +153,35 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "targeted closure の review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認してから merge します。",
+      "accepted finding の batch fix によって candidate SHA が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認してから merge します。",
+    ),
+  );
+  // Canonical policy: no accepted fix + no SHA change completes via the required
+  // review count's valid discovery + Resolution, with no new closure run required
+  // (matches skills/review-code.md's existing Executable procedure).
+  assert.ok(
+    containsText(
+      core,
+      "accepted fix が無く candidate SHA が変更されていない場合は、required review 数の valid discovery と Resolution の完了をもって、新たな closure run を要求せずに merge できます。",
     ),
   );
   assert.ok(containsText(core, "full discovery は原則 1 round です。"));
   assert.ok(containsText(core, "materially 変えた場合のみ 2 round 目を許容します。"));
   assert.ok(core.includes("semantic discovery（1 round）"));
+  // Canonical policy: Normative closure is likewise conditioned on an accepted-fix
+  // target change, not unconditional (matches skills/review-doc.md's procedure).
+  assert.ok(
+    containsText(
+      core,
+      "accepted finding の fix によって target SHA / range が変更された場合のみ closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "accepted fix が無く target が変更されていない場合は、required review 数の valid semantic discovery と Resolution の完了をもって、新たな closure run を要求せずに review を完了できます。",
+    ),
+  );
 
   // Observed evidence stays a general principle, not a permanent provider rule
   assert.ok(containsText(core, "expected trigger behavior は completion evidence と同義ではありません。"));
