@@ -12,11 +12,15 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 
 ## 手順
 
-1. **Mechanical check** — markdown の形式チェック（lint / format / link 切れ等、
-   repository が持つ機械的な check）を実行します。
+1. **Mechanical check** — その時点の target SHA / range を記録した上で、
+   markdown の形式チェック（lint / format / link 切れ等、repository が持つ
+   機械的な check）を実行します。
 2. **Selection** — Selection Contract（`policy/core.md`）に従い、target SHA /
    range、target artifact set、reviewer / capability、required review 数を
    確定します。
+   手順 1 で記録した mechanical check 対象の target と、ここで確定する
+   target が一致することを確認します。一致しない場合は、確定した target に
+   対して手順 1 の mechanical check を再実行してから先へ進みます。
    手順 3 の semantic discovery の completion / validity が確定する前に
    target SHA / range が変わった場合、その review target / run を現在
    target の evidence として扱いません。
@@ -63,6 +67,14 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    した場合）は、required review 数の valid semantic discovery と
    Resolution が完了した時点で review procedure を完了とし、新たな
    closure run を要求しません。
+8. **Closure Resolution** — closure verification（手順 7）の finding を
+   Resolution Contract（`policy/core.md`）に従って triage します。
+   unresolved の finding がある間は review procedure を完了としません。
+   accepted な closure finding があれば、手順 6〜7 と同じ procedure（fix ->
+   mechanical check -> closure verification -> closure Acquisition &
+   Validity）に従って解決します。
+   手順 7 の closure が行われなかった場合（accepted fix が無く target も
+   変更されていない場合）、この手順は不要です。
 
 ## 停止条件
 

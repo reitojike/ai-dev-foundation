@@ -168,9 +168,44 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "accepted finding の batch fix によって candidate SHA が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認してから merge します。",
+      "accepted finding の batch fix によって candidate SHA が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
     ),
   );
+
+  // Root cause A (closure findings need Resolution too): completed + valid closure
+  // runs still gate on Resolution before merge/completion, in both artifacts, using
+  // the existing Resolution Contract rather than a new Closure Resolution Contract.
+  assert.ok(
+    containsText(
+      core,
+      "targeted closure / closure verification の finding も Resolution Contract の対象であり、Resolution が完了するまで merge / review completion の根拠にしない",
+    ),
+  );
+  assert.ok(core.includes("closure finding の Resolution"));
+  assert.ok(
+    containsText(
+      core,
+      "targeted closure の finding も Resolution Contract の対象とし、Resolution が完了するまで merge しません。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "closure verification の finding も Resolution Contract の対象とし、Resolution が完了するまで review を完了しません。",
+    ),
+  );
+
+  // Root cause B (precondition target-binding): precondition evidence used as
+  // review/closure/merge grounds must match the confirmed (frozen/Selected)
+  // target, not just "not stale after a later mutation."
+  assert.ok(
+    containsText(
+      core,
+      "review / closure / merge の根拠として使う precondition evidence は、review 対象として確定した（freeze / Selection された）target と一致していなければなりません。",
+    ),
+  );
+  assert.ok(core.includes("verify target と freeze target の consistency 確認"));
+  assert.ok(core.includes("mechanical check target と Selection target の consistency 確認"));
   // Canonical policy: no accepted fix + no SHA change completes via the required
   // review count's valid discovery + Resolution, with no new closure run required
   // (matches skills/review-code.md's existing Executable procedure).
@@ -251,6 +286,7 @@ test("review skills document procedure without duplicating normative rules", asy
     "Deterministic verify",
     "Targeted closure",
     "Closure Acquisition & Validity",
+    "Closure Resolution",
     "Merge",
     "Adapter boundary",
     "Manual review pilot",
@@ -258,6 +294,35 @@ test("review skills document procedure without duplicating normative rules", asy
     assert.ok(reviewCode.includes(phrase), `review-code.md missing: ${phrase}`);
   }
   assert.ok(containsText(reviewCode, "Claude / Codex / CodeRabbit"));
+
+  // Root cause A, cell A (Code): a completed + valid closure run with findings
+  // still gates on Resolution before merge; an accepted closure finding loops back
+  // through the existing batch-fix/verify/closure procedure, not a new loop design.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "targeted closure の finding を Resolution Contract（`policy/core.md`）に従って triage します。unresolved の finding がある間は merge しません。",
+    ),
+  );
+  assert.ok(containsText(reviewCode, "accepted な closure finding があれば、手順 7〜10 と同じ procedure"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "変更されていれば、Closure Acquisition & Validity と Closure Resolution が完了した時点で merge します。",
+    ),
+  );
+
+  // Root cause B, cells E/F (Code): the deterministic verify target captured at
+  // Step 1 must match the frozen candidate SHA at Step 2; a mismatch (a race
+  // between verify start and freeze) re-runs verify against the frozen SHA rather
+  // than carrying over evidence for a different target.
+  assert.ok(containsText(reviewCode, "その時点の candidate SHA を記録した上で"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "手順 1 で記録した verify 対象の SHA と、ここで freeze する SHA が一致することを確認します。一致しない場合は、freeze した SHA に対して手順 1 の deterministic verify を再実行し、成功してから先へ進みます。",
+    ),
+  );
 
   // SHA-change handling during code review: pre-validity change invalidates the run
   // and re-freezes; a post-discovery fix-driven change proceeds to targeted closure
@@ -387,6 +452,7 @@ test("review skills document procedure without duplicating normative rules", asy
     "Triage",
     "Fix",
     "Closure",
+    "Closure Resolution",
   ]) {
     assert.ok(reviewDoc.includes(phrase), `review-doc.md missing: ${phrase}`);
   }
@@ -394,6 +460,35 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(
       reviewDoc,
       "target SHA / range、target artifact set、reviewer / capability、required review 数を確定します。",
+    ),
+  );
+
+  // Root cause A, cell B (Normative): a completed + valid closure run with
+  // findings still gates on Resolution before completion; an accepted closure
+  // finding loops back through the existing fix/mechanical-check/closure
+  // procedure, and this step does not apply when Step 7's closure never fired.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "closure verification（手順 7）の finding を Resolution Contract（`policy/core.md`）に従って triage します。unresolved の finding がある間は review procedure を完了としません。",
+    ),
+  );
+  assert.ok(containsText(reviewDoc, "accepted な closure finding があれば、手順 6〜7 と同じ procedure"));
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "手順 7 の closure が行われなかった場合（accepted fix が無く target も変更されていない場合）、この手順は不要です。",
+    ),
+  );
+
+  // Root cause B, cells G/H (Normative): the mechanical check target captured at
+  // Step 1 must match the target confirmed at Step 2's Selection; a mismatch
+  // re-runs mechanical check against the confirmed target.
+  assert.ok(containsText(reviewDoc, "その時点の target SHA / range を記録した上で"));
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "手順 1 で記録した mechanical check 対象の target と、ここで確定する target が一致することを確認します。一致しない場合は、確定した target に対して手順 1 の mechanical check を再実行してから先へ進みます。",
     ),
   );
 

@@ -206,6 +206,9 @@ review run の状態は少なくとも `none` / `unknown` / `failure` を区別�
 - accepted finding は drip fix せず、root-cause を確認した上で batch で fix する
 - fix 後は全 discovery をやり直さず、targeted closure を基本とする
 - review を新しい scope の探索に使わない
+- targeted closure / closure verification の finding も Resolution Contract
+  の対象であり、Resolution が完了するまで merge / review completion の
+  根拠にしない
 
 ### Review Adapter boundary
 
@@ -242,12 +245,17 @@ precondition の evidence は自動的に持ち越しません。target 変更�
 review / closure / merge の根拠とする前に、artifact classification が要求する
 precondition check（Executable の deterministic verify、Normative の mechanical
 check）を新しい target に対して再成立させます。
+review / closure / merge の根拠として使う precondition evidence は、review 対象
+として確定した（freeze / Selection された）target と一致していなければなりません。
+一致しない場合はその evidence を根拠にせず、確定した target に対して precondition
+check を再実行します。
 
 Code review:
 
 ```text
 deterministic verify
   -> freeze candidate SHA
+  -> verify target と freeze target の consistency 確認
   -> discovery（独立 reviewer）
   -> completion / acquisition / validity 確認
   -> aggregate / triage
@@ -256,6 +264,7 @@ deterministic verify
        -> deterministic verify
        -> targeted closure
        -> closure completion / acquisition / validity 確認
+       -> closure finding の Resolution
        -> merge
   -> accepted fix が無く candidate SHA が変更されていない場合:
        required review 数の valid discovery と Resolution の完了
@@ -264,7 +273,9 @@ deterministic verify
 
 accepted finding の batch fix によって candidate SHA が変更された場合のみ
 targeted closure を行い、その review run も Acquisition & Validity Contract
-に従って completion / acquisition / validity を確認してから merge します。
+に従って completion / acquisition / validity を確認します。targeted closure
+の finding も Resolution Contract の対象とし、Resolution が完了するまで
+merge しません。
 accepted fix が無く candidate SHA が変更されていない場合は、
 required review 数の valid discovery と Resolution の完了をもって、
 新たな closure run を要求せずに merge できます。
@@ -277,12 +288,14 @@ Normative document review:
 
 ```text
 mechanical check
+  -> mechanical check target と Selection target の consistency 確認
   -> semantic discovery（1 round）
   -> triage / fix
   -> accepted finding の fix で target SHA / range が変更された場合:
        mechanical check
        -> closure verification
        -> closure completion / acquisition / validity 確認
+       -> closure finding の Resolution
        -> 完了
   -> accepted fix が無く target が変更されていない場合:
        required review 数の valid semantic discovery と Resolution の完了
@@ -292,7 +305,9 @@ mechanical check
 accepted finding の fix によって target SHA / range が変更された場合のみ、
 新しい target に対して mechanical check を再実行してから closure
 verification を行い、その review run も Acquisition & Validity Contract
-に従って completion / acquisition / validity を確認します。
+に従って completion / acquisition / validity を確認します。closure
+verification の finding も Resolution Contract の対象とし、Resolution が
+完了するまで review を完了しません。
 accepted fix が無く target が変更されていない場合は、
 required review 数の valid semantic discovery と Resolution の完了をもって、
 新たな closure run を要求せずに review を完了できます。

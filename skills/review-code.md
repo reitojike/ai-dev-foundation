@@ -11,17 +11,21 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
 
 ## 手順
 
-1. **Deterministic verify** — AI review を要求する前に、repository が定義する verify
-   （`npm test` / `npm run check:fixture` / consumer `verify` / `git diff --check` 等、
-   Task に応じたもの）を実行します。
+1. **Deterministic verify** — AI review を要求する前に、その時点の candidate SHA
+   を記録した上で、repository が定義する verify（`npm test` / `npm run
+   check:fixture` / consumer `verify` / `git diff --check` 等、Task に応じた
+   もの）を実行します。
 2. **Freeze candidate SHA** — review 対象の commit SHA を確定します。
+   手順 1 で記録した verify 対象の SHA と、ここで freeze する SHA が一致する
+   ことを確認します。一致しない場合は、freeze した SHA に対して手順 1 の
+   deterministic verify を再実行し、成功してから先へ進みます。
    discovery の completion / validity が確定する前にこの SHA が変わった場合、
    その review target / run を invalid として扱います。
    新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら
    re-freeze して必要な discovery をやり直します。
    valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、
    re-freeze はしますが手順を最初からやり直さず、
-   手順 8〜11（deterministic verify -> targeted closure -> merge）に進みます。
+   手順 8〜12（deterministic verify -> targeted closure -> merge）に進みます。
    手順 7 の batch fix 以外の理由で candidate SHA が変わった場合（並行作業や
    scope 追加、fix と無関係な commit 等）は、valid な discovery の後であっても
    この review target / run を invalid として扱います。
@@ -67,11 +71,17 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
     validity を確認します。
     確認できなければ merge せず、その後の扱いは Failure / retry
     （`policy/core.md`）に従います。
-11. **Merge** — 手順 7 の batch fix によって candidate SHA が変更されて
+11. **Closure Resolution** — targeted closure の finding を Resolution
+    Contract（`policy/core.md`）に従って triage します。unresolved の
+    finding がある間は merge しません。
+    accepted な closure finding があれば、手順 7〜10 と同じ procedure
+    （root-cause を確認した batch fix -> deterministic verify -> targeted
+    closure -> Closure Acquisition & Validity）に従って解決します。
+12. **Merge** — 手順 7 の batch fix によって candidate SHA が変更されて
     いなければ、required review 数の valid discovery と Resolution が完了
     した時点で merge します。
-    変更されていれば、Closure Acquisition & Validity が確認できた時点で
-    merge します。
+    変更されていれば、Closure Acquisition & Validity と Closure Resolution
+    が完了した時点で merge します。
 
 ## Adapter boundary（manual pilot）
 
