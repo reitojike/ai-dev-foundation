@@ -169,11 +169,12 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(containsText(core, "materially 変えた場合のみ 2 round 目を許容します。"));
   assert.ok(core.includes("semantic discovery（1 round）"));
   // Canonical policy: Normative closure is likewise conditioned on an accepted-fix
-  // target change, not unconditional (matches skills/review-doc.md's procedure).
+  // target change, not unconditional (matches skills/review-doc.md's procedure),
+  // and re-runs mechanical check against the post-fix target first (Finding 2).
   assert.ok(
     containsText(
       core,
-      "accepted finding の fix によって target SHA / range が変更された場合のみ closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+      "accepted finding の fix によって target SHA / range が変更された場合のみ、新しい target に対して mechanical check を再実行してから closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
     ),
   );
   assert.ok(
@@ -182,6 +183,24 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "accepted fix が無く target が変更されていない場合は、required review 数の valid semantic discovery と Resolution の完了をもって、新たな closure run を要求せずに review を完了できます。",
     ),
   );
+
+  // Canonical invariant (root cause fix): mechanical/deterministic precondition
+  // evidence is target-specific and does not carry over across a target change.
+  assert.ok(
+    containsText(
+      core,
+      "target が変更された場合、その新しい target に対する mechanical / deterministic precondition の evidence は自動的に持ち越しません。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "precondition check（Executable の deterministic verify、Normative の mechanical check）を新しい target に対して再成立させます。",
+    ),
+  );
+  // The Normative accepted-fix branch re-runs mechanical check before closure
+  // verification, without adding a 2nd semantic discovery round.
+  assert.ok(containsText(core, "mechanical check -> closure verification"));
 
   // Observed evidence stays a general principle, not a permanent provider rule
   assert.ok(containsText(core, "expected trigger behavior は completion evidence と同義ではありません。"));
@@ -307,9 +326,27 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewCode, "手順 7 の batch fix によって candidate SHA が変更された場合のみ"),
   );
 
-  // 2x2 cell A (Executable x accepted fix): closure re-freezes the post-fix SHA as
-  // the closure target and applies Selection / Execution Contract to it, so closure
-  // validity is judged against the post-fix target, not Step 3's original Selection.
+  // Root cause fix (this round, cell B): a non-fix SHA change must re-run Step 1's
+  // deterministic verify against the new SHA before re-freezing, since mechanical/
+  // deterministic precondition evidence does not carry over across a target change.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら",
+    ),
+  );
+
+  // 2x2 cell A (Executable x accepted fix): deterministic verify runs against the
+  // post-fix SHA before targeted closure (pre-existing, unaffected by this round);
+  // closure re-freezes the post-fix SHA as the closure target and applies
+  // Selection / Execution Contract to it, so closure validity is judged against
+  // the post-fix target, not Step 3's original Selection.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "手順 7 の batch fix によって candidate SHA が変更された場合のみ、fix 後に手順 1 の verify を再実行します。",
+    ),
+  );
   assert.ok(
     containsText(
       reviewCode,
@@ -356,7 +393,17 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "新しい target を re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic discovery を新しい target に対して行います。",
+      "re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic discovery を新しい target に対して行います。",
+    ),
+  );
+
+  // Root cause fix (this round, cell D): a non-fix target change must also re-run
+  // Step 1's mechanical check against the new target before re-freezing, matching
+  // review-code.md's cell B fix.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "新しい target に対して手順 1 の mechanical check を再実行し、成功したら",
     ),
   );
   assert.ok(
@@ -385,7 +432,7 @@ test("review skills document procedure without duplicating normative rules", asy
   // review run, so closure validity is judged against the post-fix target instead
   // of the pre-fix expected target from Step 2's Selection.
   assert.ok(
-    containsText(reviewDoc, "修正後の SHA / range を closure target として re-freeze し、"),
+    containsText(reviewDoc, "成功したらその SHA / range を closure target として re-freeze し、"),
   );
   assert.ok(
     containsText(
@@ -395,6 +442,16 @@ test("review skills document procedure without duplicating normative rules", asy
   );
   assert.ok(
     containsText(reviewDoc, "この closure target を expected target として Acquisition & Validity"),
+  );
+
+  // Root cause fix (this round, cell C): closure re-runs Step 1's mechanical check
+  // against the post-fix target before re-freezing it, so mechanical precondition
+  // evidence is re-established for the new target rather than carried over.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "修正後の target に対して手順 1 の mechanical check を再実行し、成功したら",
+    ),
   );
 
   // Latent gap (push-before-check E): Closure only fires on an accepted-fix-driven

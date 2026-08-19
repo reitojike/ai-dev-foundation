@@ -23,8 +23,9 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    手順 8〜11（deterministic verify -> targeted closure -> merge）に進みます。
    手順 7 の batch fix 以外の理由で candidate SHA が変わった場合（並行作業や
    scope 追加、fix と無関係な commit 等）は、valid な discovery の後であっても
-   この review target / run を invalid として扱い、新しい SHA で re-freeze して
-   必要な discovery をやり直します。
+   この review target / run を invalid として扱います。
+   新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら
+   re-freeze して必要な discovery をやり直します。
 3. **Selection** — Selection Contract に従い、artifact classification、reviewer /
    capability、required review 数、target artifact set、expected target SHA を決めます。
    Executable artifact では原則として独立 reviewer を使います。

@@ -245,6 +245,12 @@ capability/profile の更新時に再検証可能にします。
 
 ### Review stopping rules
 
+target が変更された場合、その新しい target に対する mechanical / deterministic
+precondition の evidence は自動的に持ち越しません。target 変更後にその target を
+review / closure / merge の根拠とする前に、artifact classification が要求する
+precondition check（Executable の deterministic verify、Normative の mechanical
+check）を新しい target に対して再成立させます。
+
 Code review:
 
 ```text
@@ -282,7 +288,8 @@ mechanical check
   -> semantic discovery（1 round）
   -> triage / fix
   -> accepted finding の fix で target SHA / range が変更された場合:
-       closure verification
+       mechanical check
+       -> closure verification
        -> closure completion / acquisition / validity 確認
        -> 完了
   -> accepted fix が無く target が変更されていない場合:
@@ -290,9 +297,10 @@ mechanical check
        -> 完了
 ```
 
-accepted finding の fix によって target SHA / range が変更された場合のみ
-closure verification を行い、その review run も Acquisition & Validity
-Contract に従って completion / acquisition / validity を確認します。
+accepted finding の fix によって target SHA / range が変更された場合のみ、
+新しい target に対して mechanical check を再実行してから closure
+verification を行い、その review run も Acquisition & Validity Contract
+に従って completion / acquisition / validity を確認します。
 accepted fix が無く target が変更されていない場合は、
 required review 数の valid semantic discovery と Resolution の完了をもって、
 新たな closure run を要求せずに review を完了できます。

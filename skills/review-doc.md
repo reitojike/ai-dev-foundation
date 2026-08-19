@@ -20,9 +20,10 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    valid な semantic discovery（手順 3）の後、手順 6 の accepted finding
    batch fix 以外の理由で target SHA / range が変わった場合（並行作業や
    scope 追加、finding 対応ではない文書変更、無関係な commit 等）は、
-   旧 review target / run を現在 target の evidence として扱わず、新しい
-   target を re-freeze して手順 2（Selection）からやり直し、手順 3 の
-   semantic discovery を新しい target に対して行います。
+   旧 review target / run を現在 target の evidence として扱いません。
+   新しい target に対して手順 1 の mechanical check を再実行し、成功したら
+   re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic
+   discovery を新しい target に対して行います。
 3. **Execution & Semantic discovery（1 round）** — Execution Contract に従い
    reviewer を起動し、trigger 方法と required context を記録した上で、独立
    reviewer による意味的な discovery を 1 回行います。round 数の扱いは
@@ -42,7 +43,8 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 6. **Fix** — Resolution Contract に従い、accepted finding を batch でまとめて
    fix します。
 7. **Closure** — accepted finding の fix によって target SHA / range が変わった
-   場合のみ行います。修正後の SHA / range を closure target として re-freeze
+   場合のみ行います。修正後の target に対して手順 1 の mechanical check を
+   再実行し、成功したらその SHA / range を closure target として re-freeze
    し、Selection / Execution Contract（`policy/core.md`）を closure review
    run に適用します。
    その上で、triage した finding に対応しているかの closure verification
