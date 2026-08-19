@@ -4,6 +4,8 @@
 Executable、Review contracts、Review Adapter boundary、Failure / retry、Review
 stopping rules）を使った実行手順です。規範的なルールはここで再定義せず、
 `policy/core.md` を参照します。本 skill と policy が矛盾する場合は policy が優先します。
+reviewer 起動時に渡す per-run instruction は `skills/review-briefs.md` の Discovery
+brief を参照し、ここへ複製しません。
 
 ## 対象
 
