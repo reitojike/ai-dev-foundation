@@ -17,6 +17,12 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
 2. **Selection** — Selection Contract（`policy/core.md`）に従い、target SHA /
    range、target artifact set、reviewer / capability、required review 数を
    確定します。
+   手順 3 の semantic discovery の completion / validity が確定する前に
+   target SHA / range が変わった場合、その review target / run を現在
+   target の evidence として扱いません。
+   新しい target に対して手順 1 の mechanical check を再実行し、成功したら
+   Selection をやり直し、手順 3 の semantic discovery を新しい target に
+   対して行います。
    valid な semantic discovery（手順 3）の後、手順 6 の accepted finding
    batch fix 以外の理由で target SHA / range が変わった場合（並行作業や
    scope 追加、finding 対応ではない文書変更、無関係な commit 等）は、

@@ -16,6 +16,21 @@ function containsText(haystack, needle) {
   return stripWhitespace(haystack).includes(stripWhitespace(needle));
 }
 
+// Counts non-overlapping occurrences, whitespace-agnostic. Used where the same
+// precondition-recheck clause must appear once per applicable branch.
+function countOccurrences(haystack, needle) {
+  const hay = stripWhitespace(haystack);
+  const need = stripWhitespace(needle);
+  if (!need) return 0;
+  let count = 0;
+  let index = 0;
+  while ((index = hay.indexOf(need, index)) !== -1) {
+    count += 1;
+    index += need.length;
+  }
+  return count;
+}
+
 test("core policy defines the provider-neutral Review Protocol", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
@@ -248,12 +263,24 @@ test("review skills document procedure without duplicating normative rules", asy
   // and re-freezes; a post-discovery fix-driven change proceeds to targeted closure
   // without restarting discovery from scratch.
   assert.ok(
-    containsText(reviewCode, "その review target / run を invalid として扱い、新しい SHA で re-freeze して"),
+    containsText(reviewCode, "その review target / run を invalid として扱います。"),
   );
   assert.ok(
     containsText(reviewCode, "valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、"),
   );
   assert.ok(containsText(reviewCode, "re-freeze はしますが手順を最初からやり直さず、"));
+
+  // Gap 1 (same root cause as the canonical invariant, completed): a SHA change
+  // before discovery completion/validity is confirmed must also re-run Step 1's
+  // deterministic verify against the new SHA before re-freezing — not just the
+  // post-valid-discovery non-fix change case.
+  assert.ok(
+    countOccurrences(
+      reviewCode,
+      "新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら",
+    ) === 2,
+    "review-code.md must re-run deterministic verify on SHA change both before and after discovery validity is confirmed",
+  );
 
   // review-code.md must defer to policy Contracts rather than restating their
   // normative conditions (Fix 2): the specific prohibitions below must not reappear
@@ -326,16 +353,6 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewCode, "手順 7 の batch fix によって candidate SHA が変更された場合のみ"),
   );
 
-  // Root cause fix (this round, cell B): a non-fix SHA change must re-run Step 1's
-  // deterministic verify against the new SHA before re-freezing, since mechanical/
-  // deterministic precondition evidence does not carry over across a target change.
-  assert.ok(
-    containsText(
-      reviewCode,
-      "新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら",
-    ),
-  );
-
   // 2x2 cell A (Executable x accepted fix): deterministic verify runs against the
   // post-fix SHA before targeted closure (pre-existing, unaffected by this round);
   // closure re-freezes the post-fix SHA as the closure target and applies
@@ -397,14 +414,16 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Root cause fix (this round, cell D): a non-fix target change must also re-run
-  // Step 1's mechanical check against the new target before re-freezing, matching
-  // review-code.md's cell B fix.
+  // Gap 2 (same root cause as the canonical invariant, completed): a target change
+  // before semantic discovery completion/validity is confirmed must also re-run
+  // Step 1's mechanical check against the new target — not just the
+  // post-valid-discovery non-fix change case (cell D).
   assert.ok(
-    containsText(
+    countOccurrences(
       reviewDoc,
       "新しい target に対して手順 1 の mechanical check を再実行し、成功したら",
-    ),
+    ) === 2,
+    "review-doc.md must re-run mechanical check on target change both before and after semantic discovery validity is confirmed",
   );
   assert.ok(
     containsText(

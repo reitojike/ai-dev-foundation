@@ -16,8 +16,9 @@ Executable artifact（TS / TSX / SQL / workflow / config 等）の review。
    Task に応じたもの）を実行します。
 2. **Freeze candidate SHA** — review 対象の commit SHA を確定します。
    discovery の completion / validity が確定する前にこの SHA が変わった場合、
-   その review target / run を invalid として扱い、新しい SHA で re-freeze して
-   必要な discovery をやり直します。
+   その review target / run を invalid として扱います。
+   新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら
+   re-freeze して必要な discovery をやり直します。
    valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、
    re-freeze はしますが手順を最初からやり直さず、
    手順 8〜11（deterministic verify -> targeted closure -> merge）に進みます。
