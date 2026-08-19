@@ -76,6 +76,39 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
+  // Codex P1 (resolve discovery findings before merge): the discovery
+  // Resolution gate is stage-independent — accepted-fix paths don't drop it,
+  // multiple discovery stages (e.g. 2nd full discovery) each need their own
+  // Resolution complete, and completion order vs. closure isn't mandated.
+  assert.ok(
+    containsText(
+      core,
+      "Selection Contract で required とした review stage（discovery、2nd full discovery を含む）の finding は、その stage で accepted fix があったかどうかに関係なく、Resolution Contract に従って Resolution が完了するまで merge / review completion へ進みません。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "同じ review flow で複数の discovery stage を行った場合は、実行した discovery stage すべての Resolution が完了している必要があります。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "discovery Resolution を closure より先に完了させる順序を強制するものではなく、merge / review completion の時点で揃っていれば十分です。",
+    ),
+  );
+  assert.doesNotMatch(
+    core,
+    /Discovery Resolution Contract|discovery_resolved|resolution_state/i,
+    "policy/core.md must not introduce a new Discovery Resolution Contract or Resolution state schema",
+  );
+  assert.doesNotMatch(
+    core,
+    /discovery.{0,20}Resolution.{0,30}(完了|終わ).{0,10}(から|前提).{0,10}closure|closure.{0,10}を開始できません/,
+    "this fix is a merge/completion gate, not a new precondition for starting closure",
+  );
+
   // Codex P2 (pass the selected commit range to Execution): Execution Contract's
   // target field is bound to Selection's expected target (SHA or commit range),
   // not reduced to a bare "target SHA" that Selection's range would silently
@@ -298,7 +331,17 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "targeted closure / closure verification の finding も Resolution Contract の対象であり、Resolution が完了するまで merge / review completion の根拠にしない",
+      "discovery（2nd full discovery を含む）と targeted closure / closure verification のいずれの finding も Resolution Contract の対象であり、triage category を付けただけでは Resolution 完了ではない。",
+    ),
+  );
+
+  // Codex P1 (resolve discovery findings before merge): triage alone is not
+  // Resolution completion — an unresolved needs-verification / technical-dispute
+  // / intent-question finding blocks that stage's Resolution, no new state enum.
+  assert.ok(
+    containsText(
+      core,
+      "unresolved の finding（未解決の needs-verification / technical-dispute / intent-question 等を含む）が残る間は、その review stage の Resolution は完了せず、merge / review completion の根拠にしない",
     ),
   );
   assert.ok(core.includes("closure finding の Resolution"));
@@ -312,6 +355,37 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     containsText(
       core,
       "closure verification の finding も Resolution Contract の対象とし、Resolution が完了するまで review を完了しません。",
+    ),
+  );
+
+  // Codex P1 (resolve discovery findings before merge, Code flow): the
+  // accepted-fix diagram branch now requires required discovery stage(s)'
+  // Resolution to complete, not just closure Resolution, before merge.
+  assert.ok(
+    containsText(
+      core,
+      "-> closure finding の Resolution -> required discovery stage(s) の Resolution 完了 -> merge",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "targeted closure の Resolution に加えて、この review flow で実行した discovery stage（2nd full discovery を含む）すべての Resolution が完了していることも merge の条件です。完了順序は問いません。",
+    ),
+  );
+
+  // Codex P1 (resolve discovery findings before merge, Normative flow): same
+  // gate for semantic discovery Resolution before review completion.
+  assert.ok(
+    containsText(
+      core,
+      "-> closure finding の Resolution -> semantic discovery の Resolution 完了 -> 完了",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "closure verification の Resolution に加えて、semantic discovery（手順 3）の Resolution が完了していることも review completion の条件です。完了順序は問いません。",
     ),
   );
 
@@ -574,8 +648,15 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "Closure Acquisition & Validity と Closure Resolution が完了した時点で merge します。",
+      "手順 6 の discovery Resolution（手順 9 を使った場合はその Resolution も含む）と、Closure Acquisition & Validity・Closure Resolution が完了した時点で merge します。",
     ),
+  );
+
+  // Codex P1 (resolve discovery findings before merge): the discovery Resolution
+  // gate isn't dropped when the accepted-fix path is taken — merge requires both
+  // discovery and closure Resolution, in either order, not closure alone.
+  assert.ok(
+    containsText(reviewCode, "discovery Resolution と closure の完了順序は問いません。"),
   );
 
   // Follow-up (sibling gap B): a closure finding's fix may now re-enter the
@@ -718,7 +799,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution が完了した時点で merge します。",
+      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution（手順 6）が完了した時点で merge します。",
     ),
   );
 
@@ -923,6 +1004,16 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
   assert.ok(containsText(reviewDoc, "accepted な closure finding があれば、手順 6〜7 と同じ procedure"));
+
+  // Codex P1 (resolve discovery findings before merge, Normative sibling):
+  // closure Resolution completing doesn't drop the semantic discovery (Step 5)
+  // Resolution gate — review procedure completion requires both, in either order.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "closure Resolution に加えて、手順 5 の semantic discovery Resolution も完了していることが review procedure 完了の条件です。完了順序は問いません。",
+    ),
+  );
   assert.ok(
     containsText(
       reviewDoc,

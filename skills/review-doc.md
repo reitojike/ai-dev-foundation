@@ -90,6 +90,9 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    accepted な closure finding があれば、手順 6〜7 と同じ procedure（fix ->
    mechanical check -> closure verification -> closure Acquisition &
    Validity）に従って解決します。
+   closure Resolution に加えて、手順 5 の semantic discovery Resolution
+   も完了していることが review procedure 完了の条件です。完了順序は
+   問いません。
    この cycle が繰り返し発生する場合は、本 skill の停止条件および Review
    stopping rules（`policy/core.md`）に従います。
    手順 7 の closure が行われなかった場合（accepted fix が無く target も

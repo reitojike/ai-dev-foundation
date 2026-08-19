@@ -133,6 +133,15 @@ Execution Contract に従って起動します。Selection Contract が required
 completed かつ valid な run が揃うまで triage / Resolution / merge / review
 completion へ進みません。不足する run の扱いは Failure / retry に従います。
 
+Selection Contract で required とした review stage（discovery、2nd full
+discovery を含む）の finding は、その stage で accepted fix があったか
+どうかに関係なく、Resolution Contract に従って Resolution が完了するまで
+merge / review completion へ進みません。同じ review flow で複数の
+discovery stage を行った場合は、実行した discovery stage すべての
+Resolution が完了している必要があります。discovery Resolution を closure
+より先に完了させる順序を強制するものではなく、merge / review completion
+の時点で揃っていれば十分です。
+
 #### Selection Contract
 
 - artifact classification
@@ -228,9 +237,12 @@ review run の状態は少なくとも `none` / `unknown` / `failure` を区別�
 - accepted finding は drip fix せず、root-cause を確認した上で batch で fix する
 - fix 後は全 discovery をやり直さず、targeted closure を基本とする
 - review を新しい scope の探索に使わない
-- targeted closure / closure verification の finding も Resolution Contract
-  の対象であり、Resolution が完了するまで merge / review completion の
-  根拠にしない
+- discovery（2nd full discovery を含む）と targeted closure / closure
+  verification のいずれの finding も Resolution Contract の対象であり、
+  triage category を付けただけでは Resolution 完了ではない。unresolved
+  の finding（未解決の needs-verification / technical-dispute /
+  intent-question 等を含む）が残る間は、その review stage の Resolution
+  は完了せず、merge / review completion の根拠にしない
 
 ### Review Adapter boundary
 
@@ -321,6 +333,7 @@ deterministic verify
        -> targeted closure
        -> closure completion / acquisition / validity 確認
        -> closure finding の Resolution
+       -> required discovery stage(s) の Resolution 完了
        -> merge
   -> accepted fix が無く review target が変更されていない場合:
        required review 数の valid discovery と Resolution の完了
@@ -332,6 +345,9 @@ targeted closure を行い、その review run も Acquisition & Validity Contra
 に従って completion / acquisition / validity を確認します。targeted closure
 の finding も Resolution Contract の対象とし、Resolution が完了するまで
 merge しません。
+targeted closure の Resolution に加えて、この review flow で実行した
+discovery stage（2nd full discovery を含む）すべての Resolution が
+完了していることも merge の条件です。完了順序は問いません。
 accepted fix が無く review target が変更されていない場合は、
 required review 数の valid discovery と Resolution の完了をもって、
 新たな closure run を要求せずに merge できます。
@@ -353,6 +369,7 @@ mechanical check
        -> closure verification
        -> closure completion / acquisition / validity 確認
        -> closure finding の Resolution
+       -> semantic discovery の Resolution 完了
        -> 完了
   -> accepted fix が無く target が変更されていない場合:
        required review 数の valid semantic discovery と Resolution の完了
@@ -365,6 +382,9 @@ verification を行い、その review run も Acquisition & Validity Contract
 に従って completion / acquisition / validity を確認します。closure
 verification の finding も Resolution Contract の対象とし、Resolution が
 完了するまで review を完了しません。
+closure verification の Resolution に加えて、semantic discovery（手順 3）
+の Resolution が完了していることも review completion の条件です。完了
+順序は問いません。
 accepted fix が無く target が変更されていない場合は、
 required review 数の valid semantic discovery と Resolution の完了をもって、
 新たな closure run を要求せずに review を完了できます。
