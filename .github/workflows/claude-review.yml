@@ -1,0 +1,43 @@
+name: Claude Code Review (manual)
+
+# Issue #12 capability smoke test: this workflow only prepares a manual,
+# explicit-mention trigger for Claude Code review. It intentionally does
+# NOT run automatically on every push (see policy/core.md Review Protocol,
+# Review Adapter boundary). Selection Contract decides per-Task whether
+# this trigger is used.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  claude-review:
+    if: >
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run Claude Code review
+        uses: anthropics/claude-code-action@e2a4b761cd77a1138a5b41410eda9b28581f9bcd # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            contents: read
+          claude_args: |
+            --max-turns 10
+            --allowedTools Read,Grep,Glob
+            --disallowedTools Edit,Write,MultiEdit,NotebookEdit,Bash
