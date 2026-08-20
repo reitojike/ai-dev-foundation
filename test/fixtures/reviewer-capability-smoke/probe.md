@@ -11,7 +11,8 @@ canonical ruleではなく、`main`へmergeしません。目的は、PR #14 bra
 **Normative**（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR等、後続
 agentや実装を拘束する文書）に該当すると想定します。この想定が正しい
 場合、適用されるreview procedureは `skills/review-doc.md` の
-mechanical check → semantic discovery（1 round）→ triage / fix →
+mechanical check → Selection → semantic discovery（1 round）→
+Acquisition & Validity確認 → triage / fix →
 （target変更時のみ）closure verificationです。
 
 ## 検証してほしい内容（要cross-reference）
@@ -25,7 +26,7 @@ mechanical check → semantic discovery（1 round）→ triage / fix →
    reviewer / capabilityの選択、required review数、target artifact
    set、expected target SHA / commit range。
 3. 「0 findings」を確定するにはpositive evidenceが必要であり、
-   reaction単独・comment無し・parser 0件・status successのみからは
+   reaction なし・comment無し・parser 0件・status successのみからは
    推定できない。
 4. Review target が変更された場合、accepted fixによる変更以外の理由
    では、旧targetのdiscovery / closure evidenceを新targetのevidence
