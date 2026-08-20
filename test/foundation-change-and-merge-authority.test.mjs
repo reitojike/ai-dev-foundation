@@ -171,27 +171,22 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   }
   assert.ok(containsText(core, "症状の重大度ではなく root cause / ownership を軸に"));
 
-  // CodeRabbit Discovery finding on PR #21: a Foundation-owned defect with
-  // still-weak Change Proposal evidence could otherwise satisfy both
-  // `Foundation candidate` and `canonical defect candidate` at once. Pin the
-  // ownership-confirmed priority rule that resolves the overlap.
+  // PO audit correction on PR #21: `Foundation candidate` is not exclusive
+  // to unconfirmed ownership — a Foundation-owned shared improvement
+  // candidate that is not a confirmed defect belongs here too.
+  // `canonical defect candidate` is limited strictly to confirmed defective
+  // behavior; a correctly-functioning manual step that could be automated
+  // does not qualify (Issue #20's original semantic contract).
   assert.ok(
     containsText(
       core,
-      "Foundation-owned な rule / profile / tooling / artifact 自体の欠陥だと確認できる場合は、Change Proposal に足る evidence の強さに関わらず `canonical defect candidate` とします。",
+      "Foundation-owned だと分かっていても、確認された defect ではない改善余地を含む",
     ),
   );
-
-  // Closure-round Codex finding: a confirmed Foundation-owned friction that
-  // is not itself erroneous (e.g. a correct-but-improvable manual step) fit
-  // none of the 4 categories once ownership-confirmed defects were required
-  // to be `canonical defect candidate`. Fold ownership-confirmed
-  // non-defect improvement opportunities into the same category instead of
-  // adding a 5th label (the Issue #20 AC requires exactly 4).
   assert.ok(
     containsText(
       core,
-      "ownership が Foundation-owned だと確定していて、誤った挙動とまでは言えない改善余地",
+      "正しく機能している manual step を自動化・簡略化できるという改善余地だけでは、この分類に含めない",
     ),
   );
 

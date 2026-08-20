@@ -477,25 +477,19 @@ ownership を軸に、次の 4 分類のいずれかへ分類します。
 - `consumer-local`: product / domain / consumer 固有で自然に閉じる
 - `provider/runtime`: 外部 provider / runtime の挙動で、Foundation
   contract 自体の欠陥ではない
-- `Foundation candidate`: shared problem になり得るが、Foundation change
-  の evidence がまだ弱い
+- `Foundation candidate`: shared problem / improvement candidate に
+  なり得るが、Foundation-owned な rule / profile / tooling / artifact
+  自体が誤った挙動を要求・生成・許容していると確認されたわけではない
+  （Foundation-owned だと分かっていても、確認された defect ではない
+  改善余地を含む）
 - `canonical defect candidate`: Foundation-owned な rule / profile /
-  tooling / artifact 自体が誤った挙動を要求・生成・許容している
+  tooling / artifact 自体が誤った挙動を要求・生成・許容していると
+  確認できる場合に限る（正しく機能している manual step を自動化・
+  簡略化できるという改善余地だけでは、この分類に含めない）
 
 `provider/runtime` に分類した Observation でも、Foundation がその挙動を
 誤って恒久前提として固定している場合は、Foundation 側の candidate として
 再評価します。
-
-`Foundation candidate` と `canonical defect candidate` は、ownership が
-確定しているかどうかで区別します。Foundation-owned な rule / profile /
-tooling / artifact 自体の欠陥だと確認できる場合は、Change Proposal に
-足る evidence の強さに関わらず `canonical defect candidate` とします。
-ownership が Foundation 側かどうか自体がまだ確認できていない shared
-problem の場合に限り `Foundation candidate` とします。ownership が
-Foundation-owned だと確定していて、誤った挙動とまでは言えない改善余地
-（例えば、正しく機能しているが自動化・簡略化できる manual step）の場合も、
-他の3分類のいずれにも該当しなければ `canonical defect candidate` に
-含めます。
 
 ### Observation recording
 
