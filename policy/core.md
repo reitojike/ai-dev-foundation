@@ -486,6 +486,13 @@ ownership を軸に、次の 4 分類のいずれかへ分類します。
 誤って恒久前提として固定している場合は、Foundation 側の candidate として
 再評価します。
 
+`Foundation candidate` と `canonical defect candidate` は、ownership が
+確定しているかどうかで区別します。Foundation-owned な rule / profile /
+tooling / artifact 自体の欠陥だと確認できる場合は、Change Proposal に
+足る evidence の強さに関わらず `canonical defect candidate` とします。
+ownership が Foundation 側かどうか自体がまだ確認できていない shared
+problem の場合に限り `Foundation candidate` とします。
+
 ### Observation recording
 
 Observation trigger の発火は、自動的に Foundation Issue を作りません。

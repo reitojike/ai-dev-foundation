@@ -171,6 +171,17 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   }
   assert.ok(containsText(core, "症状の重大度ではなく root cause / ownership を軸に"));
 
+  // CodeRabbit Discovery finding on PR #21: a Foundation-owned defect with
+  // still-weak Change Proposal evidence could otherwise satisfy both
+  // `Foundation candidate` and `canonical defect candidate` at once. Pin the
+  // ownership-confirmed priority rule that resolves the overlap.
+  assert.ok(
+    containsText(
+      core,
+      "Foundation-owned な rule / profile / tooling / artifact 自体の欠陥だと確認できる場合は、Change Proposal に足る evidence の強さに関わらず `canonical defect candidate` とします。",
+    ),
+  );
+
   // Observation is not a work item and does not auto-create a Foundation
   // Issue; it is recorded on the originating consumer Task's canonical Issue.
   assert.ok(
