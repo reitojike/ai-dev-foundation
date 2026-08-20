@@ -21,9 +21,10 @@ jobs:
   claude-review:
     if: >
       github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '@claude')
+      contains(github.event.comment.body, '@claude') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -38,6 +39,6 @@ jobs:
           additional_permissions: |
             contents: read
           claude_args: |
-            --max-turns 10
+            --max-turns 30
             --allowedTools Read,Grep,Glob
             --disallowedTools Edit,Write,MultiEdit,NotebookEdit,Bash

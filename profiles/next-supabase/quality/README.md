@@ -49,7 +49,21 @@ export default [
   ...nextSupabaseQualityProfile(),
   architectureImportBoundary({
     files: ['src/domain/**/*.ts'],
-    restrictedPatterns: ['../ui/**', '../infrastructure/**'],
+    // Depth-independent, anchored patterns: "../**/ui" (and "/**") matches
+    // "../ui", "../../ui", "../ui/x", "../../ui/x", ... regardless of how
+    // deep the importing domain file is nested, without also matching an
+    // unrelated external package such as "@vendor/ui/button" the way a bare
+    // "**/ui/**" pattern would.
+    restrictedPatterns: [
+      '../**/ui',
+      '../**/ui/**',
+      '../**/infrastructure',
+      '../**/infrastructure/**',
+      '@/ui',
+      '@/ui/**',
+      '@/infrastructure',
+      '@/infrastructure/**',
+    ],
     message: 'Domain code must not import UI or infrastructure.',
   }),
 ];

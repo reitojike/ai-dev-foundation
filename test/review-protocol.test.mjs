@@ -777,7 +777,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "手順 6 の discovery Resolution（手順 9 を使った場合はその Resolution も含む）と、Closure Acquisition & Validity・Closure Resolution が完了した時点で merge します。",
+      "手順 6 の discovery Resolution（手順 9 を使った場合はその Resolution も含む）と、Closure Acquisition & Validity・Closure Resolution が完了した時点で merge-ready と判定します。",
     ),
   );
 
@@ -928,7 +928,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution（手順 6）が完了した時点で merge します。",
+      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution（手順 6）が完了した時点で merge-ready と判定します。",
     ),
   );
 
