@@ -25,7 +25,15 @@ test("Claude review workflow restricts its trigger to trusted commenters", async
   const condition = ifMatch[1];
 
   assert.match(condition, /contains\(github\.event\.comment\.body, '@claude'\)/);
-  assert.match(condition, /author_association/);
+
+  // The allowlist must actually gate github.event.comment.author_association
+  // itself (not merely appear somewhere in the condition alongside it), or a
+  // future edit could decouple the two while this assertion stays green.
+  assert.match(
+    condition,
+    /contains\(fromJSON\('\["OWNER",\s*"MEMBER",\s*"COLLABORATOR"\]'\),\s*github\.event\.comment\.author_association\)/,
+    "trusted association allowlist must be applied to github.event.comment.author_association",
+  );
 
   for (const trustedAssociation of ["OWNER", "MEMBER", "COLLABORATOR"]) {
     assert.ok(

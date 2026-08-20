@@ -11,7 +11,7 @@ const fixturesRoot = path.join(root, "test", "fixtures", "guardrails");
 const profileConfig = path.join(root, "profiles", "next-supabase", "quality", "eslint.config.mjs");
 const prettierConfig = path.join(root, "profiles", "next-supabase", "quality", "prettier.config.mjs");
 const expectedLintFailures = new Map([
-  ["architecture-reverse-import", { ruleId: "no-restricted-imports", minimumCount: 2 }],
+  ["architecture-reverse-import", { ruleId: "no-restricted-imports", minimumCount: 4 }],
   ["no-any", { ruleId: "@typescript-eslint/no-explicit-any", minimumCount: 1 }],
   ["no-assertion", { ruleId: "no-restricted-syntax", minimumCount: 2 }],
   ["no-non-null", { ruleId: "@typescript-eslint/no-non-null-assertion", minimumCount: 1 }],
