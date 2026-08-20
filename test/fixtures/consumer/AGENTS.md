@@ -244,6 +244,26 @@ review run の状態は少なくとも `none` / `unknown` / `failure` を区別�
   intent-question 等を含む）が残る間は、その review stage の Resolution
   は完了せず、merge / review completion の根拠にしない
 
+### Merge readiness and merge authority
+
+本節における review completion（Resolution Contract の完了を含む）が
+成立した状態を **merge-ready** と呼びます。Review contracts および
+Review stopping rules で `merge` と記述する到達点は、merge-ready の
+成立を指し、merge を実行してよいという判断そのものとは同義ではありません。
+
+merge execution authority は、Review Protocol とは別の contract /
+context として扱います。current Task、Execution Envelope、または
+explicit な authority が merge の実行を許可している場合に限り、agent は
+merge を実行してよいです。
+
+merge authority が明示されていない場合、または別 authority の承認が
+必要な場合、agent は merge を実行せず、merge-ready の状態を報告した
+上で停止し、authority escalation / handoff します。
+
+この分離は、すべての PR で Human diff approval を mandatory にする
+ことを意味しません。GitHub の required approval 数を増やす rule でも
+ありません。provider や model 固有の rule にもしません。
+
 ### Review Adapter boundary
 
 provider 差分は次の 4 つの責務として扱います。Kernel はこの boundary の**形**のみを
@@ -434,6 +454,34 @@ completion evidence が得られない場合は、trigger 前提を疑い、Acqu
 Contract に従って `unknown` として扱います。特定 provider が常に特定の trigger 方法を
 要求するという恒久仕様は Kernel に置かず、observed evidence として capability/profile
 側で再検証可能な形にします。
+
+## Foundation Change Protocol
+
+Foundation 自身の canonical rule を変更する場合の、provider-neutral な
+最小 contract です。この protocol は Skill / Profile へ複製せず、変更を
+検討する際は本節を参照します。
+
+Observation は、そのままでは Issue や mandatory rule へ自動的に昇格しません。
+
+mandatory な Foundation change は、原則として次のいずれかで正当化します。
+
+1. 既存の mandatory / manual step を置き換える
+2. material defect を deterministically 防止する
+3. demonstrated recurring / escaped failure へ対処する
+
+Change Proposal は、少なくとも次を表現できるものとします。
+
+- Problem
+- Evidence
+- Proposed Change
+- Expected Effect
+- Trade-off
+- Scope
+- Success Criterion
+
+change class や review 強度は、固定の provider 名へ結びつけません。単発の
+friction、style、prompt nicety、効率改善のみを理由に、自動的に mandatory
+化しません。
 
 ## Technology profile: Next.js + Supabase
 

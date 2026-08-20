@@ -163,14 +163,21 @@ review でも同じ意味で適用します。
     この cycle が繰り返し発生する場合は無制限に続けず、Review stopping
     rules（`policy/core.md`）に従って upstream task/design の不安定さを
     疑い、必要に応じて escalate します。
-13. **Merge** — この review flow で accepted finding の fix による target
-    変更が一度も発生していなければ、required review 数の valid discovery
-    と Resolution（手順 6）が完了した時点で merge します。
+13. **Merge-ready** — この review flow で accepted finding の fix による
+    target 変更が一度も発生していなければ、required review 数の valid
+    discovery と Resolution（手順 6）が完了した時点で merge します。
     target 変更が発生していれば（手順 9 を挟んだ場合を含む）、手順 6 の
     discovery Resolution（手順 9 を使った場合はその Resolution も含む）
     と、Closure Acquisition & Validity・Closure Resolution が完了した
     時点で merge します。discovery Resolution と closure の完了順序は
     問いません。
+    この時点で成立するのは merge-ready です。merge の実行は
+    `policy/core.md` の Merge readiness and merge authority に従い、
+    current Task / Execution Envelope / explicit authority が merge
+    execution を許可している場合のみ行います。authority が明示されて
+    いない、または別 authority の承認が必要な場合は merge を実行せず、
+    merge-ready の状態を報告して停止し、authority escalation /
+    handoff します。
 
 ## Adapter boundary（manual pilot）
 
