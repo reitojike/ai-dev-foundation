@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -218,20 +219,28 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
       "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
     ),
   );
-  // Codex Discovery finding on PR #21: an exact directory-equality check
-  // would fail on any unrelated future tooling addition. Assert the absence
-  // of the specifically prohibited machinery instead. Scan recursively
-  // (closure-round Codex finding: a nested subdirectory would otherwise
-  // evade detection) and bound the match to a filename token boundary
-  // (closure-round CodeRabbit finding: an unbounded "bot" substring match
-  // would false-positive on names like "robotics.mjs" or "botany.js").
-  const toolingFiles = await readdir(path.join(root, "tooling"), { recursive: true });
-  const observationMachineryPattern =
-    /(?:^|[^a-z0-9])(?:ledger|dashboard|collector|bot|statistics)(?:$|[^a-z0-9])/i;
-  assert.deepEqual(
-    toolingFiles.filter((file) => observationMachineryPattern.test(file)),
-    [],
-    "Observation handling must not add new ledger/bot/dashboard/collector tooling",
+  // Codex Discovery findings across multiple rounds on PR #21: neither an
+  // exact directory-equality check (fails on any unrelated future addition)
+  // nor a filename-token pattern (both false-positives on names like
+  // "release-bot.mjs" and false-negatives on unrelated names like
+  // "tooling/observation/index.mjs") can distinguish "implements Observation
+  // machinery" from "matches a word". Assert the actual, precise claim
+  // instead: this change does not add any file under tooling/, checked via
+  // the diff against this branch's merge-base rather than by guessing from
+  // names.
+  const mergeBase = spawnSync("git", ["merge-base", "HEAD", "main"], {
+    cwd: root,
+    encoding: "utf8",
+  }).stdout.trim();
+  const addedToolingFiles = spawnSync(
+    "git",
+    ["diff", "--name-status", "--diff-filter=AC", `${mergeBase}..HEAD`, "--", "tooling"],
+    { cwd: root, encoding: "utf8" },
+  ).stdout.trim();
+  assert.equal(
+    addedToolingFiles,
+    "",
+    `Observation handling must not add new tooling files (found: ${addedToolingFiles})`,
   );
 
   // Task closure collects only triggers that already fired; it is not a new
@@ -247,11 +256,20 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   assert.ok(
     containsText(
       core,
-      "Task 中に Observation trigger が発火していた場合、未分類のもの、または上記の記録義務があるのに未記録のものだけを回収してから Task を完了します。",
+      "Task 中に Observation trigger が発火していた場合、未分類のものは必ず classification を完了します。",
     ),
   );
+
+  // Closure-round Codex finding: the recording exemption must scope only to
+  // the recording step, not to classification itself — otherwise an agent
+  // could rationalize a still-unclassified trigger as "lightweight" and skip
+  // classifying it entirely, contradicting the unconditional classification
+  // requirement in Observation trigger/classification.
   assert.ok(
-    containsText(core, "記録義務の対象にしない軽微な事象は、この回収の対象にしません。"),
+    containsText(
+      core,
+      "記録義務の対象にしない軽微な事象について省略できるのは記録だけであり、classification の完了は省略しません。",
+    ),
   );
 
   // Observation classification supplements, and does not replace or relax,

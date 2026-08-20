@@ -524,9 +524,11 @@ mandatory 化は Observation handling の一部にしません。
 ### Task closure と Observation
 
 Task closure は新しい Foundation 改善点を探索する工程ではありません。
-Task 中に Observation trigger が発火していた場合、未分類のもの、または
-上記の記録義務があるのに未記録のものだけを回収してから Task を完了します。
-記録義務の対象にしない軽微な事象は、この回収の対象にしません。
+Task 中に Observation trigger が発火していた場合、未分類のものは必ず
+classification を完了します。加えて、上記の記録義務があるのに未記録の
+ものがあれば記録してから Task を完了します。記録義務の対象にしない
+軽微な事象について省略できるのは記録だけであり、classification の
+完了は省略しません。
 
 ### Foundation Change の正当化条件
 
