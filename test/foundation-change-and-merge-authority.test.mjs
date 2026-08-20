@@ -209,9 +209,14 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   );
   // Codex Discovery finding on PR #21: an exact directory-equality check
   // would fail on any unrelated future tooling addition. Assert the absence
-  // of the specifically prohibited machinery instead.
-  const toolingFiles = await readdir(path.join(root, "tooling"));
-  const observationMachineryPattern = /ledger|dashboard|collector|-?bot-?|statistics/i;
+  // of the specifically prohibited machinery instead. Scan recursively
+  // (closure-round Codex finding: a nested subdirectory would otherwise
+  // evade detection) and bound the match to a filename token boundary
+  // (closure-round CodeRabbit finding: an unbounded "bot" substring match
+  // would false-positive on names like "robotics.mjs" or "botany.js").
+  const toolingFiles = await readdir(path.join(root, "tooling"), { recursive: true });
+  const observationMachineryPattern =
+    /(?:^|[^a-z0-9])(?:ledger|dashboard|collector|bot|statistics)(?:$|[^a-z0-9])/i;
   assert.deepEqual(
     toolingFiles.filter((file) => observationMachineryPattern.test(file)),
     [],
