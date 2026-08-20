@@ -131,3 +131,192 @@ test("core policy separates merge-readiness from merge execution authority", asy
     ),
   );
 });
+
+test("core policy defines a minimal Observation handling entry point (#20)", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+
+  assert.ok(core.includes("### Observation trigger"));
+  assert.ok(core.includes("### Observation classification"));
+  assert.ok(core.includes("### Observation recording"));
+  assert.ok(core.includes("### Task closure と Observation"));
+  assert.ok(core.includes("### Observation から Change Proposal への昇格"));
+
+  // Observation trigger stays event-driven: five concrete conditions, not a
+  // blanket per-Task retrospective requirement.
+  for (const trigger of [
+    "Foundation の rule / profile / tooling に従っても material correctness",
+    "Task 完了のため Foundation の迂回・上書き・補完 workaround が必要になる",
+    "Foundation が定義していない",
+    "provider / runtime の実挙動が、Task で依拠した前提と食い違う",
+    "同一 root cause と思われる friction / workaround を以前にも観測している",
+  ]) {
+    assert.ok(core.includes(trigger), `missing Observation trigger: ${trigger}`);
+  }
+  assert.ok(
+    containsText(
+      core,
+      "これらが発火しない限り、Task ごとに Foundation 改善点を探索する追加工程は要求しません。",
+    ),
+  );
+
+  // Minimal four-way classification, judged by root cause/ownership rather
+  // than severity.
+  for (const label of [
+    "`consumer-local`",
+    "`provider/runtime`",
+    "`Foundation candidate`",
+    "`canonical defect candidate`",
+  ]) {
+    assert.ok(core.includes(label), `missing Observation classification: ${label}`);
+  }
+  assert.ok(containsText(core, "症状の重大度ではなく root cause / ownership を軸に"));
+
+  // PO audit correction on PR #21: `Foundation candidate` is not exclusive
+  // to unconfirmed ownership — a Foundation-owned shared improvement
+  // candidate that is not a confirmed defect belongs here too.
+  // `canonical defect candidate` is limited strictly to confirmed defective
+  // behavior; a correctly-functioning manual step that could be automated
+  // does not qualify (Issue #20's original semantic contract).
+  assert.ok(
+    containsText(
+      core,
+      "Foundation-owned だと分かっていても、確認された defect ではない改善余地を含む",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "正しく機能している manual step を自動化・簡略化できるという改善余地だけでは、この分類に含めない",
+    ),
+  );
+
+  // Observation is not a work item and does not auto-create a Foundation
+  // Issue; it is recorded on the originating consumer Task's canonical Issue.
+  assert.ok(
+    containsText(core, "Observation trigger の発火は、自動的に Foundation Issue を作りません。"),
+  );
+  assert.ok(containsText(core, "Observation は work item ではありません。"));
+
+  // Recording is a mandatory obligation (not merely a recordable capability)
+  // when the future-reuse-value condition is met — CodeRabbit/Codex Discovery
+  // finding on PR #21: "記録できることを要求します" read as capability-only and
+  // let required evidence be omitted at Task closure.
+  assert.ok(
+    containsText(
+      core,
+      "将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task の canonical Issue へ、少なくとも次を短く記録します。",
+    ),
+  );
+  for (const field of [
+    "Observed / evidence locator",
+    "Classification",
+    "Impact",
+    "Local handling",
+    "Foundation action",
+    "Promotion signal",
+  ]) {
+    assert.ok(core.includes(field), `Observation record must express: ${field}`);
+  }
+
+  // Out of Scope for #20: no ledger/bot/dashboard/auto-issue/periodic-audit
+  // machinery, and no new tooling files were added to implement it.
+  assert.ok(
+    containsText(
+      core,
+      "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
+    ),
+  );
+  // Codex Discovery findings across multiple rounds on PR #21: an exact
+  // directory-equality check, a filename-token pattern, and a dynamic
+  // merge-base diff were each tried and each had a real failure mode (fails
+  // on unrelated future tooling additions; false-positives/negatives on
+  // filenames; or, for the merge-base diff, silently becomes a *permanent*
+  // "no one may ever add a tooling file" gate on this test file long after
+  // this PR merges, since `git merge-base HEAD main` re-resolves on every
+  // future branch that happens to reuse this code). Whether this specific
+  // PR added new tooling files is a one-time historical fact about this
+  // PR's landing, not an evergreen property this file can assert on every
+  // future checkout — so it is not encoded as an automated regression check
+  // here. It was instead verified once, out of band, via
+  // `git diff --stat <PR base>..HEAD -- tooling` returning no changes, and
+  // is reported as evidence in the PR itself. The canonical, permanent
+  // contract asserted below is the policy text prohibiting this machinery.
+
+  // Task closure collects only triggers that already fired; it is not a new
+  // improvement-discovery step. It also does not force recording of
+  // observations the recording contract exempts (Codex Discovery finding on
+  // PR #21: the closure gate must not conflict with the recording exemption).
+  assert.ok(
+    containsText(
+      core,
+      "Task closure は新しい Foundation 改善点を探索する工程ではありません。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "Task 中に Observation trigger が発火していた場合、未分類のものは必ず classification を完了します。",
+    ),
+  );
+
+  // Closure-round Codex finding: the recording exemption must scope only to
+  // the recording step, not to classification itself — otherwise an agent
+  // could rationalize a still-unclassified trigger as "lightweight" and skip
+  // classifying it entirely, contradicting the unconditional classification
+  // requirement in Observation trigger/classification.
+  assert.ok(
+    containsText(
+      core,
+      "記録義務の対象にしない軽微な事象について省略できるのは記録だけであり、classification の完了は省略しません。",
+    ),
+  );
+
+  // Observation classification supplements, and does not replace or relax,
+  // the existing three Foundation Change justification conditions.
+  assert.ok(
+    containsText(
+      core,
+      "Observation classification は、本節の 3 つの Foundation Change 正当化条件を置き換えず、緩和しません。",
+    ),
+  );
+  for (const signal of [
+    "Foundation 自身の material defect が実証された",
+    "material defect を deterministically 防止できる",
+    "同一 root cause が recurring / escaped failure になった",
+    "correctness のための mandatory manual ritual が定着した",
+    "consumer-local workaround では canonical semantics の fork が必要に",
+  ]) {
+    assert.ok(core.includes(signal), `missing Observation promotion signal: ${signal}`);
+  }
+
+  // Claude Discovery finding on PR #21: the pre-existing justification
+  // conditions and Change Proposal fields are general Foundation Change
+  // Protocol content, not Task-closure-specific, and must not nest under the
+  // "### Task closure と Observation" heading (which "### Observation から
+  // Change Proposal への昇格" still refers back to as "本節の 3 つの...
+  // 正当化条件").
+  const taskClosureHeadingIndex = core.indexOf("### Task closure と Observation");
+  const justificationHeadingIndex = core.indexOf("### Foundation Change の正当化条件");
+  const justificationReasonIndex = core.indexOf("既存の mandatory / manual step を置き換える");
+  const promotionHeadingIndex = core.indexOf("### Observation から Change Proposal への昇格");
+  assert.ok(taskClosureHeadingIndex !== -1 && justificationHeadingIndex !== -1);
+  assert.ok(
+    taskClosureHeadingIndex < justificationHeadingIndex &&
+      justificationHeadingIndex < justificationReasonIndex &&
+      justificationReasonIndex < promotionHeadingIndex,
+    "the 3 justification conditions must sit under their own heading, between Task closure and Observation promotion, not nested inside either",
+  );
+
+  assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+});
+
+test("generated consumer AGENTS.md reflects the Observation handling contract", async () => {
+  const agents = await readFile(path.join(root, "test", "fixtures", "consumer", "AGENTS.md"), "utf8");
+
+  assert.ok(agents.includes("### Observation trigger"));
+  assert.ok(agents.includes("### Observation classification"));
+  assert.ok(agents.includes("### Observation recording"));
+  assert.ok(agents.includes("### Task closure と Observation"));
+  assert.ok(agents.includes("### Foundation Change の正当化条件"));
+  assert.ok(agents.includes("### Observation から Change Proposal への昇格"));
+});
