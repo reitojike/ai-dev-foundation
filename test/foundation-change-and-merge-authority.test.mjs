@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -130,4 +130,121 @@ test("core policy separates merge-readiness from merge execution authority", asy
       "Closure Acquisition & Validity・Closure Resolution が完了した時点で merge-ready と判定します。",
     ),
   );
+});
+
+test("core policy defines a minimal Observation handling entry point (#20)", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+
+  assert.ok(core.includes("### Observation trigger"));
+  assert.ok(core.includes("### Observation classification"));
+  assert.ok(core.includes("### Observation recording"));
+  assert.ok(core.includes("### Task closure と Observation"));
+  assert.ok(core.includes("### Observation から Change Proposal への昇格"));
+
+  // Observation trigger stays event-driven: five concrete conditions, not a
+  // blanket per-Task retrospective requirement.
+  for (const trigger of [
+    "Foundation の rule / profile / tooling に従っても material correctness",
+    "Task 完了のため Foundation の迂回・上書き・補完 workaround が必要になる",
+    "Foundation が定義していない",
+    "provider / runtime の実挙動が、Task で依拠した前提と食い違う",
+    "同一 root cause と思われる friction / workaround を以前にも観測している",
+  ]) {
+    assert.ok(core.includes(trigger), `missing Observation trigger: ${trigger}`);
+  }
+  assert.ok(
+    containsText(
+      core,
+      "これらが発火しない限り、Task ごとに Foundation 改善点を探索する追加工程は要求しません。",
+    ),
+  );
+
+  // Minimal four-way classification, judged by root cause/ownership rather
+  // than severity.
+  for (const label of [
+    "`consumer-local`",
+    "`provider/runtime`",
+    "`Foundation candidate`",
+    "`canonical defect candidate`",
+  ]) {
+    assert.ok(core.includes(label), `missing Observation classification: ${label}`);
+  }
+  assert.ok(containsText(core, "症状の重大度ではなく root cause / ownership を軸に"));
+
+  // Observation is not a work item and does not auto-create a Foundation
+  // Issue; it is recorded on the originating consumer Task's canonical Issue.
+  assert.ok(
+    containsText(core, "Observation trigger の発火は、自動的に Foundation Issue を作りません。"),
+  );
+  assert.ok(containsText(core, "Observation は work item ではありません。"));
+  for (const field of [
+    "Observed / evidence locator",
+    "Classification",
+    "Impact",
+    "Local handling",
+    "Foundation action",
+    "Promotion signal",
+  ]) {
+    assert.ok(core.includes(field), `Observation record must express: ${field}`);
+  }
+
+  // Out of Scope for #20: no ledger/bot/dashboard/auto-issue/periodic-audit
+  // machinery, and no new tooling files were added to implement it.
+  assert.ok(
+    containsText(
+      core,
+      "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
+    ),
+  );
+  const toolingFiles = await readdir(path.join(root, "tooling"));
+  assert.deepEqual(
+    [...toolingFiles].sort(),
+    ["bootstrap-next-supabase.mjs", "check.mjs", "lib.mjs", "sync.mjs", "verify-guardrails.mjs"],
+    "Observation handling must not add new ledger/bot/dashboard tooling",
+  );
+
+  // Task closure collects only triggers that already fired; it is not a new
+  // improvement-discovery step.
+  assert.ok(
+    containsText(
+      core,
+      "Task closure は新しい Foundation 改善点を探索する工程ではありません。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "Task 中に Observation trigger が発火していた場合のみ、未分類・未記録のものを回収してから Task を完了します。",
+    ),
+  );
+
+  // Observation classification supplements, and does not replace or relax,
+  // the existing three Foundation Change justification conditions.
+  assert.ok(
+    containsText(
+      core,
+      "Observation classification は、本節の 3 つの Foundation Change 正当化条件を置き換えず、緩和しません。",
+    ),
+  );
+  for (const signal of [
+    "Foundation 自身の material defect が実証された",
+    "material defect を deterministically 防止できる",
+    "同一 root cause が recurring / escaped failure になった",
+    "correctness のための mandatory manual ritual が定着した",
+    "consumer-local workaround では canonical semantics の fork が必要に",
+  ]) {
+    assert.ok(core.includes(signal), `missing Observation promotion signal: ${signal}`);
+  }
+
+  assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+});
+
+test("generated consumer AGENTS.md reflects the Observation handling contract", async () => {
+  const agents = await readFile(path.join(root, "test", "fixtures", "consumer", "AGENTS.md"), "utf8");
+
+  assert.ok(agents.includes("### Observation trigger"));
+  assert.ok(agents.includes("### Observation classification"));
+  assert.ok(agents.includes("### Observation recording"));
+  assert.ok(agents.includes("### Task closure と Observation"));
+  assert.ok(agents.includes("### Observation から Change Proposal への昇格"));
 });

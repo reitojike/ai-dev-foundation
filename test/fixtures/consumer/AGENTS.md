@@ -463,6 +463,63 @@ Foundation 自身の canonical rule を変更する場合の、provider-neutral 
 
 Observation は、そのままでは Issue や mandatory rule へ自動的に昇格しません。
 
+### Observation trigger
+
+Task 実行中に少なくとも次のいずれかを観測した場合、Foundation Observation
+候補として扱います。これらが発火しない限り、Task ごとに Foundation
+改善点を探索する追加工程は要求しません。
+
+1. Foundation の rule / profile / tooling に従っても material correctness
+   が成立しない
+2. Task 完了のため Foundation の迂回・上書き・補完 workaround が必要になる
+3. correctness / security / authority のため、Foundation が定義していない
+   manual step が必要になる
+4. provider / runtime の実挙動が、Task で依拠した前提と食い違う
+5. 同一 root cause と思われる friction / workaround を以前にも観測している
+
+### Observation classification
+
+Observation trigger が発火したら、症状の重大度ではなく root cause /
+ownership を軸に、次の 4 分類のいずれかへ分類します。
+
+- `consumer-local`: product / domain / consumer 固有で自然に閉じる
+- `provider/runtime`: 外部 provider / runtime の挙動で、Foundation
+  contract 自体の欠陥ではない
+- `Foundation candidate`: shared problem になり得るが、Foundation change
+  の evidence がまだ弱い
+- `canonical defect candidate`: Foundation-owned な rule / profile /
+  tooling / artifact 自体が誤った挙動を要求・生成・許容している
+
+`provider/runtime` に分類した Observation でも、Foundation がその挙動を
+誤って恒久前提として固定している場合は、Foundation 側の candidate として
+再評価します。
+
+### Observation recording
+
+Observation trigger の発火は、自動的に Foundation Issue を作りません。
+Observation は work item ではありません。
+
+将来の Foundation 判断へ再利用する価値がある場合に限り、発生した consumer
+Task の canonical Issue へ、少なくとも次を短く記録できることを要求します。
+
+- Observed / evidence locator
+- Classification
+- Impact
+- Local handling
+- Foundation action: `none` / `observe` / `change proposal candidate`
+- Promotion signal（何が起きれば再評価するか）
+
+consumer-local で完結し、将来参照価値もない軽微な事象まで記録することは
+要求しません。専用の ledger / database / schema、GitHub label 体系、
+bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの
+mandatory 化は Observation handling の一部にしません。
+
+### Task closure と Observation
+
+Task closure は新しい Foundation 改善点を探索する工程ではありません。
+Task 中に Observation trigger が発火していた場合のみ、未分類・未記録の
+ものを回収してから Task を完了します。
+
 mandatory な Foundation change は、原則として次のいずれかで正当化します。
 
 1. 既存の mandatory / manual step を置き換える
@@ -478,6 +535,19 @@ Change Proposal は、少なくとも次を表現できるものとします。
 - Trade-off
 - Scope
 - Success Criterion
+
+### Observation から Change Proposal への昇格
+
+Observation classification は、本節の 3 つの Foundation Change 正当化
+条件を置き換えず、緩和しません。特に次は強い promotion signal になり
+得ます。
+
+- Foundation 自身の material defect が実証された
+- material defect を deterministically 防止できる
+- 同一 root cause が recurring / escaped failure になった
+- correctness のための mandatory manual ritual が定着した
+- consumer-local workaround では canonical semantics の fork が必要に
+  なる
 
 change class や review 強度は、固定の provider 名へ結びつけません。単発の
 friction、style、prompt nicety、効率改善のみを理由に、自動的に mandatory
