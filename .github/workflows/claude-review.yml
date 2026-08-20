@@ -2,9 +2,9 @@ name: Claude Code Review (manual)
 
 # Issue #12 capability smoke test: this workflow only prepares a manual,
 # explicit-mention trigger for Claude Code review. It intentionally does
-# NOT run automatically on every push (see policy/core.md Review Protocol
-# and skills/review-briefs.md). Selection Contract decides per-Task
-# whether this trigger is used.
+# NOT run automatically on every push (see policy/core.md Review Protocol,
+# Review Adapter boundary). Selection Contract decides per-Task whether
+# this trigger is used.
 
 on:
   issue_comment:
@@ -38,3 +38,4 @@ jobs:
           claude_args: |
             --max-turns 10
             --allowedTools Read,Grep,Glob
+            --disallowedTools Edit,Write,MultiEdit,NotebookEdit
