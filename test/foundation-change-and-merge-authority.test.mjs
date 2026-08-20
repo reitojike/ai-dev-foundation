@@ -107,4 +107,18 @@ test("core policy separates merge-readiness from merge execution authority", asy
       "authority が明示されていない、または別 authority の承認が必要な場合は merge を実行せず、merge-ready の状態を報告して停止し、authority escalation / handoff します。",
     ),
   );
+
+  // Regression proof (converged CodeRabbit + independent Claude Discovery finding
+  // on this PR): Step 13 must not contain an unqualified "...時点で merge します"
+  // completion sentence a skimming reader/agent could act on as an unconditional
+  // merge instruction. Both completion branches must read as a merge-ready
+  // determination instead.
+  assert.doesNotMatch(
+    reviewCode,
+    /時点で merge します/,
+    "review-code.md Step 13 must not phrase review completion as an unqualified merge instruction",
+  );
+  assert.ok(
+    containsText(reviewCode, "が完了した時点で merge-ready と判定します。"),
+  );
 });

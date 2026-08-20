@@ -172,11 +172,13 @@ review でも同じ意味で適用します。
     停止し、authority escalation / handoff します。
     この review flow で accepted finding の fix による
     target 変更が一度も発生していなければ、required review 数の valid
-    discovery と Resolution（手順 6）が完了した時点で merge します。
+    discovery と Resolution（手順 6）が完了した時点で merge-ready と
+    判定します。
     target 変更が発生していれば（手順 9 を挟んだ場合を含む）、手順 6 の
     discovery Resolution（手順 9 を使った場合はその Resolution も含む）
     と、Closure Acquisition & Validity・Closure Resolution が完了した
-    時点で merge します。discovery Resolution と closure の完了順序は
+    時点で merge-ready と判定します。discovery Resolution と closure の
+    完了順序は
     問いません。
 
 ## Adapter boundary（manual pilot）
