@@ -114,11 +114,20 @@ test("core policy separates merge-readiness from merge execution authority", asy
   // merge instruction. Both completion branches must read as a merge-ready
   // determination instead.
   assert.doesNotMatch(
-    reviewCode,
-    /時点で merge します/,
+    stripWhitespace(reviewCode),
+    /時点でmergeします/,
     "review-code.md Step 13 must not phrase review completion as an unqualified merge instruction",
   );
   assert.ok(
-    containsText(reviewCode, "が完了した時点で merge-ready と判定します。"),
+    containsText(
+      reviewCode,
+      "required review 数の valid discovery と Resolution（手順 6）が完了した時点で merge-ready と判定します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "Closure Acquisition & Validity・Closure Resolution が完了した時点で merge-ready と判定します。",
+    ),
   );
 });
