@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -183,6 +182,19 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     ),
   );
 
+  // Closure-round Codex finding: a confirmed Foundation-owned friction that
+  // is not itself erroneous (e.g. a correct-but-improvable manual step) fit
+  // none of the 4 categories once ownership-confirmed defects were required
+  // to be `canonical defect candidate`. Fold ownership-confirmed
+  // non-defect improvement opportunities into the same category instead of
+  // adding a 5th label (the Issue #20 AC requires exactly 4).
+  assert.ok(
+    containsText(
+      core,
+      "ownership が Foundation-owned だと確定していて、誤った挙動とまでは言えない改善余地",
+    ),
+  );
+
   // Observation is not a work item and does not auto-create a Foundation
   // Issue; it is recorded on the originating consumer Task's canonical Issue.
   assert.ok(
@@ -219,29 +231,21 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
       "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
     ),
   );
-  // Codex Discovery findings across multiple rounds on PR #21: neither an
-  // exact directory-equality check (fails on any unrelated future addition)
-  // nor a filename-token pattern (both false-positives on names like
-  // "release-bot.mjs" and false-negatives on unrelated names like
-  // "tooling/observation/index.mjs") can distinguish "implements Observation
-  // machinery" from "matches a word". Assert the actual, precise claim
-  // instead: this change does not add any file under tooling/, checked via
-  // the diff against this branch's merge-base rather than by guessing from
-  // names.
-  const mergeBase = spawnSync("git", ["merge-base", "HEAD", "main"], {
-    cwd: root,
-    encoding: "utf8",
-  }).stdout.trim();
-  const addedToolingFiles = spawnSync(
-    "git",
-    ["diff", "--name-status", "--diff-filter=AC", `${mergeBase}..HEAD`, "--", "tooling"],
-    { cwd: root, encoding: "utf8" },
-  ).stdout.trim();
-  assert.equal(
-    addedToolingFiles,
-    "",
-    `Observation handling must not add new tooling files (found: ${addedToolingFiles})`,
-  );
+  // Codex Discovery findings across multiple rounds on PR #21: an exact
+  // directory-equality check, a filename-token pattern, and a dynamic
+  // merge-base diff were each tried and each had a real failure mode (fails
+  // on unrelated future tooling additions; false-positives/negatives on
+  // filenames; or, for the merge-base diff, silently becomes a *permanent*
+  // "no one may ever add a tooling file" gate on this test file long after
+  // this PR merges, since `git merge-base HEAD main` re-resolves on every
+  // future branch that happens to reuse this code). Whether this specific
+  // PR added new tooling files is a one-time historical fact about this
+  // PR's landing, not an evergreen property this file can assert on every
+  // future checkout — so it is not encoded as an automated regression check
+  // here. It was instead verified once, out of band, via
+  // `git diff --stat <PR base>..HEAD -- tooling` returning no changes, and
+  // is reported as evidence in the PR itself. The canonical, permanent
+  // contract asserted below is the policy text prohibiting this machinery.
 
   // Task closure collects only triggers that already fired; it is not a new
   // improvement-discovery step. It also does not force recording of

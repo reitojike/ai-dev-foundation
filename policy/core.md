@@ -491,7 +491,11 @@ ownership を軸に、次の 4 分類のいずれかへ分類します。
 tooling / artifact 自体の欠陥だと確認できる場合は、Change Proposal に
 足る evidence の強さに関わらず `canonical defect candidate` とします。
 ownership が Foundation 側かどうか自体がまだ確認できていない shared
-problem の場合に限り `Foundation candidate` とします。
+problem の場合に限り `Foundation candidate` とします。ownership が
+Foundation-owned だと確定していて、誤った挙動とまでは言えない改善余地
+（例えば、正しく機能しているが自動化・簡略化できる manual step）の場合も、
+他の3分類のいずれにも該当しなければ `canonical defect candidate` に
+含めます。
 
 ### Observation recording
 
