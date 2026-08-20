@@ -177,6 +177,17 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     containsText(core, "Observation trigger の発火は、自動的に Foundation Issue を作りません。"),
   );
   assert.ok(containsText(core, "Observation は work item ではありません。"));
+
+  // Recording is a mandatory obligation (not merely a recordable capability)
+  // when the future-reuse-value condition is met — CodeRabbit/Codex Discovery
+  // finding on PR #21: "記録できることを要求します" read as capability-only and
+  // let required evidence be omitted at Task closure.
+  assert.ok(
+    containsText(
+      core,
+      "将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task の canonical Issue へ、少なくとも次を短く記録します。",
+    ),
+  );
   for (const field of [
     "Observed / evidence locator",
     "Classification",
@@ -196,15 +207,21 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
       "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
     ),
   );
+  // Codex Discovery finding on PR #21: an exact directory-equality check
+  // would fail on any unrelated future tooling addition. Assert the absence
+  // of the specifically prohibited machinery instead.
   const toolingFiles = await readdir(path.join(root, "tooling"));
+  const observationMachineryPattern = /ledger|dashboard|collector|-?bot-?|statistics/i;
   assert.deepEqual(
-    [...toolingFiles].sort(),
-    ["bootstrap-next-supabase.mjs", "check.mjs", "lib.mjs", "sync.mjs", "verify-guardrails.mjs"],
-    "Observation handling must not add new ledger/bot/dashboard tooling",
+    toolingFiles.filter((file) => observationMachineryPattern.test(file)),
+    [],
+    "Observation handling must not add new ledger/bot/dashboard/collector tooling",
   );
 
   // Task closure collects only triggers that already fired; it is not a new
-  // improvement-discovery step.
+  // improvement-discovery step. It also does not force recording of
+  // observations the recording contract exempts (Codex Discovery finding on
+  // PR #21: the closure gate must not conflict with the recording exemption).
   assert.ok(
     containsText(
       core,
@@ -214,8 +231,11 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   assert.ok(
     containsText(
       core,
-      "Task 中に Observation trigger が発火していた場合のみ、未分類・未記録のものを回収してから Task を完了します。",
+      "Task 中に Observation trigger が発火していた場合、未分類のもの、または上記の記録義務があるのに未記録のものだけを回収してから Task を完了します。",
     ),
+  );
+  assert.ok(
+    containsText(core, "記録義務の対象にしない軽微な事象は、この回収の対象にしません。"),
   );
 
   // Observation classification supplements, and does not replace or relax,

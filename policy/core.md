@@ -491,8 +491,8 @@ ownership を軸に、次の 4 分類のいずれかへ分類します。
 Observation trigger の発火は、自動的に Foundation Issue を作りません。
 Observation は work item ではありません。
 
-将来の Foundation 判断へ再利用する価値がある場合に限り、発生した consumer
-Task の canonical Issue へ、少なくとも次を短く記録できることを要求します。
+将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task
+の canonical Issue へ、少なくとも次を短く記録します。
 
 - Observed / evidence locator
 - Classification
@@ -501,16 +501,17 @@ Task の canonical Issue へ、少なくとも次を短く記録できること�
 - Foundation action: `none` / `observe` / `change proposal candidate`
 - Promotion signal（何が起きれば再評価するか）
 
-consumer-local で完結し、将来参照価値もない軽微な事象まで記録することは
-要求しません。専用の ledger / database / schema、GitHub label 体系、
+consumer-local で完結し、将来参照価値もない軽微な事象は、この記録義務の
+対象にしません。専用の ledger / database / schema、GitHub label 体系、
 bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの
 mandatory 化は Observation handling の一部にしません。
 
 ### Task closure と Observation
 
 Task closure は新しい Foundation 改善点を探索する工程ではありません。
-Task 中に Observation trigger が発火していた場合のみ、未分類・未記録の
-ものを回収してから Task を完了します。
+Task 中に Observation trigger が発火していた場合、未分類のもの、または
+上記の記録義務があるのに未記録のものだけを回収してから Task を完了します。
+記録義務の対象にしない軽微な事象は、この回収の対象にしません。
 
 mandatory な Foundation change は、原則として次のいずれかで正当化します。
 
