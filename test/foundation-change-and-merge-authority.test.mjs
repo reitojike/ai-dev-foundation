@@ -256,6 +256,24 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     assert.ok(core.includes(signal), `missing Observation promotion signal: ${signal}`);
   }
 
+  // Claude Discovery finding on PR #21: the pre-existing justification
+  // conditions and Change Proposal fields are general Foundation Change
+  // Protocol content, not Task-closure-specific, and must not nest under the
+  // "### Task closure と Observation" heading (which "### Observation から
+  // Change Proposal への昇格" still refers back to as "本節の 3 つの...
+  // 正当化条件").
+  const taskClosureHeadingIndex = core.indexOf("### Task closure と Observation");
+  const justificationHeadingIndex = core.indexOf("### Foundation Change の正当化条件");
+  const justificationReasonIndex = core.indexOf("既存の mandatory / manual step を置き換える");
+  const promotionHeadingIndex = core.indexOf("### Observation から Change Proposal への昇格");
+  assert.ok(taskClosureHeadingIndex !== -1 && justificationHeadingIndex !== -1);
+  assert.ok(
+    taskClosureHeadingIndex < justificationHeadingIndex &&
+      justificationHeadingIndex < justificationReasonIndex &&
+      justificationReasonIndex < promotionHeadingIndex,
+    "the 3 justification conditions must sit under their own heading, between Task closure and Observation promotion, not nested inside either",
+  );
+
   assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
 });
 
@@ -266,5 +284,6 @@ test("generated consumer AGENTS.md reflects the Observation handling contract", 
   assert.ok(agents.includes("### Observation classification"));
   assert.ok(agents.includes("### Observation recording"));
   assert.ok(agents.includes("### Task closure と Observation"));
+  assert.ok(agents.includes("### Foundation Change の正当化条件"));
   assert.ok(agents.includes("### Observation から Change Proposal への昇格"));
 });

@@ -513,6 +513,8 @@ Task 中に Observation trigger が発火していた場合、未分類のもの
 上記の記録義務があるのに未記録のものだけを回収してから Task を完了します。
 記録義務の対象にしない軽微な事象は、この回収の対象にしません。
 
+### Foundation Change の正当化条件
+
 mandatory な Foundation change は、原則として次のいずれかで正当化します。
 
 1. 既存の mandatory / manual step を置き換える
