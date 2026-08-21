@@ -76,6 +76,20 @@ test("core policy defines a thin invocation convention over a canonical Task Con
     /canonical\s+Task Contract の不足に気付いた場合は、省略ではなく Task Contract 自体の\s+更新を優先します。/,
   );
 
+  // Guardrail (Codex P2 finding on PR #33 closure round): thin invocation
+  // presupposes the receiving agent/session can actually reach the Issue
+  // (an Execution Envelope / capability property, independent of Semantic
+  // Contract sufficiency). When that access isn't guaranteed, the invoker
+  // must inline the needed Task Contract content rather than a bare locator.
+  assert.match(
+    core,
+    /thin invocation は、受け手の agent\/session が Issue 本文へアクセスできる\s+ことを前提とします。/,
+  );
+  assert.match(
+    core,
+    /受け手が Issue\s+本文へアクセスできることを保証できない場合、locator の提示だけで済ませ\s+ず、必要な Task Contract の内容を invocation へ直接含めます。/,
+  );
+
   // Provider-neutral: no new prompt schema/DSL/generator, no hardcoded CLI/model.
   assert.match(core, /この convention は provider-neutral です。/);
   assert.match(core, /新しい\s+prompt schema \/ DSL \/ generator の導入を要求しません。/);

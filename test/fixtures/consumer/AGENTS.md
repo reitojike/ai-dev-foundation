@@ -179,6 +179,12 @@ material な追加 decision が session を跨いで継続的に必要になる�
 Task Contract の不足に気付いた場合は、省略ではなく Task Contract 自体の
 更新を優先します。
 
+thin invocation は、受け手の agent/session が Issue 本文へアクセスできる
+ことを前提とします。この access 可否は available tools 等の Execution
+Envelope に属し、Semantic Contract の充足度とは独立です。受け手が Issue
+本文へアクセスできることを保証できない場合、locator の提示だけで済ませ
+ず、必要な Task Contract の内容を invocation へ直接含めます。
+
 この convention は provider-neutral です。特定の CLI、agent runtime、
 または model 向けの invocation format を Kernel に固定しません。新しい
 prompt schema / DSL / generator の導入を要求しません。
