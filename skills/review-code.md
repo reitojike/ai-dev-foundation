@@ -201,9 +201,11 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
   それらの要求事項のいずれかを surface から判定できない場合は、
   reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を
   残さない場合（例: 実装 session 内で動く subagent review）と同様に扱い、
-  `collectOutputs()` に相当する手段として、その run の record を
-  `policy/core.md` の record schema に沿った内容で PR/Issue 上の comment
-  等へ明示的に persist し、それを result locator とします。
+  `collectOutputs()` に相当する手段として、`policy/core.md` の record
+  schema の各 field に加え、上記の Completion / Validity 要求事項を独立に
+  判定できる情報（`validity` 等の判定結果の要約だけでなく、その根拠と
+  なる情報）を PR/Issue 上の comment 等へ明示的に persist し、それを
+  result locator とします。
 - `normalizeFindings()`: 集めた出力を record schema と triage category へ変換し、
   finding ごとに出典 surface と locator を残します。
 

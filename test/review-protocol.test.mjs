@@ -198,13 +198,6 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "acquisition の record は、後続 session から独立に recoverable な場所へpersist されて初めて durable evidence です。",
     ),
   );
-  assert.ok(
-    containsText(
-      core,
-      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、その run の record を上記の record schema に沿った内容で、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
-    ),
-  );
-
   // Closure round (Codex P2 on PR #24): an existing provider surface that
   // already carries enough information in a later-session-recoverable form
   // counts as the record itself — this must not be read as requiring every
@@ -221,20 +214,41 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "reviewer mechanism が残す surface から、本 Contract が定義する Completion と Validity の要求事項",
+      "本 Contract が定義する Completion と Validity の要求事項を独立に判定できるだけの情報が",
     ),
   );
   assert.ok(
     containsText(
       core,
-      "その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
+      "reviewer mechanism が外部から確認可能な surface へ残す結果に、その判定に必要な情報が既に含まれていれば、その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
+    ),
+  );
+  // 4th closure round (root-cause fix #2, Codex P2): the first root-cause fix
+  // still let the no-surface fallback path point at the bare record schema,
+  // whose `validity` field is only a self-asserted conclusion — so a later
+  // session had no way to independently re-derive it, unlike the surface
+  // branch which requires independently-judgable raw information. Unify both
+  // branches under one bar (enough info to independently judge Completion/
+  // Validity) so the schema's summary fields can never again be mistaken for
+  // a substitute for the evidence behind them.
+  assert.ok(
+    containsText(
+      core,
+      "含まれていない場合（reviewer mechanism 自身がそのような surface へ結果を残さない場合、例えば実装 session 内で動く subagent review を含む）は、上記の record schema の各 field に加え、Completion と Validity の要求事項",
     ),
   );
   assert.ok(
     containsText(
       core,
-      "これらの要求事項のいずれかを surface から判定できない場合は、この十分条件を満たさず、その run を recoverable な evidence として扱いません。",
+      "を独立に判定できる情報を、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
     ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "record schema 自体（特に `validity` field）は判定結果の要約であり、その根拠情報の代わりにはなりません。",
+    ),
+    "the record schema's validity field must not be treated as sufficient evidence on its own",
   );
   // The sufficiency bar must not silently re-narrow to only a hand-picked
   // subset — it must cover Validity's own 4 listed requirements by reference.
@@ -732,7 +746,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）と同様に扱い、`collectOutputs()` に相当する手段として、その run の record を",
+      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）と同様に扱い、`collectOutputs()` に相当する手段として、`policy/core.md` の record schema の各 field に加え",
     ),
   );
   assert.ok(
@@ -764,6 +778,16 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(
       reviewCode,
       "それらの要求事項のいずれかを surface から判定できない場合は",
+    ),
+  );
+  // 4th closure round (root-cause fix #2, Codex P2): the no-surface fallback
+  // here must also require evidence for Completion/Validity, not just
+  // conformance to the bare record schema (whose `validity` field is only a
+  // self-asserted conclusion a later session can't independently re-derive).
+  assert.ok(
+    containsText(
+      reviewCode,
+      "`policy/core.md` の record schema の各 field に加え、上記の Completion / Validity 要求事項を独立に判定できる情報",
     ),
   );
 
