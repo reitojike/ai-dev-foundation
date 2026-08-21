@@ -138,11 +138,11 @@ handoff を毎 Task で義務化しませんが、High role を終える時点�
 
 ### Thin invocation over a canonical Task Contract
 
-canonical Task Contract が durable な project surface（Issue 本文等）に
-既に存在する場合、agent invocation はその内容を原則として再掲せず参照
-します。長い session-local prompt がなければ Task を再開できないことを
-目指すのではなく、durable な canonical Task Contract から新しい
-agent/session が作業を再開できることを目指します。
+Task の canonical context は Issue 本文です（本節冒頭）。この canonical
+Task Contract が既に Issue 本文へ存在する場合、agent invocation はその
+内容を原則として再掲せず、Issue を参照します。長い session-local prompt
+がなければ Task を再開できないことを目指すのではなく、durable な Issue
+本文から新しい agent/session が作業を再開できることを目指します。
 
 canonical Task Contract が存在する場合、invocation / handoff prompt へ
 含めるのは原則として次に限定します。
@@ -161,9 +161,9 @@ Criteria / design constraint 等を、理由なく invocation prompt へ複製�
 せん。
 
 material な追加 decision が session を跨いで継続的に必要になる場合は、
-可能な限り durable surface（Issue 本文の更新等）へ materialize した上で、
-invocation からはそれを参照します。invocation prompt 自体を追加 decision
-の正本にしません。
+可能な限り durable な Issue 本文へ materialize した上で、invocation
+からはそれを参照します。invocation prompt 自体を追加 decision の正本に
+しません。
 
 短い prompt 自体を目的にしません。canonical Task Contract が不十分な場合
 や、緊急の session-local constraint がある場合は、必要な情報を invocation

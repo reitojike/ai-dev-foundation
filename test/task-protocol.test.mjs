@@ -39,8 +39,13 @@ test("core policy defines a thin invocation convention over a canonical Task Con
   // exists on a durable surface.
   assert.match(
     core,
-    /canonical Task Contract が durable な project surface（Issue 本文等）に\s+既に存在する場合、agent invocation はその内容を原則として再掲せず参照\s+します。/,
+    /Task の canonical context は Issue 本文です（本節冒頭）。この canonical\s+Task Contract が既に Issue 本文へ存在する場合、agent invocation はその\s+内容を原則として再掲せず、Issue を参照します。/,
   );
+
+  // Regression guard (Codex P2 finding on PR #33): the new section must not
+  // introduce a broader "durable surface" than the single canonical context
+  // ("Issue 本文") already fixed earlier in this Task Protocol section.
+  assert.doesNotMatch(core, /durable な project surface（Issue 本文等）/);
 
   // Representative examples of what invocation/handoff prompts should still carry.
   for (const item of [
