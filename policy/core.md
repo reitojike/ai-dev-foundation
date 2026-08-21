@@ -211,6 +211,17 @@ completion していても invalid です。この場合、record は `status: c
 かつ `validity: invalid` として表現します。
 intended artifact set が review されていない場合も invalid です。
 
+**acquisition の record は、後続 session から独立に recoverable な場所へ
+persist されて初めて durable evidence です。** review を行った
+agent/session が終了した後、別の後続 session がその session の記憶に
+頼らず参照できる場所（PR/Issue 上の comment 等）に record が存在しない
+限り、その run を merge / review completion の根拠として扱いません。
+reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を
+残さない場合（例: 実装 session 内で動く subagent review）は、その run の
+record を上記の record schema に沿った内容で、そのような場所へ明示的に
+persist しない限り、session 終了後には recoverable な evidence として
+扱いません。
+
 **0 findings は positive evidence を必要とします。** reaction なし、comment なし、
 parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
 completion evidence のない empty output は `unknown` として扱います。

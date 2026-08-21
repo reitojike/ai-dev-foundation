@@ -188,6 +188,22 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
   assert.ok(containsText(core, "intended artifact set が review されていない場合も invalid です。"));
+
+  // Issue #22: acquisition records are only durable evidence once persisted
+  // somewhere a later session can recover independent of the reviewing
+  // agent/session (e.g. a PR/Issue comment), not merely "recordable".
+  assert.ok(
+    containsText(
+      core,
+      "acquisition の record は、後続 session から独立に recoverable な場所へpersist されて初めて durable evidence です。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、その run の record を上記の record schema に沿った内容で、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
+    ),
+  );
   assert.ok(
     containsText(core, "positive completion evidence のない empty output は `unknown` として扱います。"),
   );
@@ -666,6 +682,26 @@ test("review skills document procedure without duplicating normative rules", asy
     assert.ok(reviewCode.includes(phrase), `review-code.md missing: ${phrase}`);
   }
   assert.ok(containsText(reviewCode, "Claude / Codex / CodeRabbit"));
+
+  // Issue #22: collectOutputs() must cover mechanisms with no external
+  // surface of their own (e.g. in-session/subagent review) by persisting the
+  // run's record somewhere recoverable, deferring to policy's record schema
+  // rather than restating it.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、`collectOutputs()` に相当する手段として、その run の record を",
+    ),
+  );
+  assert.ok(
+    containsText(reviewCode, "GitHub-native trigger 経路を持つならそれを優先する方が"),
+    "review-code.md must document the observed GitHub-native-trigger preference without hardcoding a permanent provider rule",
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /GitHub-native trigger[^\n]*(Claude|Codex|CodeRabbit)/,
+    "the GitHub-native-trigger preference must stay an anonymized observed example, not a provider-specific permanent rule",
+  );
 
   // Commit range as review target (Codex P1): review target is SHA and,
   // applicable, commit range, per Selection Contract's own field name — not
