@@ -189,7 +189,10 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 - `trigger()`: reviewer をどう起動したか（PR 更新での automatic trigger、
   `@reviewer review` のような明示的な command 等）を記録します。
 - `pollCompletion()`: completion をどう確認したか（status の変化、comment の投稿、
-  run の所要時間等）を記録します。CI/status のみでの判断はしません。
+  run の所要時間等）を記録します。CI/status のみでの判断はしません。completion 判定に
+  使う comment / review submission は、判定するその時点で ID を指定して fresh に
+  再取得した state / body を使います。会話内で既に見た comment の内容や、以前取得した
+  snapshot をそのまま completion 判定の根拠にせず、pending 継続の理由にもしません。
 - `collectOutputs()`: この provider で確認できる surface（top-level PR comment、
   inline/thread comment、review submission/summary、status/check、必要なら
   workflow log、edited comment）を確認し、内容の有無にかかわらず「どの surface を
@@ -228,6 +231,17 @@ Acquisition & Validity Contract の recoverability 要件を満たしやすい�
 capability record 側で再検証可能な observed evidence として扱ってください。
 GitHub-native 経路を使わず in-session/subagent review を選ぶ場合は、上記の
 `collectOutputs()` の persist 手順を必ず行います。
+
+さらに別の観測として、GitHub Actions 経由で PR comment を投稿・編集する reviewer では、
+その reviewer を起動した Actions job/step 自身の conclusion（success/failure）が、同じ
+job が編集した comment 本文の completion 状態と一致しないことが実測されています。
+具体的には、job/step の conclusion が `failure` であっても、対応する comment の body には
+completion を示す marker（例: 全項目 checked の todo list、明示的な complete 文言）と
+実質的な review 内容が既に存在していたケースがありました。この種の reviewer では、
+wrapping job/step の conclusion 単独を completion または failure の根拠にせず、
+comment 本文の completion marker を fresh 再取得した上で直接確認してください。これも
+特定 provider の恒久仕様ではなく、observed evidence として capability/profile 側で
+再検証可能な形で扱います。
 
 ## Manual review pilot
 
