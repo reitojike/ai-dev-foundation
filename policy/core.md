@@ -220,7 +220,11 @@ reviewer mechanism 自身がそのような外部から確認可能な surface �
 残さない場合（例: 実装 session 内で動く subagent review）は、その run の
 record を上記の record schema に沿った内容で、そのような場所へ明示的に
 persist しない限り、session 終了後には recoverable な evidence として
-扱いません。
+扱いません。reviewer mechanism が残す surface に、reviewed target・
+finding 内容・completion 状態を後続 session が独立に判定できる形で
+含んでいる場合は、その surface 自体をこの record の recoverable な
+representation として扱ってよく、別途 record を post し直す必要は
+ありません。
 
 **0 findings は positive evidence を必要とします。** reaction なし、comment なし、
 parser 0 件、status success のみを `no findings` へ変換してはいけません。positive

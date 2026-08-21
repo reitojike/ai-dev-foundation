@@ -204,6 +204,17 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、その run の record を上記の record schema に沿った内容で、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
     ),
   );
+
+  // Closure round (Codex P2 on PR #24): an existing provider surface that
+  // already carries reviewed target / findings / completion in a later-session-
+  // recoverable form counts as the record itself — this must not be read as
+  // requiring every already-durable run to additionally post a normalized record.
+  assert.ok(
+    containsText(
+      core,
+      "reviewer mechanism が残す surface に、reviewed target・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいる場合は、その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
+    ),
+  );
   assert.ok(
     containsText(core, "positive completion evidence のない empty output は `unknown` として扱います。"),
   );
@@ -701,6 +712,16 @@ test("review skills document procedure without duplicating normative rules", asy
     reviewCode,
     /GitHub-native trigger[^\n]*(Claude|Codex|CodeRabbit)/,
     "the GitHub-native-trigger preference must stay an anonymized observed example, not a provider-specific permanent rule",
+  );
+
+  // Closure round (Codex P2 on PR #24): collectOutputs() must state that a
+  // sufficiently informative existing surface counts as the recoverable
+  // record itself, not just describe the no-surface persistence fallback.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "この surface が、reviewed target・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいれば、`policy/core.md` の Acquisition & Validity Contract が要求する record の recoverable な representation として、その surface 自体を result locator に使えます",
+    ),
   );
 
   // Commit range as review target (Codex P1): review target is SHA and,

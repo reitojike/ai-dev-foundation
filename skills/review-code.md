@@ -193,12 +193,15 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 - `collectOutputs()`: この provider で確認できる surface（top-level PR comment、
   inline/thread comment、review submission/summary、status/check、必要なら
   workflow log、edited comment）を確認し、内容の有無にかかわらず「どの surface を
-  確認したか」を記録します。reviewer mechanism 自身がそのような外部から確認可能な
-  surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、
-  `collectOutputs()` に相当する手段として、その run の record を
-  `policy/core.md` の Acquisition & Validity Contract の record schema に
-  沿った内容で PR/Issue 上の comment 等へ明示的に persist し、それを
-  result locator とします。
+  確認したか」を記録します。この surface が、reviewed target・finding 内容・
+  completion 状態を後続 session が独立に判定できる形で含んでいれば、
+  `policy/core.md` の Acquisition & Validity Contract が要求する record の
+  recoverable な representation として、その surface 自体を result locator に
+  使えます（別途 record を post し直す必要はありません）。reviewer mechanism
+  自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装
+  session 内で動く subagent review）は、`collectOutputs()` に相当する手段
+  として、その run の record を上記の record schema に沿った内容で PR/Issue
+  上の comment 等へ明示的に persist し、それを result locator とします。
 - `normalizeFindings()`: 集めた出力を record schema と triage category へ変換し、
   finding ごとに出典 surface と locator を残します。
 
