@@ -221,8 +221,8 @@ Issue close の execution authority は、Merge readiness and merge authority �
 close の実行を許可している場合に限り、agent は Issue を close してよいです。authority
 が明示されていない場合、または別 authority の承認が必要な場合、agent は Issue 本文の
 編集や close を実行せず、どの Acceptance Criteria がどの evidence で満たされているか
-（または未達か）を completion handoff として明示的に残した上で停止し、authority
-escalation / handoff します。
+（または未達か）を手順 5 の completion comment として明示的に残した上で停止し、
+authority escalation / handoff します。
 
 auto-close keyword（例: PR 本文の "Closes #N"）によって Acceptance Criteria 確認前に
 Issue が自動 close される運用を、標準運用にしません。
