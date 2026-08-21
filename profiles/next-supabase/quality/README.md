@@ -143,7 +143,11 @@ containers / volumes等）を共有する場合、そのstackはshared local sta
 shared local stackに対して上記を実行するagentは、少なくとも次を満たします。
 
 1. destructive / statefulなDB operationの前に、そのstackに対するexclusive
-   ownershipを合理的な方法で確認する。
+   ownershipを確認し、そのownershipをoperation完了まで排他的に維持する。
+   一時点のcheck（time-of-check）だけでoperationの実行（time-of-use）中の
+   排他性を保証しない方法は、この要件を満たしません。ほぼ同時に開始した
+   複数checkoutが互いを「利用中でない」と判定してしまうgapを許容しない
+   方法を用います。
 2. 他checkoutが同じstackをactiveに利用中であれば、並行して実行しない。
 3. verification対象のcheckout自身のmigration / configから、その
    verification用のclean target stateを作る。
@@ -162,7 +166,11 @@ checkout由来でなければ、その結果はverification evidenceとしてinv
 exclusive ownershipの確認方法（lockfile、mutex、scheduler、
 `pg_stat_activity`の確認、process inspection、runtime固有のlocking等）は
 Foundationが特定の実装を指定しません。consumer / runtimeに合った合理的な
-mechanismを選びます。
+mechanismを選びますが、選んだmechanismはitem 1のtime-of-check/time-of-use
+gapを許容しないことを満たす必要があります（例えば`pg_stat_activity`や
+process inspectionのみを単発の時点確認として使う場合、それ単独では
+operation完了までの排他性を保証しないため、lockfile/mutex等の排他制御と
+組み合わせるか、そのgapを埋める他の方法を併用します）。
 
 ### Isolated local stack
 

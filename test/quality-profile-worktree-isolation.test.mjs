@@ -76,7 +76,18 @@ test("Next.js + Supabase quality profile defines shared local stack exclusive-re
     containsText(
       readme,
       "Foundationが特定の実装を指定しません。consumer / runtimeに合った合理的な" +
-        "mechanismを選びます。",
+        "mechanismを選びますが、選んだmechanismはitem 1のtime-of-check/time-of-use" +
+        "gapを許容しないことを満たす必要があります",
+    ),
+  );
+
+  // Ownership confirmation must not be a point-in-time check alone (TOCTOU).
+  assert.ok(
+    containsText(
+      readme,
+      "そのownershipをoperation完了まで排他的に維持する。" +
+        "一時点のcheck（time-of-check）だけでoperationの実行（time-of-use）中の" +
+        "排他性を保証しない方法は、この要件を満たしません。",
     ),
   );
 });
