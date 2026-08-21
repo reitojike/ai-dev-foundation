@@ -1,8 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const foundationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const qualityProfileSourceDirectory = path.join(foundationRoot, "profiles", "next-supabase", "quality");
 
 export function parseConsumerArgument(argv) {
   const index = argv.indexOf("--consumer");
@@ -29,4 +30,68 @@ export async function composeAgents(consumerDirectory) {
 
 export async function composeClaude() {
   return read("templates/CLAUDE.md");
+}
+
+// Lists every non-directory entry (regular file, symlink — broken or not)
+// under `directory` as sorted, POSIX-separated paths relative to it. Uses
+// Dirent typing rather than "try to read it" so a broken symlink is still
+// reported as an entry instead of being mistaken for a missing directory.
+async function listRelativeEntries(directory) {
+  let entries;
+  try {
+    entries = await readdir(directory, { recursive: true, withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  return entries
+    .filter((entry) => !entry.isDirectory())
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    .map((absolutePath) => path.relative(directory, absolutePath).split(path.sep).join("/"))
+    .sort();
+}
+
+// Only ENOENT (missing file, or a symlink whose target doesn't exist) is
+// treated as "no content"; any other read failure (e.g. permissions) is a
+// real problem and must not be silently reported as ordinary content drift.
+async function readContentOrNull(filePath) {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+// Compares the Foundation-owned quality profile directory
+// (profiles/next-supabase/quality) against a bootstrapped consumer's
+// .ai-dev-foundation/quality. Missing, mismatched, and stale-extra files are
+// all reported as drift so a repin without re-running bootstrap cannot pass.
+export async function diffQualityProfile(consumerDirectory) {
+  const destination = path.join(consumerDirectory, ".ai-dev-foundation", "quality");
+  const [sourceRelativePaths, destinationRelativePaths] = await Promise.all([
+    listRelativeEntries(qualityProfileSourceDirectory),
+    listRelativeEntries(destination),
+  ]);
+  const destinationRelativePathSet = new Set(destinationRelativePaths);
+  const drifted = new Set();
+
+  for (const relative of sourceRelativePaths) {
+    if (!destinationRelativePathSet.has(relative)) {
+      drifted.add(relative); // missing in consumer
+      continue;
+    }
+    const [sourceContent, destinationContent] = await Promise.all([
+      readContentOrNull(path.join(qualityProfileSourceDirectory, ...relative.split("/"))),
+      readContentOrNull(path.join(destination, ...relative.split("/"))),
+    ]);
+    if (sourceContent !== destinationContent) drifted.add(relative);
+  }
+
+  const sourceRelativePathSet = new Set(sourceRelativePaths);
+  for (const relative of destinationRelativePaths) {
+    if (!sourceRelativePathSet.has(relative)) drifted.add(relative); // stale extra entry
+  }
+
+  return [...drifted].sort();
 }
