@@ -193,11 +193,14 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 - `collectOutputs()`: この provider で確認できる surface（top-level PR comment、
   inline/thread comment、review submission/summary、status/check、必要なら
   workflow log、edited comment）を確認し、内容の有無にかかわらず「どの surface を
-  確認したか」を記録します。この surface が、reviewed target・finding 内容・
-  completion 状態を後続 session が独立に判定できる形で含んでいれば、
-  `policy/core.md` の Acquisition & Validity Contract が要求する record の
-  recoverable な representation として、その surface 自体を result locator に
-  使えます（別途 record を post し直す必要はありません）。reviewer mechanism
+  確認したか」を記録します。この surface が、reviewed target・reviewed
+  artifact set・finding 内容・completion 状態を後続 session が独立に
+  判定できる形で含んでいれば、`policy/core.md` の Acquisition & Validity
+  Contract が要求する record の recoverable な representation として、
+  その surface 自体を result locator に使えます（別途 record を post し
+  直す必要はありません）。intended artifact set が review 対象になって
+  いるかを surface から判定できない場合は、この十分条件を満たしません。
+  reviewer mechanism
   自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装
   session 内で動く subagent review）は、`collectOutputs()` に相当する手段
   として、その run の record を上記の record schema に沿った内容で PR/Issue

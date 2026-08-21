@@ -212,7 +212,18 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "reviewer mechanism が残す surface に、reviewed target・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいる場合は、その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
+      "reviewer mechanism が残す surface に、reviewed target・reviewed artifact set・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいる場合は、その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
+    ),
+  );
+  // 2nd closure round (Claude on PR #24): the surface-sufficiency bar must
+  // also require artifact-set coverage to be judgable, mirroring Validity's
+  // separate "intended artifact set が review 対象になっている" requirement —
+  // otherwise a target-matching, 0-finding comment that silently skipped part
+  // of the intended artifact set could be misread as durable valid evidence.
+  assert.ok(
+    containsText(
+      core,
+      "intended artifact set が review 対象になっているかを surface から判定できない場合は、この十分条件を満たしません。",
     ),
   );
   assert.ok(
@@ -720,7 +731,15 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "この surface が、reviewed target・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいれば、`policy/core.md` の Acquisition & Validity Contract が要求する record の recoverable な representation として、その surface 自体を result locator に使えます",
+      "この surface が、reviewed target・reviewed artifact set・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいれば、`policy/core.md` の Acquisition & Validity Contract が要求する record の recoverable な representation として、その surface 自体を result locator に使えます",
+    ),
+  );
+  // 2nd closure round (Claude on PR #24): artifact-set coverage must be part
+  // of the surface-sufficiency bar here too, not just in policy/core.md.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "intended artifact set が review 対象になっているかを surface から判定できない場合は、この十分条件を満たしません。",
     ),
   );
 

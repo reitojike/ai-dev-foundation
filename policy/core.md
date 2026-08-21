@@ -221,10 +221,11 @@ reviewer mechanism 自身がそのような外部から確認可能な surface �
 record を上記の record schema に沿った内容で、そのような場所へ明示的に
 persist しない限り、session 終了後には recoverable な evidence として
 扱いません。reviewer mechanism が残す surface に、reviewed target・
-finding 内容・completion 状態を後続 session が独立に判定できる形で
-含んでいる場合は、その surface 自体をこの record の recoverable な
-representation として扱ってよく、別途 record を post し直す必要は
-ありません。
+reviewed artifact set・finding 内容・completion 状態を後続 session が
+独立に判定できる形で含んでいる場合は、その surface 自体をこの record の
+recoverable な representation として扱ってよく、別途 record を post し
+直す必要はありません。intended artifact set が review 対象になっている
+かを surface から判定できない場合は、この十分条件を満たしません。
 
 **0 findings は positive evidence を必要とします。** reaction なし、comment なし、
 parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
