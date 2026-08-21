@@ -90,6 +90,20 @@ test("Next.js + Supabase quality profile defines shared local stack exclusive-re
         "排他性を保証しない方法は、この要件を満たしません。",
     ),
   );
+
+  // The ownership-hold requirement must cover every operation on the
+  // exclusive-resource list, not only destructive/stateful ones — a
+  // read-only DB/RLS test or drift check can still observe wrong-checkout
+  // state if it runs without holding ownership.
+  assert.ok(
+    containsText(
+      readme,
+      "上記でexclusive resourceとして列挙したoperation（destructive /" +
+        "statefulなDB operationだけでなく、read-only寄りのDB / RLS / auth" +
+        "integration testやgenerated types drift verificationを含む）の前に、" +
+        "そのstackに対するexclusive ownershipを確認し",
+    ),
+  );
 });
 
 test("Foundation Kernel keeps Supabase-specific semantics out of policy/core.md", async () => {
