@@ -219,6 +219,26 @@ completion していても invalid です。この場合、record は `status: c
 かつ `validity: invalid` として表現します。
 intended artifact set が review されていない場合も invalid です。
 
+**acquisition の record は、後続 session から独立に recoverable な場所へ
+persist されて初めて durable evidence です。** review を行った
+agent/session が終了した後、別の後続 session が session の記憶に頼らず、
+本 Contract が定義する Completion と Validity の要求事項を独立に判定
+できるだけの情報が、その後続 session からアクセス可能な場所（PR/Issue
+上の comment 等）に存在しない限り、その run を merge / review completion
+の根拠として扱いません。reviewer mechanism が外部から確認可能な surface
+へ残す結果に、その判定に必要な情報が既に含まれていれば、その surface
+自体をこの record の recoverable な representation として扱ってよく、
+別途 record を post し直す必要はありません。含まれていない場合
+（reviewer mechanism 自身がそのような surface へ結果を残さない場合、
+例えば実装 session 内で動く subagent review を含む）は、上記の record
+schema の各 field に加え、Completion と Validity の要求事項（reviewed
+target の一致、target artifact set の coverage、required context への
+アクセス可否、finding 内容、completion 状態を含む）を独立に判定できる
+情報を、そのような場所へ明示的に persist しない限り、session 終了後には
+recoverable な evidence として扱いません。record schema 自体（特に
+`validity` field）は判定結果の要約であり、その根拠情報の代わりには
+なりません。
+
 **0 findings は positive evidence を必要とします。** reaction なし、comment なし、
 parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
 completion evidence のない empty output は `unknown` として扱います。

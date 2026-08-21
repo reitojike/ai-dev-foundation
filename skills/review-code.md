@@ -193,7 +193,19 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 - `collectOutputs()`: この provider で確認できる surface（top-level PR comment、
   inline/thread comment、review submission/summary、status/check、必要なら
   workflow log、edited comment）を確認し、内容の有無にかかわらず「どの surface を
-  確認したか」を記録します。
+  確認したか」を記録します。この surface から `policy/core.md` の
+  Acquisition & Validity Contract が定義する Completion と Validity の
+  要求事項を後続 session が独立に判定できれば、その surface 自体を同
+  Contract の record の recoverable な representation として result
+  locator に使えます（別途 record を post し直す必要はありません）。
+  それらの要求事項のいずれかを surface から判定できない場合は、
+  reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を
+  残さない場合（例: 実装 session 内で動く subagent review）と同様に扱い、
+  `collectOutputs()` に相当する手段として、`policy/core.md` の record
+  schema の各 field に加え、上記の Completion / Validity 要求事項を独立に
+  判定できる情報（`validity` 等の判定結果の要約だけでなく、その根拠と
+  なる情報）を PR/Issue 上の comment 等へ明示的に persist し、それを
+  result locator とします。
 - `normalizeFindings()`: 集めた出力を record schema と triage category へ変換し、
   finding ごとに出典 surface と locator を残します。
 
@@ -205,6 +217,17 @@ manual trigger command を送って初めて review completion の evidence が�
 という一般原則の実測例として扱い、特定 provider が常に manual trigger を要求すると
 いう恒久仕様には昇格させません。同種の provider を扱う際は、automatic trigger を
 仮定せず、completion evidence が得られるまで `unknown` として扱ってください。
+
+別の観測として、ある reviewer は PR 上の明示的な mention コメントを trigger と
+する GitHub-native workflow を経由した場合、result（target 参照・finding・
+completion 状態）が PR の comment として繰り返し durable に残ることを確認して
+います。この観測は、in-session/subagent 実行のみに依存するより、reviewer が
+そのような GitHub-native trigger 経路を持つならそれを優先する方が
+Acquisition & Validity Contract の recoverability 要件を満たしやすい、という
+運用上の判断材料になります。ただしこれも特定 provider の恒久仕様ではなく、
+capability record 側で再検証可能な observed evidence として扱ってください。
+GitHub-native 経路を使わず in-session/subagent review を選ぶ場合は、上記の
+`collectOutputs()` の persist 手順を必ず行います。
 
 ## Manual review pilot
 
