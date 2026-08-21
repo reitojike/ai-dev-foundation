@@ -118,3 +118,58 @@ commandにします。DB/RLS testがあるconsumerは同じ`verify:profile`か�
 
 `jscpd`や`knip`などのノイズを含み得るcheckはadvisoryです。blocking quality floorには
 含めません。
+
+## Worktree/checkoutをまたぐlocal Supabase stack
+
+複数のcheckout（worktreeを含む）が同一のlocal Supabase runtime / DB stateを
+共有する構成と、checkoutごとに完全に分離された構成のどちらもあり得ます。
+Foundationは特定のisolation implementationを強制しません。この節は、DB stateに
+依存するverificationが何をevidenceとして扱ってよいかを規定します。
+
+### Shared local stack
+
+複数checkoutが同一のlocal Supabase project（同じproject identifier / ports /
+containers / volumes等）を共有する場合、そのstackはshared local stackです。
+次を**exclusive resource**として扱います。
+
+- `supabase start` / `supabase stop`
+- `supabase db reset`
+- migration apply / rollback相当のoperation
+- DB / RLS / auth integration test
+- schema由来のgenerated types生成、およびdrift verification
+- 上記のいずれかを内包する`verify:profile`
+- 上記のいずれかを内包するfull `verify`
+
+shared local stackに対して上記を実行するagentは、少なくとも次を満たします。
+
+1. destructive / statefulなDB operationの前に、そのstackに対するexclusive
+   ownershipを合理的な方法で確認する。
+2. 他checkoutが同じstackをactiveに利用中であれば、並行して実行しない。
+3. verification対象のcheckout自身のmigration / configから、その
+   verification用のclean target stateを作る。
+4. 既に起動しているshared stackの現在stateを、それだけを根拠に自checkoutの
+   verification evidenceとして扱わない。DB stateがどのcheckoutのmigrationに
+   由来するか確認できない場合、そこから得た結果は当該checkoutのverification
+   evidenceとして使わない。
+5. operationの完了後はownershipをreleaseし、他checkoutがそのstackを利用
+   できる状態に戻す。
+
+**exit code 0やCI greenであっても、参照したDB stateがverification対象の
+checkout由来でなければ、その結果はverification evidenceとしてinvalidです。**
+これはcommandが同時に実行されたかどうかとは独立したfailure modeであり、
+逐次実行しただけでは防げません。
+
+exclusive ownershipの確認方法（lockfile、mutex、scheduler、
+`pg_stat_activity`の確認、process inspection、runtime固有のlocking等）は
+Foundationが特定の実装を指定しません。consumer / runtimeに合った合理的な
+mechanismを選びます。
+
+### Isolated local stack
+
+checkoutごとにproject identifier / ports / containers / volume等が十分に
+分離され、互いのDB stateを変更できないことが確認できる場合、そのcheckoutは
+isolated local stackです。isolated local stackでは上記のexclusive
+serializationを要求しません。
+
+local Supabaseを使うconsumerが常にshared local stackである、という前提は
+置きません。
