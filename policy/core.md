@@ -27,6 +27,51 @@
 `AGENTS.md` は三つの composition input から生成されます。直接編集しないでください。
 `CLAUDE.md` は `AGENTS.md` を参照する thin adapter であり、canonical rule を複製しません。
 
+## Human-facing output language
+
+human-facing output（人間が読むために agent が作成・編集する成果物）の
+既定言語は、その project が持つ既定言語に従います。少なくとも次を対象と
+します。
+
+- Issue / PR の title・body・comment
+- review finding / triage / Resolution / closure の durable evidence comment
+- planning checkpoint、handoff、completion report
+- セッション中の人間向け progress report・final report
+- agent が生成・編集する Markdown / documentation
+
+一方、次は human-facing output の既定言語に関わらず、無理に翻訳せず原語
+（多くの場合英語）のまま保持します。
+
+- source code / identifier / symbol / API / library / framework name
+- file path / command / script name
+- schema / enum / protocol field 等の machine-facing text
+- error / log / provider-native output の引用
+- externally defined technical term / proper noun
+
+human-facing な地の文の中に、上記の technical vocabulary を原語のまま
+混在させることは許容します。検索性や意味精度を落とす過剰な翻訳はしません。
+
+project が既定言語を明示していない場合、agent は言語を仮定せず、その
+project の既存 human-facing artifact や communication から観測できる
+言語に合わせます。
+
+project 自身の既定言語が何であるかは Foundation Kernel が固定する対象
+ではありません。技術非依存な Foundation policy はこの節の reusable な
+原則までとし、特定の project がどの言語を既定とするかは、その project
+の Consumer product rules、または Foundation 自身のように project が
+自らを consumer として扱う場合は project 自身の repo-local instructions
+へ記録します。Technology profile は technology/provider 向けの具体化に
+限定し、project の既定言語を持ちません。
+
+Review Protocol の Selection Contract / Execution Contract / Acquisition
+& Validity Contract / Resolution Contract、および `target_sha` /
+`finding_count` 等の record schema field 名は、この節の対象外の
+machine-facing structure として英語のまま保持します。これらの contract
+を説明する human-facing な本文は、この節の既定言語に従います。
+provider-native bot 自身が固定言語で出力する内容は、この節に対する
+Foundation violation として扱いません。agent が自ら作成する durable な
+summary / resolution comment は、この節の既定言語に従います。
+
 ## Task Protocol
 
 Task の canonical context は Issue 本文です。downstream agent への handoff は Issue を短く
