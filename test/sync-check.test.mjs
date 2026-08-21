@@ -118,3 +118,34 @@ test("check detects quality profile drift against the pinned Foundation checkout
   // this comparison and are left untouched by check/bootstrap.
   assert.equal(await readFile(productRules, "utf8"), originalProductRules);
 });
+
+test("check detects quality profile drift in a nested subdirectory, not only top-level files", async (t) => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ai-dev-foundation-"));
+  const consumer = path.join(temporaryRoot, "consumer");
+  await cp(fixture, consumer, { recursive: true });
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+
+  const sourceNestedDirectory = path.join(root, "profiles", "next-supabase", "quality", "nested");
+  const sourceNestedFile = path.join(sourceNestedDirectory, "nested.txt");
+  t.after(() => rm(sourceNestedDirectory, { recursive: true, force: true }));
+  await mkdir(sourceNestedDirectory, { recursive: true });
+  await writeFile(sourceNestedFile, "nested-source\n", "utf8");
+
+  // The pinned checkout now ships a nested file the consumer never
+  // bootstrapped: missing-in-a-subdirectory must be caught, not just
+  // missing top-level files.
+  assert.notEqual(run("check.mjs", consumer).status, 0);
+
+  assert.equal(run("bootstrap-next-supabase.mjs", consumer).status, 0);
+  assert.equal(run("check.mjs", consumer).status, 0);
+  assert.equal(
+    await readFile(path.join(consumer, ".ai-dev-foundation", "quality", "nested", "nested.txt"), "utf8"),
+    "nested-source\n",
+  );
+
+  // The checkout stops shipping the nested file; the consumer's copy is now
+  // a stale nested extra and must be reported, not silently ignored because
+  // it is one directory level down.
+  await rm(sourceNestedDirectory, { recursive: true, force: true });
+  assert.notEqual(run("check.mjs", consumer).status, 0);
+});
