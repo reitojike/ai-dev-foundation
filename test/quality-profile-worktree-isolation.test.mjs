@@ -96,3 +96,27 @@ test("Foundation Kernel keeps Supabase-specific semantics out of policy/core.md"
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
   assert.doesNotMatch(core, /Supabase/i);
 });
+
+test("project-rules.md points consumers at the actual bootstrapped quality profile path", async () => {
+  const projectRules = await readFile(
+    path.join(root, "profiles", "next-supabase", "project-rules.md"),
+    "utf8",
+  );
+  const bootstrapTooling = await readFile(
+    path.join(root, "tooling", "bootstrap-next-supabase.mjs"),
+    "utf8",
+  );
+
+  // The pointer must name the consumer-relative path that bootstrap actually
+  // writes to, not a bare "quality/README.md" a consumer agent cannot resolve
+  // from AGENTS.md alone.
+  assert.ok(projectRules.includes("`.ai-dev-foundation/quality/README.md`"));
+  assert.match(bootstrapTooling, /"\.ai-dev-foundation",\s*"quality"/);
+  assert.ok(
+    containsText(
+      projectRules,
+      "consumer の `.ai-dev-foundation/quality/README.md`（Foundation リポジトリでは" +
+        "`profiles/next-supabase/quality/README.md`）を正本とします。",
+    ),
+  );
+});
