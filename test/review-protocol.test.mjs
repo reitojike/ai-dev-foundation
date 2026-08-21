@@ -206,26 +206,46 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   );
 
   // Closure round (Codex P2 on PR #24): an existing provider surface that
-  // already carries reviewed target / findings / completion in a later-session-
-  // recoverable form counts as the record itself — this must not be read as
-  // requiring every already-durable run to additionally post a normalized record.
+  // already carries enough information in a later-session-recoverable form
+  // counts as the record itself — this must not be read as requiring every
+  // already-durable run to additionally post a normalized record.
+  //
+  // 3rd closure round (root-cause fix, Codex P2 x2 + Claude): the first two
+  // closure attempts hand-enumerated which elements the surface must carry
+  // (target, then +artifact set), and each round a reviewer found one more
+  // Validity/Completion element missing from the hand-kept list (required
+  // context accessibility was still absent after round 2). Rather than
+  // enumerate a 3rd time, this defers to "Completion と Validity の要求事項"
+  // as a whole, so no future element can be missing from this sufficiency
+  // bar without also being missing from the Contract's own definition above.
   assert.ok(
     containsText(
       core,
-      "reviewer mechanism が残す surface に、reviewed target・reviewed artifact set・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいる場合は、その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
+      "reviewer mechanism が残す surface から、本 Contract が定義する Completion と Validity の要求事項",
     ),
   );
-  // 2nd closure round (Claude on PR #24): the surface-sufficiency bar must
-  // also require artifact-set coverage to be judgable, mirroring Validity's
-  // separate "intended artifact set が review 対象になっている" requirement —
-  // otherwise a target-matching, 0-finding comment that silently skipped part
-  // of the intended artifact set could be misread as durable valid evidence.
   assert.ok(
     containsText(
       core,
-      "intended artifact set が review 対象になっているかを surface から判定できない場合は、この十分条件を満たしません。",
+      "その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
     ),
   );
+  assert.ok(
+    containsText(
+      core,
+      "これらの要求事項のいずれかを surface から判定できない場合は、この十分条件を満たさず、その run を recoverable な evidence として扱いません。",
+    ),
+  );
+  // The sufficiency bar must not silently re-narrow to only a hand-picked
+  // subset — it must cover Validity's own 4 listed requirements by reference.
+  for (const requirement of [
+    "reviewed SHA / range が intended target と一致している",
+    "intended artifact set が review 対象になっている",
+    "required context へアクセスできた",
+    "execution / acquisition が途中で欠落していない",
+  ]) {
+    assert.ok(core.includes(requirement), `Validity requirement must still be listed: ${requirement}`);
+  }
   assert.ok(
     containsText(core, "positive completion evidence のない empty output は `unknown` として扱います。"),
   );
@@ -712,7 +732,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、`collectOutputs()` に相当する手段として、その run の record を",
+      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）と同様に扱い、`collectOutputs()` に相当する手段として、その run の record を",
     ),
   );
   assert.ok(
@@ -728,18 +748,22 @@ test("review skills document procedure without duplicating normative rules", asy
   // Closure round (Codex P2 on PR #24): collectOutputs() must state that a
   // sufficiently informative existing surface counts as the recoverable
   // record itself, not just describe the no-surface persistence fallback.
+  //
+  // 3rd closure round (root-cause fix): defer to policy's own Completion /
+  // Validity requirements by reference instead of re-enumerating them here
+  // too — the skill already says "skill は policy を使った作業方法を説明し、
+  // 規範的なルールを複製しません", and a second hand-kept list here would
+  // reintroduce the same drift risk the policy.md fix just eliminated.
   assert.ok(
     containsText(
       reviewCode,
-      "この surface が、reviewed target・reviewed artifact set・finding 内容・completion 状態を後続 session が独立に判定できる形で含んでいれば、`policy/core.md` の Acquisition & Validity Contract が要求する record の recoverable な representation として、その surface 自体を result locator に使えます",
+      "この surface から `policy/core.md` の Acquisition & Validity Contract が定義する Completion と Validity の要求事項を後続 session が独立に判定できれば、その surface 自体を同 Contract の record の recoverable な representation として result locator に使えます",
     ),
   );
-  // 2nd closure round (Claude on PR #24): artifact-set coverage must be part
-  // of the surface-sufficiency bar here too, not just in policy/core.md.
   assert.ok(
     containsText(
       reviewCode,
-      "intended artifact set が review 対象になっているかを surface から判定できない場合は、この十分条件を満たしません。",
+      "それらの要求事項のいずれかを surface から判定できない場合は",
     ),
   );
 

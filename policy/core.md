@@ -220,12 +220,14 @@ reviewer mechanism 自身がそのような外部から確認可能な surface �
 残さない場合（例: 実装 session 内で動く subagent review）は、その run の
 record を上記の record schema に沿った内容で、そのような場所へ明示的に
 persist しない限り、session 終了後には recoverable な evidence として
-扱いません。reviewer mechanism が残す surface に、reviewed target・
-reviewed artifact set・finding 内容・completion 状態を後続 session が
-独立に判定できる形で含んでいる場合は、その surface 自体をこの record の
-recoverable な representation として扱ってよく、別途 record を post し
-直す必要はありません。intended artifact set が review 対象になっている
-かを surface から判定できない場合は、この十分条件を満たしません。
+扱いません。reviewer mechanism が残す surface から、本 Contract が定義する
+Completion と Validity の要求事項（reviewed target の一致、target
+artifact set の coverage、required context へのアクセス可否、finding
+内容、completion 状態を含む）を後続 session が独立に判定できる場合は、
+その surface 自体をこの record の recoverable な representation として
+扱ってよく、別途 record を post し直す必要はありません。これらの要求
+事項のいずれかを surface から判定できない場合は、この十分条件を満たさず、
+その run を recoverable な evidence として扱いません。
 
 **0 findings は positive evidence を必要とします。** reaction なし、comment なし、
 parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
