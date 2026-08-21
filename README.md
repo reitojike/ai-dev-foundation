@@ -38,6 +38,13 @@ node tooling/check.mjs --consumer path/to/consumer
 は non-zero で終了します。policy、profile、consumer product rule を変更した後は
 再生成してください。
 
+`check` は、bootstrap 済みの `.ai-dev-foundation/quality/` が、参照している
+Foundation checkout の `profiles/next-supabase/quality/` と一致しているかも
+検証します。file の missing / extra / content mismatch のいずれかがあれば
+non-zero で終了し、`node tooling/bootstrap-next-supabase.mjs --consumer <path>`
+による再展開を促します。Foundation を repin しても quality profile の再展開を
+忘れると、この quality profile の drift 検知だけが non-zero になります。
+
 同梱の reference consumer は `npm test` で検証できます。
 
 consumer fixture自身の一括verifyは次で実行できます。

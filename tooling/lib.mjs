@@ -1,8 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const foundationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const qualityProfileSourceDirectory = path.join(foundationRoot, "profiles", "next-supabase", "quality");
 
 export function parseConsumerArgument(argv) {
   const index = argv.indexOf("--consumer");
@@ -29,4 +30,38 @@ export async function composeAgents(consumerDirectory) {
 
 export async function composeClaude() {
   return read("templates/CLAUDE.md");
+}
+
+function toPosixRelativePath(entry) {
+  return entry.split(path.sep).join("/");
+}
+
+// Compares the Foundation-owned quality profile directory
+// (profiles/next-supabase/quality) against a bootstrapped consumer's
+// .ai-dev-foundation/quality. Missing, mismatched, and stale-extra files are
+// all reported as drift so a repin without re-running bootstrap cannot pass.
+export async function diffQualityProfile(consumerDirectory) {
+  const destination = path.join(consumerDirectory, ".ai-dev-foundation", "quality");
+  const drifted = new Set();
+  const sourceRelativePaths = new Set();
+
+  for (const entry of await readdir(qualityProfileSourceDirectory, { recursive: true })) {
+    const relative = toPosixRelativePath(entry);
+    const [sourceContent, destinationContent] = await Promise.all([
+      readFile(path.join(qualityProfileSourceDirectory, entry), "utf8").catch(() => null),
+      readFile(path.join(destination, entry), "utf8").catch(() => null),
+    ]);
+    if (sourceContent === null) continue; // directory entry, not a file
+    sourceRelativePaths.add(relative);
+    if (sourceContent !== destinationContent) drifted.add(relative);
+  }
+
+  for (const entry of await readdir(destination, { recursive: true }).catch(() => [])) {
+    const relative = toPosixRelativePath(entry);
+    if (sourceRelativePaths.has(relative)) continue;
+    const destinationContent = await readFile(path.join(destination, entry), "utf8").catch(() => null);
+    if (destinationContent !== null) drifted.add(relative); // stale extra file
+  }
+
+  return [...drifted].sort();
 }

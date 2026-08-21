@@ -67,3 +67,54 @@ test("bootstrap replaces only its Foundation-owned quality directory", async (t)
   await assert.rejects(readFile(staleFile, "utf8"), { code: "ENOENT" });
   assert.equal(await readFile(consumerFile, "utf8"), "consumer-owned");
 });
+
+test("check detects quality profile drift against the pinned Foundation checkout and bootstrap remediates it", async (t) => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ai-dev-foundation-"));
+  const consumer = path.join(temporaryRoot, "consumer");
+  const qualityFile = path.join(consumer, ".ai-dev-foundation", "quality", "eslint.config.mjs");
+  const staleExtraFile = path.join(consumer, ".ai-dev-foundation", "quality", "stale-extra-file.txt");
+  const productRules = path.join(consumer, ".ai-dev-foundation", "product-rules.md");
+  await cp(fixture, consumer, { recursive: true });
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  const originalProductRules = await readFile(productRules, "utf8");
+
+  // The reference fixture's bootstrapped quality profile is current, so a
+  // freshly copied consumer must pass without any remediation.
+  const currentResult = run("check.mjs", consumer);
+  assert.equal(currentResult.status, 0);
+  assert.match(currentResult.stdout, /quality profile/i);
+
+  // Content mutation of a Foundation-owned quality file is drift.
+  const originalQualityFile = await readFile(qualityFile, "utf8");
+  await writeFile(qualityFile, `${originalQualityFile}\n// consumer edit\n`, "utf8");
+  const mutatedResult = run("check.mjs", consumer);
+  assert.notEqual(mutatedResult.status, 0);
+  assert.match(mutatedResult.stderr, /Foundation-owned quality profile is stale/);
+  assert.match(mutatedResult.stderr, /eslint\.config\.mjs/);
+  assert.match(mutatedResult.stderr, /bootstrap-next-supabase\.mjs/);
+
+  // A Foundation-owned file the consumer never bootstrapped (or deleted) is
+  // also drift, not a silent pass.
+  await rm(qualityFile);
+  const missingResult = run("check.mjs", consumer);
+  assert.notEqual(missingResult.status, 0);
+  assert.match(missingResult.stderr, /eslint\.config\.mjs/);
+
+  // A stale/extra Foundation-owned-directory file the pinned checkout no
+  // longer ships is drift too — the profile isn't current until it matches
+  // exactly, not just a superset.
+  await writeFile(qualityFile, originalQualityFile, "utf8");
+  await writeFile(staleExtraFile, "stale", "utf8");
+  const extraResult = run("check.mjs", consumer);
+  assert.notEqual(extraResult.status, 0);
+  assert.match(extraResult.stderr, /stale-extra-file\.txt/);
+
+  // Remediation via the documented bootstrap command restores a pass.
+  assert.equal(run("bootstrap-next-supabase.mjs", consumer).status, 0);
+  assert.equal(run("check.mjs", consumer).status, 0);
+  await assert.rejects(readFile(staleExtraFile, "utf8"), { code: "ENOENT" });
+
+  // Consumer-owned files outside the quality directory are never part of
+  // this comparison and are left untouched by check/bootstrap.
+  assert.equal(await readFile(productRules, "utf8"), originalProductRules);
+});
