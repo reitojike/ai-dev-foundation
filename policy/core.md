@@ -136,6 +136,45 @@ handoff を毎 Task で義務化しませんが、High role を終える時点�
 人間を message bus にしません。人間への escalation は、product intent、authority、権限、
 または受容不能な trade-off に限ります。
 
+### Thin invocation over a canonical Task Contract
+
+canonical Task Contract が durable な project surface（Issue 本文等）に
+既に存在する場合、agent invocation はその内容を原則として再掲せず参照
+します。長い session-local prompt がなければ Task を再開できないことを
+目指すのではなく、durable な canonical Task Contract から新しい
+agent/session が作業を再開できることを目指します。
+
+canonical Task Contract が存在する場合、invocation / handoff prompt へ
+含めるのは原則として次に限定します。
+
+- canonical Task Contract の locator
+- handoff 値を current と仮定せず、current state を再取得する指示
+- Task Contract へまだ materialize されていない session 固有の追加
+  decision / constraint
+- execution authority
+- stopping condition
+- 必要な review / verification への pointer（詳細が canonical guidance に
+  ある場合は再掲しない）
+
+canonical Task Contract に既に存在する background / scope / Acceptance
+Criteria / design constraint 等を、理由なく invocation prompt へ複製しま
+せん。
+
+material な追加 decision が session を跨いで継続的に必要になる場合は、
+可能な限り durable surface（Issue 本文の更新等）へ materialize した上で、
+invocation からはそれを参照します。invocation prompt 自体を追加 decision
+の正本にしません。
+
+短い prompt 自体を目的にしません。canonical Task Contract が不十分な場合
+や、緊急の session-local constraint がある場合は、必要な情報を invocation
+へ含めてよく、機械的な短文化のために欠落させてはいけません。canonical
+Task Contract の不足に気付いた場合は、省略ではなく Task Contract 自体の
+更新を優先します。
+
+この convention は provider-neutral です。特定の CLI、agent runtime、
+または model 向けの invocation format を Kernel に固定しません。新しい
+prompt schema / DSL / generator の導入を要求しません。
+
 ## Review Protocol
 
 Review の canonical context は本節です。
