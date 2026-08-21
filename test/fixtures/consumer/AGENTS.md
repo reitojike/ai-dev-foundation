@@ -189,6 +189,55 @@ Envelope に属し、Semantic Contract の充足度とは独立です。受け�
 または model 向けの invocation format を Kernel に固定しません。新しい
 prompt schema / DSL / generator の導入を要求しません。
 
+### Issue closure and Acceptance Criteria completion
+
+Task Contract の completion は、Review Protocol の merge-readiness（Merge readiness
+and merge authority）とは別の contract です。merge-ready の成立、または実際の merge
+は、canonical Issue 上の Acceptance Criteria が満たされたことの証跡にはなりません。
+Review が完了していても、Issue Task Contract 上の Acceptance Criteria 確認を省略して
+よいことにはなりません。canonical Issue を completed として close する判断は、この
+節に従います。
+
+canonical Issue を completed として close する前に、少なくとも次を行います。
+
+1. **canonical context の再取得** — close しようとする session 自身の記憶や過去の
+   長文 handoff をそのまま正としてはいけません。close 直前に、current Issue 本文
+   （canonical Task Contract）と、merge 済み current main または applicable branch
+   の状態を再取得します。
+2. **Acceptance Criteria evidence 照合** — Acceptance Criteria を 1 項目ずつ、
+   実装・test・PR・review・merge 後の状態等の evidence と個別に照合します。「実装が
+   完了したように見える」という印象だけでは充足の根拠にしません。
+3. **checkbox 更新** — evidence で明確に充足を確認できた項目だけ checkbox を更新
+   します。checkbox 更新は見た目上の cleanup ではなく、Task Contract completion
+   evidence の一部として扱います。
+4. **未達・判断不能な項目の扱い** — evidence 不足または未達で判断できない Acceptance
+   Criteria が 1 件でも残る場合、その項目を勝手に check せず、Issue も close しません。
+   Issue に Acceptance Criteria が存在しない場合、close のために新たな Acceptance
+   Criteria を捏造しません。
+5. **completion comment** — final SHA、verification 結果、review evidence
+   （Review Protocol の Acquisition & Validity Contract に従う record / result
+   locator を含む）、および未解決事項を、Issue 上の completion comment として
+   記録します。
+
+推奨する sequence は次のとおりです。
+
+`merge/current main 確認 -> Acceptance Criteria evidence 照合 -> checkbox 更新 ->
+completion comment -> Issue close`
+
+Issue close の execution authority は、Merge readiness and merge authority と同じ
+分離に従います。current Task、Execution Envelope、または explicit な authority が
+close の実行を許可している場合に限り、agent は Issue を close してよいです。authority
+が明示されていない場合、または別 authority の承認が必要な場合、agent は Issue 本文の
+編集や close を実行せず、どの Acceptance Criteria がどの evidence で満たされているか
+（または未達か）を completion handoff として明示的に残した上で停止し、authority
+escalation / handoff します。
+
+auto-close keyword（例: PR 本文の "Closes #N"）によって Acceptance Criteria 確認前に
+Issue が自動 close される運用を、標準運用にしません。
+
+この protocol は、GitHub Issue checkbox 専用 bot、generalized project-management
+workflow engine、または新しい orchestrator を要求しません。
+
 ## Review Protocol
 
 Review の canonical context は本節です。
