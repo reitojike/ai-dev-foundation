@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -119,4 +119,31 @@ test("project-rules.md points consumers at the actual bootstrapped quality profi
         "`profiles/next-supabase/quality/README.md`）を正本とします。",
     ),
   );
+});
+
+test("the documented reference consumer's bootstrapped quality profile is not stale", async () => {
+  // README.md:13 documents test/fixtures/consumer/ as "最小の reference consumer".
+  // project-rules.md now names its .ai-dev-foundation/quality/README.md as the
+  // canonical path a consumer agent resolves to, so that checked-in copy must
+  // not silently drift from the live profile source (otherwise the pointer
+  // resolves to stale guidance instead of the current normative content).
+  const sourceDirectory = path.join(root, "profiles", "next-supabase", "quality");
+  const fixtureDirectory = path.join(root, "test", "fixtures", "consumer", ".ai-dev-foundation", "quality");
+
+  const sourceFiles = (await readdir(sourceDirectory)).sort();
+  const fixtureFiles = (await readdir(fixtureDirectory)).sort();
+  assert.deepEqual(fixtureFiles, sourceFiles);
+
+  for (const file of sourceFiles) {
+    const [sourceContent, fixtureContent] = await Promise.all([
+      readFile(path.join(sourceDirectory, file), "utf8"),
+      readFile(path.join(fixtureDirectory, file), "utf8"),
+    ]);
+    assert.equal(
+      fixtureContent,
+      sourceContent,
+      `test/fixtures/consumer/.ai-dev-foundation/quality/${file} is stale; ` +
+        "run: node tooling/bootstrap-next-supabase.mjs --consumer test/fixtures/consumer",
+    );
+  }
 });
