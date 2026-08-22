@@ -62,13 +62,13 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    target に対して手順 1 の deterministic verify を再実行し、成功して
    から手順 4（Execution）へ進みます。
    Executable artifact では原則として独立 reviewer を使います。
-   あわせて Selection Contract に従って expected review set を閉じます。自分が
-   trigger した reviewer だけを set に入れて終わりにせず、consumer が configured
-   automatic reviewer として明示しているもの、およびその review target 上に review
-   行為が識別できる actor を含めます。actor を expected member とした根拠（どの
-   surface item を review participation とみなしたか）を記録します。通常の human
-   comment、CI actor、review 以外の目的の bot を、presence だけを理由に expected
-   member 化しません。
+   あわせて expected review set を確定します。自分が trigger した reviewer だけを
+   set に入れて終わりにしません。membership の境界（何が member になり、presence
+   だけでは何が member にならないか）と class ごとの扱いは Selection Contract
+   （`policy/core.md`）が定めます。
+   この skill で行う実務は次です。review target 上の actor を fresh acquisition で
+   列挙し、各 actor をどの class としたか、および member とした場合はその根拠（どの
+   surface item を review participation とみなしたか）を記録します。
 4. **Execution** — Execution Contract に従い、Selection で確定した expected
    target SHA / applicable な commit range と target artifact set を各
    reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した
@@ -80,25 +80,21 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    は invalid として表現できます）。
    `none` / `unknown` / `failure` は completion / validity と混同せず、Contract
    の定義に従って記録します。
-   ある reviewer をその target について `completed` とするには、取得済み surface
-   item のうち、その target への resolvable な参照を持つ positive completion
-   evidence が必要です。見つからない場合は `unknown` とし、`0 findings` へ変換
-   しません。
-   reviewed target を確定させるときは、その run が実際に review した target を
-   安定して表す field / surface を使います。review target の移動に追随して値が
-   変化する field / surface（例えば、現在の head を指すよう更新されるもの）を
-   binding の根拠にしてはいけません。どちらが安定かを確認できない場合、その
-   binding は成立しておらず `unknown` です。binding に使った根拠を記録します。
-   reviewed target が expected target と一致しない completed run は、evidence 軸と
-   finding 軸を分けて扱います。その run を current target の `0 findings` /
-   discovery evidence の根拠には使えませんが、その run で既に発見された finding は
-   Resolution obligation として残ります（手順 6）。
+   run record の `status` / `validity` とは別に、各 reviewer の target completion
+   state を Acquisition & Validity Contract に従って判定します。判定に使う positive
+   completion evidence の target-bound 要件、binding へ使う field / surface の安定性
+   要件、binding が成立しない場合の扱い、および `not-bound` な reviewer の evidence 軸 /
+   finding 軸の分離は、いずれも `policy/core.md` が定めます。
+   この skill で行う実務は次です。どの surface item を positive completion evidence と
+   したか、どの field / surface を安定と判断して binding の根拠にしたか、そしてその
+   判断を確認できたかどうかを記録します。安定性を必要な精度で確認できないまま binding が
+   成立したものとして扱わないでください。
 6. **Required review gate & aggregate / triage** — Selection Contract で
    required とした review 数ぶんの `validity: valid` な run が揃うまで triage
    へ進みません。
    揃わない run（invalid / unknown / failure）の扱いは Failure / retry
    （`policy/core.md`）に従います。
-   required 数の valid run が揃ったら、valid な run から finding を集約し、
+   required 数の valid run が揃ったら finding を集約し、
    Resolution Contract（`policy/core.md`）のカテゴリ（fix / false-positive /
    needs-verification / technical-dispute / intent-question）へ仕分けます。
    human escalation と technical dispute の扱い、重大 finding を dismiss する
@@ -138,7 +134,9 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    5. Selection で required とした review 数ぶんの valid run が揃うまで
       triage へ進みません。揃わない run の扱いは Failure / retry
       （`policy/core.md`）に従います。
-   6. valid な run の finding を Resolution Contract で triage します。
+   6. finding を Resolution Contract で triage します。手順 6 と同じく、
+      集約対象は valid な run に限りません。`validity: valid` でない run で
+      既に発見された finding も Resolution Contract の対象です。
    7. accepted finding があれば、手順 7 と同じ batch fix semantics で
       まとめて fix します。
    8. その fix によって target が変わった場合、手順 8 と同じ
@@ -218,18 +216,17 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
     問いません。
 
     そのうえで、merge-ready を宣言する直前の最後の action として、
-    `policy/core.md` の Merge-ready completion fence を評価します。宣言の
-    直前に、expected review set を fresh acquisition で閉じ直し、各 member の
-    completion state を fresh に判定し、finding を安定 evidence 由来の
-    reviewed target へ帰属させ、unresolved review thread が 0 であることを
-    確認します。会話内で既に見た snapshot をこの判定の根拠にしません。
-    fence 評価と宣言の間に review target または review surface の state が
-    変化した場合、その fence 評価は無効です。再評価してから宣言します。
-    この fence は、全 member が final target で completed であることを要求
-    しません。要求するのは、各 member の review obligation が Review stopping
-    rules に従って satisfied していることです。targeted closure で十分と
-    判定される bounded fix について、同じ reviewer による final target の
-    full re-review を強制しません。
+    `policy/core.md` の Merge-ready completion fence を評価します。
+    merge-ready の成立条件、review obligation の定義、および
+    review-relevant な state 変化による fence の無効化は `policy/core.md`
+    が定めます。
+    この skill で行う実務は次です。宣言の直前に expected review set を
+    fresh acquisition で閉じ直し、各 member の target completion state を
+    fresh に判定し、finding を安定 evidence 由来の reviewed target へ
+    帰属させ、triage されていない finding が review surface 上に残って
+    いないことを確認します。会話内で既に見た snapshot をこの判定の根拠に
+    しません。provider が thread の resolution 状態を持つ場合は、その
+    surface も未 triage finding の確認に使えます。
 
 ## Adapter boundary（manual pilot）
 
