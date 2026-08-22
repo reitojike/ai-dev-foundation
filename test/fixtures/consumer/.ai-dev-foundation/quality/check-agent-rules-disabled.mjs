@@ -33,6 +33,14 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, '');
 }
 
+// A valid JS identifier can contain `$` (e.g. `$config`), which is a regex
+// metacharacter. Embedding an un-escaped identifier in `new RegExp(...)`
+// below would let a `$` in the identifier be read as regex syntax instead of
+// a literal character, corrupting the match.
+function escapeRegExp(literal) {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Locates, by source span, the object literal that a `next.config` file
 // actually `export default`s or `module.exports`s — following at most one
 // level of the canonical indirection Next.js's own docs show:
@@ -48,13 +56,27 @@ function stripComments(source) {
 // config assembled via spread from another module, re-exports, etc.) is out
 // of scope for this filesystem-only checker and returns null so the caller
 // fails loudly instead of guessing.
+//
+// Known, accepted bound (not fixed): the declaration search below is
+// anchored to the start of a line (no scope/indentation tracking), so a
+// same-named binding declared at column 0 earlier in the file — not
+// plausible for a real next.config, which declares its config once at the
+// top level — could still be picked over the real one. A binding shadowed
+// inside a nested function body, as in Codex's adversarial example on this
+// PR (`function helper() { const nextConfig = {...} }`), is indented and so
+// is excluded by the same anchor. Closing this fully would require
+// scope-aware parsing, which this filesystem-only, non-executing checker
+// deliberately does not do (see the module-level indirection note above).
 function findExportedConfigObjectSource(source) {
   const exportedIdentifierMatch =
     /(?:export\s+default|module\.exports\s*=)\s*([A-Za-z_$][\w$]*)\b/.exec(source);
   const declarationName = exportedIdentifierMatch?.[1];
 
   const openBraceMatch = declarationName
-    ? new RegExp(`(?:const|let|var)\\s+${declarationName}\\b[^={]*=\\s*\\{`).exec(source)
+    ? new RegExp(
+        `^(?:export\\s+)?(?:const|let|var)\\s+${escapeRegExp(declarationName)}\\b[^={]*=\\s*\\{`,
+        'm',
+      ).exec(source)
     : /(?:export\s+default|module\.exports\s*=)\s*\{/.exec(source);
   if (!openBraceMatch) return null;
 

@@ -75,6 +75,25 @@ test("a directly inlined `export default { agentRules: false }` is green", () =>
   assert.match(result.stdout, /next\.config\.mjs/);
 });
 
+test("a `$`-prefixed export identifier (e.g. $config) is not corrupted as regex syntax", () => {
+  // Codex P2 finding on this PR (2nd closure round): embedding the
+  // identifier unescaped in `new RegExp(...)` let a literal `$` in a valid
+  // JS identifier be read as a regex end-anchor, making the checker fail to
+  // find an actually-disabled config.
+  const result = runChecker(path.join(fixturesRoot, "dollar-identifier"));
+  assert.equal(result.status, 0);
+});
+
+test("a same-named binding shadowed inside a nested function body does not shadow the real top-level export", () => {
+  // Codex P2 finding on this PR (2nd closure round): anchoring the
+  // declaration search to the start of a line excludes an indented,
+  // function-scoped shadow, so the top-level (unindented) declaration that
+  // module.exports actually points at is the one selected.
+  const result = runChecker(path.join(fixturesRoot, "shadowed-by-nested-scope"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);
