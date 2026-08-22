@@ -169,10 +169,13 @@ comment内の記述（`// agentRules: false`）、ネストしたobject内の同
 （`agentRules: false || true`）。
 next dev、network、ブラウザのいずれも必要としません。consumer configを
 実行・評価しないtext matchのため、`agentRules`を間接的な変数経由で設定する
-config（例: `agentRules: SOME_FLAG`）や、`{ agentRules: false, ...shared }`
-のようなspreadによる後続上書きは検出できません（直接記述された opt-out
-だけを対象にした bounded guardrail です。既知の制約はcheckerのcode comment
-を参照してください）。
+config（例: `agentRules: SOME_FLAG`）は検出できません（直接記述された
+opt-out だけを対象にした bounded guardrail です。既知の制約はcheckerの
+code commentを参照してください）。`{ agentRules: false, ...shared }`の
+ようにexplicit propertyの後にspreadがある場合は、実行時にspread側が
+上書きし得るため、effective valueを検証不能としてnon-zeroで失敗します
+（`{ ...shared, agentRules: false }`のようにspreadが先であれば、後続の
+explicit propertyが確実に勝つため引き続き検証できます）。
 
 このcheckerはNext.jsのupstream agent-rules block本文をFoundation canonical
 policyへコピーしません。`next.config`の設定有無だけを検証します。

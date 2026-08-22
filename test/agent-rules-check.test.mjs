@@ -115,6 +115,28 @@ test("agentRules: false as a prefix of a larger expression (false || true) does 
   assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
 });
 
+test("agentRules: false followed by a spread that could override it is deterministically red, not assumed still false", () => {
+  // Re-adjudicated under the current (post-#45) Resolution Contract: this is
+  // an accepted defect, not an out-of-scope indirection case, because the
+  // checker's job is specifically to verify the effective agentRules value,
+  // and `{ agentRules: false, ...shared }` sets agentRules: false only if
+  // `shared` (evaluated after, per normal JS object literal semantics)
+  // doesn't itself set agentRules. This checker cannot evaluate what a
+  // spread source contains, so it must fail closed rather than assume the
+  // explicit `false` still wins.
+  const result = runChecker(path.join(fixturesRoot, "spread-after-agent-rules"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /spreads another object/);
+});
+
+test("a spread before agentRules: false does not block the check — the explicit property after it wins", () => {
+  // `{ ...shared, agentRules: false }`: the explicit property written after
+  // the spread is what JS actually evaluates last, so this is verifiable
+  // and must stay green.
+  const result = runChecker(path.join(fixturesRoot, "spread-before-agent-rules"));
+  assert.equal(result.status, 0);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);

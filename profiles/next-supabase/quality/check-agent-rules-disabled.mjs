@@ -64,30 +64,18 @@ function escapeRegExp(literal) {
 // of scope for this filesystem-only checker and returns null so the caller
 // fails loudly instead of guessing.
 //
-// Known, accepted bound (not fixed): the declaration search below is
-// anchored to the start of a line (no scope/indentation tracking), so a
-// same-named binding declared at column 0 earlier in the file — not
-// plausible for a real next.config, which declares its config once at the
-// top level — could still be picked over the real one. A binding shadowed
-// inside a nested function body, as in Codex's adversarial example on this
-// PR (`function helper() { const nextConfig = {...} }`), is indented and so
-// is excluded by the same anchor. Closing this fully would require
-// scope-aware parsing, which this filesystem-only, non-executing checker
-// deliberately does not do (see the module-level indirection note above).
-//
-// Known, accepted bound (not fixed): a later spread that overrides
-// `agentRules` — `{ agentRules: false, ...shared }` where `shared` sets
-// `agentRules: true` — is not detected; the checker only checks whether the
-// literal `agentRules: false` text appears among the exported object's
-// direct properties, not which property assignment wins once spreads are
-// evaluated in declaration order. Determining the actually-effective value
-// would require evaluating the object literal (including resolving what
-// each spread source contains), which this filesystem-only, non-executing
-// checker deliberately does not do. A `next.config` that spreads a second
-// object into its config after an explicit `agentRules: false` is
-// sufficiently unusual that this is accepted rather than chased further —
-// see the Review Protocol's stopping rules on not spiraling a closure cycle
-// indefinitely against the same bounded-by-design surface.
+// Out of this checker's documented scope (not a defect against it, per the
+// module-level indirection note above — this is the same "does not execute
+// consumer config" boundary, applied to scope resolution rather than value
+// resolution): the declaration search below is anchored to the start of a
+// line (no scope/indentation tracking), so a same-named binding declared at
+// column 0 earlier in the file — not plausible for a real next.config,
+// which declares its config once at the top level — could still be picked
+// over the real one. A binding shadowed inside a nested function body is
+// indented and so is excluded by the same anchor, which is why this does
+// not regress the realistic case Next.js's own docs show. Closing this
+// fully would require scope-aware parsing, which this filesystem-only,
+// non-executing checker deliberately does not do.
 //
 // Note that identifier boundaries throughout this function use a
 // `(?![\w$])` negative lookahead, not `\b`: `$` is a valid trailing
@@ -149,6 +137,23 @@ function keepOnlyDirectProperties(objectSource) {
   return result;
 }
 
+// `{ agentRules: false, ...shared }` sets agentRules: false, but if `shared`
+// (a spread evaluated after the explicit property, per normal JS object
+// literal semantics) itself has an `agentRules` key, that key wins at
+// runtime — the effective value is whatever `shared.agentRules` is, not
+// `false`. This checker cannot evaluate what an arbitrary spread source
+// contains (see the module-level indirection note above), so unlike the
+// indirection/scope-shadowing bounds documented elsewhere in this file,
+// this is not accepted as an unverifiable case that stays green: a spread
+// appearing anywhere in the direct properties AFTER the matched
+// `agentRules: false` makes the effective value undecidable, so the caller
+// fails closed instead of assuming `false` still holds. A spread BEFORE the
+// explicit property is fine — the explicit `agentRules: false` written
+// after it is what wins, exactly as read.
+function hasSpreadAfter(directPropertiesText, matchEndIndex) {
+  return directPropertiesText.slice(matchEndIndex).includes('...');
+}
+
 async function findConfigFile(directory) {
   for (const filename of CANDIDATE_CONFIG_FILENAMES) {
     const candidatePath = path.join(directory, filename);
@@ -183,19 +188,32 @@ if (configFile === null) {
         `Use one of these shapes with \`agentRules: false\` so this checker can verify it.`,
     );
     process.exitCode = 1;
-  } else if (
-    !AGENT_RULES_DISABLED_PATTERN.test(keepOnlyDirectProperties(exportedConfigObjectSource))
-  ) {
-    console.error(
-      `${path.basename(configFile.path)} does not disable Next.js's generated-AGENTS.md agent rules. ` +
-        `Set \`agentRules: false\` in ${path.basename(configFile.path)}, otherwise \`next dev\` upserts a ` +
-        `<!-- BEGIN:nextjs-agent-rules --> block into the Foundation-generated AGENTS.md whenever it detects ` +
-        `an AI coding agent in the environment.`,
-    );
-    process.exitCode = 1;
   } else {
-    console.log(
-      `${path.basename(configFile.path)} disables Next.js's generated-AGENTS.md agent rules (agentRules: false).`,
-    );
+    const directPropertiesText = keepOnlyDirectProperties(exportedConfigObjectSource);
+    const agentRulesMatch = AGENT_RULES_DISABLED_PATTERN.exec(directPropertiesText);
+    if (!agentRulesMatch) {
+      console.error(
+        `${path.basename(configFile.path)} does not disable Next.js's generated-AGENTS.md agent rules. ` +
+          `Set \`agentRules: false\` in ${path.basename(configFile.path)}, otherwise \`next dev\` upserts a ` +
+          `<!-- BEGIN:nextjs-agent-rules --> block into the Foundation-generated AGENTS.md whenever it detects ` +
+          `an AI coding agent in the environment.`,
+      );
+      process.exitCode = 1;
+    } else if (
+      hasSpreadAfter(directPropertiesText, agentRulesMatch.index + agentRulesMatch[0].length)
+    ) {
+      console.error(
+        `${path.basename(configFile.path)} sets \`agentRules: false\` but also spreads another object ` +
+          `(\`...\`) into the config afterward. A later spread can override \`agentRules\` back to enabled ` +
+          `at runtime, and this filesystem-only checker cannot verify what the spread source contains. ` +
+          `Move \`agentRules: false\` after the spread (or remove the spread) so this checker can verify ` +
+          `the effective value.`,
+      );
+      process.exitCode = 1;
+    } else {
+      console.log(
+        `${path.basename(configFile.path)} disables Next.js's generated-AGENTS.md agent rules (agentRules: false).`,
+      );
+    }
   }
 }
