@@ -62,6 +62,13 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    target に対して手順 1 の deterministic verify を再実行し、成功して
    から手順 4（Execution）へ進みます。
    Executable artifact では原則として独立 reviewer を使います。
+   あわせて Selection Contract に従って expected review set を閉じます。自分が
+   trigger した reviewer だけを set に入れて終わりにせず、consumer が configured
+   automatic reviewer として明示しているもの、およびその review target 上に review
+   行為が識別できる actor を含めます。actor を expected member とした根拠（どの
+   surface item を review participation とみなしたか）を記録します。通常の human
+   comment、CI actor、review 以外の目的の bot を、presence だけを理由に expected
+   member 化しません。
 4. **Execution** — Execution Contract に従い、Selection で確定した expected
    target SHA / applicable な commit range と target artifact set を各
    reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した
@@ -73,6 +80,19 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    は invalid として表現できます）。
    `none` / `unknown` / `failure` は completion / validity と混同せず、Contract
    の定義に従って記録します。
+   ある reviewer をその target について `completed` とするには、取得済み surface
+   item のうち、その target への resolvable な参照を持つ positive completion
+   evidence が必要です。見つからない場合は `unknown` とし、`0 findings` へ変換
+   しません。
+   reviewed target を確定させるときは、その run が実際に review した target を
+   安定して表す field / surface を使います。review target の移動に追随して値が
+   変化する field / surface（例えば、現在の head を指すよう更新されるもの）を
+   binding の根拠にしてはいけません。どちらが安定かを確認できない場合、その
+   binding は成立しておらず `unknown` です。binding に使った根拠を記録します。
+   reviewed target が expected target と一致しない completed run は、evidence 軸と
+   finding 軸を分けて扱います。その run を current target の `0 findings` /
+   discovery evidence の根拠には使えませんが、その run で既に発見された finding は
+   Resolution obligation として残ります（手順 6）。
 6. **Required review gate & aggregate / triage** — Selection Contract で
    required とした review 数ぶんの `validity: valid` な run が揃うまで triage
    へ進みません。
@@ -83,6 +103,11 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    needs-verification / technical-dispute / intent-question）へ仕分けます。
    human escalation と technical dispute の扱い、重大 finding を dismiss する
    際の確認要否は Resolution Contract に従います。
+   finding の集約対象は valid な run に限りません。ancestor target に対する run の
+   ように `validity: valid` でない run であっても、そこで既に発見された finding は
+   Resolution Contract の対象です。`validity` は evidence 軸の判定であり、finding を
+   捨ててよい根拠ではありません。review target が移動したことだけを理由に、既存の
+   finding を discharge しません。
 7. **Batch fix + root-cause** — Resolution Contract に従い、accepted finding が
    あれば root-cause ごとにまとめて fix します。
    accepted finding が無ければ candidate SHA は変更されません。
@@ -192,6 +217,20 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
     完了順序は
     問いません。
 
+    そのうえで、merge-ready を宣言する直前の最後の action として、
+    `policy/core.md` の Merge-ready completion fence を評価します。宣言の
+    直前に、expected review set を fresh acquisition で閉じ直し、各 member の
+    completion state を fresh に判定し、finding を安定 evidence 由来の
+    reviewed target へ帰属させ、unresolved review thread が 0 であることを
+    確認します。会話内で既に見た snapshot をこの判定の根拠にしません。
+    fence 評価と宣言の間に review target または review surface の state が
+    変化した場合、その fence 評価は無効です。再評価してから宣言します。
+    この fence は、全 member が final target で completed であることを要求
+    しません。要求するのは、各 member の review obligation が Review stopping
+    rules に従って satisfied していることです。targeted closure で十分と
+    判定される bounded fix について、同じ reviewer による final target の
+    full re-review を強制しません。
+
 ## Adapter boundary（manual pilot）
 
 provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()` /
@@ -253,6 +292,27 @@ wrapping job/step の conclusion 単独を completion または failure の根�
 comment 本文の completion marker を fresh 再取得した上で直接確認してください。これも
 特定 provider の恒久仕様ではなく、observed evidence として capability/profile 側で
 再検証可能な形で扱います。
+
+さらに別の観測として、inline/thread comment を持つ reviewer では、その comment が
+「実際に review された target」を表す field と、「現在の head」に追随して値が更新される
+field の両方を持つことがあります。実測では、同一 finding について前者は投稿時の target を
+保持し続けた一方、後者は PR の head 移動後に新しい head の値へ変化していました。後者を
+binding の根拠にすると、ancestor target に対する review を current target の completion
+evidence と誤認します。binding には安定側の field を使い、どちらが安定かを確認できない
+場合は `unknown` として扱ってください。
+
+同じ実測で、次の 2 点も確認しています。いずれも provider の恒久仕様ではなく、
+capability/profile 側で再検証可能な observed evidence として扱います。
+
+- ある automatic reviewer は、review 結果を comment 系 surface にのみ残し、
+  check/status surface を一切生成しませんでした。この reviewer について
+  check/status の有無を completion の根拠にはできません。
+- 別の reviewer は、`success` の commit status を出しながら、その description が
+  「automatic review は無効化されているため review をスキップした」ことを表して
+  いました。green な status が review 完了ではなく **review 未実施**を意味する
+  実例です。status の state だけを見て completion へ変換してはいけません。一方、
+  これは非参加を positive に宣言している evidence でもあるため、`unknown` とは
+  区別して扱えます。
 
 ## Manual review pilot
 

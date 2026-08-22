@@ -286,8 +286,47 @@ Resolution が完了している必要があります。discovery Resolution を
 - artifact classification
 - reviewer / capability の選択
 - required review 数
+- expected review set（下記）
 - target artifact set
 - expected target SHA / commit range
+
+**expected review set は、agent が選択した reviewer だけでは閉じません。** agent が
+選択していなくても、その repository / review target に対して review を行う reviewer が
+存在し得ます。Selection では次の和集合を expected review set として確定します。
+
+1. **required** — Selection Contract で明示的に required とした reviewer。
+   required review 数を満たす対象であり、その review obligation は merge /
+   review completion の blocker です。
+2. **expected** — required ではないが、次のいずれかに該当する reviewer。
+   required review 数には算入しませんが、その review obligation は merge /
+   review completion の blocker です。
+   - consumer が configured automatic reviewer として明示している
+   - 取得済み evidence が、その actor による review 行為をその review target 上で
+     識別させる
+3. **optional / advisory** — consumer が advisory と宣言した reviewer。completion
+   state が `unknown` であること自体は blocker にしません。ただし actual finding が
+   観測された場合、その finding は Resolution Contract の対象です。
+
+2 の後者について、actor を expected member とする根拠は、その surface item 自体が
+**review participation として識別できる**ことです。review target 上に presence が
+あるだけでは足りず、次は単独では expected member 化の根拠になりません。
+
+- 通常の human comment（議論・質問・進捗報告等）
+- CI actor（workflow / status / check の author であること）
+- review 以外の目的で投稿する bot
+
+どの surface item が review participation を構成するかの識別は Review Adapter
+boundary の責務です。Kernel は上記の membership 境界と、**その actor を expected
+member とした根拠を記録すること**のみを要求し、provider 名や surface 名の固定列挙を
+持ちません。
+
+reviewer が非参加を positive に宣言している場合、その状態を `unknown` と区別して
+表現してよく、その reviewer を blocker にしません。
+
+expected review set は、consumer が明示しておらず、かつその review target 上へまだ
+review participation evidence を出していない reviewer を含められません。この residual
+limitation を、reviewer の不在を `0 findings` とみなす根拠にしてはいけません。
+configured automatic reviewer を明示するかどうかは consumer-owned な選択です。
 
 #### Execution Contract
 
@@ -382,6 +421,26 @@ recoverable な evidence として扱いません。record schema 自体（特�
 parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
 completion evidence のない empty output は `unknown` として扱います。
 
+**positive completion evidence は target-bound です。** ある reviewer の、確定した
+review target に対する completion state を `completed` とできるのは、取得済み surface
+item のうち、その target への resolvable な参照を持つ positive completion evidence が
+存在する場合に限ります。そのような evidence が無い場合、その reviewer のその target に
+対する state は `unknown` であり、`0 findings` へ変換してはいけません。
+
+reviewed target を確定させる evidence には、**その review run が実際に review した
+target を安定して表す field / surface** を使います。review target の移動に追随して
+値が変化する field / surface を binding の根拠にしてはいけません。どの field / surface
+が安定であるかの識別は Review Adapter boundary の責務であり、Kernel は安定性の要求と、
+**binding の根拠を記録すること**のみを定めます。
+
+確定した reviewed target が expected target と一致しない completed run は、次の 2 軸で
+扱いを分けます。両者を混同してはいけません。
+
+- **evidence 軸**: その run を、current target の `0 findings` 主張や discovery
+  evidence の根拠として使えません。
+- **finding 軸**: その run で既に発見された finding は Resolution obligation として
+  残ります。review target が移動したことだけを理由に discharge されません。
+
 review run の状態は少なくとも `none` / `unknown` / `failure` を区別し、混同してはいけません。
 
 #### Resolution Contract
@@ -402,6 +461,9 @@ review run の状態は少なくとも `none` / `unknown` / `failure` を区別�
   の finding（未解決の needs-verification / technical-dispute /
   intent-question 等を含む）が残る間は、その review stage の Resolution
   は完了せず、merge / review completion の根拠にしない
+- 確定した review target より前の target（ancestor）で発見された finding も
+  Resolution Contract の対象である。review target が移動したことだけを理由に
+  discharge されない
 
 ### Merge readiness and merge authority
 
@@ -423,6 +485,35 @@ merge authority が明示されていない場合、または別 authority の�
 ことを意味しません。GitHub の required approval 数を増やす rule でも
 ありません。provider や model 固有の rule にもしません。
 
+#### Merge-ready completion fence
+
+merge-ready を宣言する前に、次を最後の action として評価します。この fence は Review
+stopping rules を置き換えず、参照します。
+
+1. 確定した final candidate target を freeze する。
+2. Selection Contract に従って expected review set を閉じる。observed review
+   participation は、この評価時点の fresh acquisition で判定する。
+3. set の各 member について、fresh acquisition で completion state を判定する。
+   positive completion evidence が無い member を `0 findings` へ変換しない。
+4. 各 member の finding を収集し、それぞれを安定 evidence 由来の reviewed target へ
+   帰属させる。
+5. finding を Resolution Contract に従って triage する。ancestor target で発見された
+   finding も対象とする。
+6. unresolved review thread が 0 であることを確認する。
+7. merge-ready は、**required ∪ expected の各 member に課された review obligation が
+   Review stopping rules に従って satisfied している**ことをもって成立する。
+
+手順 7 は、**全 member が final target で completed であることを要求するものでは
+ありません**。accepted fix による target 変更後にどこまで再 review が必要かは Review
+stopping rules に従います。targeted closure で十分と判定される bounded fix について、
+同じ reviewer による final target の full re-review を強制しません。
+
+この fence の評価後、merge-ready を宣言する前に review target または review surface の
+state が変化した場合、その fence 評価は無効となり、再評価します。
+
+この fence は merge-ready の成立条件であり、merge を実行してよいという判断とは同義では
+ありません。merge execution authority は本節冒頭の分離に従います。
+
 ### Review Adapter boundary
 
 provider 差分は次の 4 つの責務として扱います。Kernel はこの boundary の**形**のみを
@@ -442,6 +533,16 @@ capability/profile の更新時に再検証可能にします。
 
 収集した evidence は、comment ID / review ID / run ID / timestamp / target SHA
 または commit range を可能な範囲で保持します。
+
+次の 2 つの識別も adapter の責務です。Kernel は要求だけを定め、判定材料を持ちません。
+
+- どの surface item が **review participation** を構成するか（Selection Contract の
+  expected review set 参照）
+- どの field / surface が **reviewed target を安定して表す**か、および、どれが review
+  target の移動に追随して値が変化するか（Acquisition & Validity Contract 参照）
+
+これらの判定材料は、恒久仕様ではなく再検証可能な observed evidence として
+capability/profile 側に置きます。
 
 ### Failure / retry
 
