@@ -1,4 +1,4 @@
 {
   "extends": "./.ai-dev-foundation/quality/tsconfig.quality.json",
-  "include": ["src"]
+  "include": ["src", "next.config.ts"]
 }

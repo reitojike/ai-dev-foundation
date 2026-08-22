@@ -12,8 +12,9 @@
     "test:unit": "node --experimental-strip-types --test test/*.test.mjs",
     "build": "tsc --project tsconfig.build.json",
     "foundation:check": "node ../../../tooling/check.mjs --consumer .",
+    "agent-rules:check": "node .ai-dev-foundation/quality/check-agent-rules-disabled.mjs",
     "supabase:types:check": "node scripts/check-generated-supabase-types.mjs",
-    "verify:profile": "npm run supabase:types:check",
+    "verify:profile": "npm run agent-rules:check && npm run supabase:types:check",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run foundation:check && npm run verify:profile"
   }
 }
