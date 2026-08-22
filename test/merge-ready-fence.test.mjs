@@ -33,9 +33,11 @@ function containsText(haystack, needle) {
 //   R3 two axes. A run whose reviewed target != final target is unusable as
 //      clean/discovery evidence (evidence axis) but its findings survive
 //      (finding axis).
-//   R4 merge-ready = every required|expected member's review obligation is
-//      satisfied, where the obligation is the one policy/core.md defines per
-//      class. NOT "every member completed at the final target".
+//   R4 merge-ready = EVERY member of the expected review set — including
+//      optional/advisory — has its review obligation satisfied, where the
+//      obligation is the one policy/core.md defines per class. This does not
+//      demand a fresh full re-review at every accepted fix; the narrow
+//      post-fix exception defines that boundary.
 //   R5 optional members: `unknown` alone does not block; observed findings do.
 //   R6 a required member cannot be exempted by declaring non-participation.
 // ---------------------------------------------------------------------------
@@ -90,12 +92,18 @@ function outstandingFindings(member, runs, finalTarget) {
 /**
  * Evaluate the fence. Returns { mergeReady, blockers[] }.
  *
- * Every gate below is derived from observable inputs (runs, findings, declared
- * class, declared non-participation). The one judgement input,
- * `boundedClosureSufficient`, mirrors the single exception policy/core.md
- * grants: a Review stopping rules decision that targeted closure suffices after
- * an accepted fix moved the target. Policy requires that decision to be
- * recorded, so it is an input rather than an unstated agent intention.
+ * Gates are derived from observable inputs (runs, findings, declared class,
+ * declared non-participation) wherever the state is representable. Two inputs
+ * remain judgements rather than derivations, and both are ones policy/core.md
+ * requires the agent to RECORD, so neither is an unstated intention:
+ *   - `boundedClosureSufficient` — the Review stopping rules decision that
+ *     targeted closure suffices for every target move since the member's
+ *     completion.
+ *   - `runInFlightAtCurrentTarget` — whether a run is still running; not
+ *     derivable from a terminal-run list.
+ * `completedAtPreFixTarget` is NOT an input: whether the member ever reached
+ * `completed@target` is derivable from its runs, and deriving it is what makes
+ * the precondition falsifiable.
  */
 function evaluateFence({ finalTarget, actors, runs, findingsRequireTriage = true }) {
   const blockers = [];
@@ -114,12 +122,18 @@ function evaluateFence({ finalTarget, actors, runs, findingsRequireTriage = true
       if (untriaged.length > 0) blockers.push(`untriaged-finding:${member.name}:${untriaged.length}`);
     }
 
-    const bound = runs.filter((r) => r.actor === member.name).some((r) => isTargetBoundEvidence(r, finalTarget));
+    const memberRuns = runs.filter((r) => r.actor === member.name);
+    const bound = memberRuns.some((r) => isTargetBoundEvidence(r, finalTarget));
 
     if (member.cls === "required") {
-      // R6: non-participation does not exempt a required member. Only a valid
-      // run, or an explicit Selection change, discharges the obligation.
-      if (!bound && !member.selectionChangedToDropRequired) {
+      // A required run's validity is judged against the expected target of the
+      // review STAGE it belongs to — not against the final target. Comparing
+      // to finalTarget here would demand a re-review at every accepted fix,
+      // the opposite of what the stopping rules allow.
+      const validForItsStage = memberRuns.some((r) =>
+        isTargetBoundEvidence(r, r.stageTarget ?? finalTarget),
+      );
+      if (!validForItsStage && !member.selectionChangedToDropRequired) {
         blockers.push(`required-run-missing:${member.name}`);
       }
       continue;
@@ -132,9 +146,14 @@ function evaluateFence({ finalTarget, actors, runs, findingsRequireTriage = true
     // requires ALL of its preconditions — it is not a free pass. Note this
     // branch is reached only for `expected`; `required` returned above, so the
     // exception can never discharge a required obligation.
+    // Derived, not supplied: did this member ever reach `completed@target` at
+    // some target in this flow? A member that never completed can never claim
+    // the exception, however the stopping-rules decision was recorded.
+    const everCompleted = memberRuns.some((r) => isTargetBoundEvidence(r, r.reviewedTarget));
+
     const exceptionApplies =
       member.boundedClosureSufficient === true &&
-      member.completedAtPreFixTarget === true && // never completed => no exception
+      everCompleted && // never completed => no exception
       member.runInFlightAtCurrentTarget !== true; // must await a terminal state
 
     if (!bound && !member.declinedParticipation && !exceptionApplies) {
@@ -283,13 +302,12 @@ test("regression 3: bounded accepted-fix does not re-require full discovery at t
         name: "auto-reviewer",
         participation: "review",
         boundedClosureSufficient: true,
-        completedAtPreFixTarget: true, // it HAD completed at 354187da
       },
     ],
     runs: [
       {
         actor: "auto-reviewer",
-        reviewedTarget: "354187da", // never re-ran at the final head
+        reviewedTarget: "354187da", // completed here; never re-ran at the head
         reviewedTargetIsStable: true,
         positiveCompletionEvidence: true,
         findings: [{ id: "P1", resolved: true }],
@@ -313,34 +331,69 @@ test("regression 3: bounded accepted-fix does not re-require full discovery at t
 });
 
 test("the post-fix exception requires every one of its preconditions", () => {
-  // Closure round found the exception was over-broad in two independent ways:
-  // it could exempt a member that had never completed at all, and it could
-  // exempt waiting for a run already in flight at the current target.
-  const base = {
-    finalTarget: "6800b796",
-    actors: [
-      {
-        name: "auto-reviewer",
-        participation: "review",
-        boundedClosureSufficient: true,
-        completedAtPreFixTarget: true,
-      },
-    ],
-    runs: [],
-  };
-  assert.equal(evaluateFence(base).mergeReady, true, "all preconditions met");
+  // The exception was over-broad in two independent ways: it could exempt a
+  // member that had never completed at all, and it could exempt waiting for a
+  // run already in flight at the current target.
+  //
+  // Both routes into the `expected` class are exercised. Keying only on
+  // observed participation left per-precondition mutations scoped to
+  // `declaredAutomatic` members alive — and a declared automatic reviewer is
+  // exactly the actor shape of the PR #51 incident.
+  for (const route of [{ participation: "review" }, { declaredAutomatic: true }]) {
+    const label = JSON.stringify(route);
+    const priorCompletion = {
+      actor: "auto-reviewer",
+      reviewedTarget: "354187da", // completed at an earlier target in this flow
+      reviewedTargetIsStable: true,
+      positiveCompletionEvidence: true,
+      findings: [],
+    };
+    const base = {
+      finalTarget: "6800b796",
+      actors: [{ name: "auto-reviewer", ...route, boundedClosureSufficient: true }],
+      runs: [priorCompletion],
+    };
+    assert.equal(evaluateFence(base).mergeReady, true, `all preconditions met ${label}`);
 
-  // (a) never completed before the fix => the exception must not apply, or the
-  // member's initial completion obligation is bypassed entirely.
-  const neverCompleted = structuredClone(base);
-  neverCompleted.actors[0].completedAtPreFixTarget = false;
-  assert.deepEqual(evaluateFence(neverCompleted).blockers, ["unknown-completion:auto-reviewer"]);
+    // (a) never completed anywhere in this flow => the exception must not
+    // apply, or the member's initial completion obligation is bypassed.
+    const neverCompleted = structuredClone(base);
+    neverCompleted.runs = [];
+    assert.deepEqual(
+      evaluateFence(neverCompleted).blockers,
+      ["unknown-completion:auto-reviewer"],
+      `never-completed must not get the exception ${label}`,
+    );
 
-  // (b) a run is in flight at the current target => must await a terminal
-  // state. Exempting here is exactly the PR #51 late-arrival failure mode.
-  const inFlight = structuredClone(base);
-  inFlight.actors[0].runInFlightAtCurrentTarget = true;
-  assert.deepEqual(evaluateFence(inFlight).blockers, ["unknown-completion:auto-reviewer"]);
+    // (a') completed, but only per an unstable (head-following) field => the
+    // completion was never established, so the exception must not apply.
+    const unstable = structuredClone(base);
+    unstable.runs[0].reviewedTargetIsStable = false;
+    assert.deepEqual(
+      evaluateFence(unstable).blockers,
+      ["unknown-completion:auto-reviewer"],
+      `unstable binding must not establish the prior completion ${label}`,
+    );
+
+    // (b) a run is in flight at the current target => must await it. Exempting
+    // here is exactly the PR #51 late-arrival failure mode.
+    const inFlight = structuredClone(base);
+    inFlight.actors[0].runInFlightAtCurrentTarget = true;
+    assert.deepEqual(
+      evaluateFence(inFlight).blockers,
+      ["unknown-completion:auto-reviewer"],
+      `in-flight run must be awaited ${label}`,
+    );
+
+    // (c) no recorded stopping-rules decision => not the default.
+    const noDecision = structuredClone(base);
+    delete noDecision.actors[0].boundedClosureSufficient;
+    assert.deepEqual(
+      evaluateFence(noDecision).blockers,
+      ["unknown-completion:auto-reviewer"],
+      `the exception must be claimed explicitly ${label}`,
+    );
+  }
 });
 
 test("the post-fix exception can never discharge a required member", () => {
@@ -354,12 +407,45 @@ test("the post-fix exception can never discharge a required member", () => {
         name: "required-reviewer",
         declaredRequired: true,
         boundedClosureSufficient: true,
-        completedAtPreFixTarget: true,
       },
     ],
     runs: [],
   };
   assert.deepEqual(evaluateFence(scenario).blockers, ["required-run-missing:required-reviewer"]);
+});
+
+test("a required run stays valid against its own stage target after the head moves", () => {
+  // policy/core.md judges a required run's validity against the expected
+  // target of the stage it belongs to, NOT the final target. Comparing to the
+  // final target would demand a fresh required run at every accepted fix —
+  // the opposite of what the stopping rules allow, and the shape of this very
+  // PR (independent discovery at an earlier target, closure at the head).
+  const scenario = {
+    finalTarget: "46fc0ea",
+    actors: [{ name: "independent-reviewer", declaredRequired: true }],
+    runs: [
+      {
+        actor: "independent-reviewer",
+        reviewedTarget: "e11ee55",
+        stageTarget: "e11ee55", // the discovery stage's expected target
+        reviewedTargetIsStable: true,
+        positiveCompletionEvidence: true,
+        findings: [{ id: "F1", resolved: true, triage: "fix" }],
+      },
+    ],
+  };
+  assert.deepEqual(
+    evaluateFence(scenario).blockers,
+    [],
+    "a discovery-stage run must not be invalidated by a later closure target",
+  );
+
+  // But a run that was not valid even for its own stage still blocks.
+  const invalidForStage = structuredClone(scenario);
+  invalidForStage.runs[0].stageTarget = "some-other-target";
+  assert.deepEqual(evaluateFence(invalidForStage).blockers, [
+    "required-run-missing:independent-reviewer",
+  ]);
 });
 
 test("an optional member's unresolved finding blocks merge-ready via step 7", () => {
@@ -771,19 +857,40 @@ test("core policy defines the merge-ready completion fence without overriding st
   // The exception must be narrow: all three preconditions, and it must not
   // exempt awaiting an in-flight run or a member's first completion.
   assert.ok(containsText(core, "**ただし、次をすべて満たす場合に限り、この条件を要求しません。**"));
+  // The exception must compose across successive bounded target moves, or a
+  // second targeted closure silently loses it and forces a full re-review.
   assert.ok(
-    containsText(core, "target が移動したことだけによって `not-bound` になった"),
+    containsText(core, "その member が、この review flow のいずれかの target で `completed@target` になっている"),
   );
+  assert.ok(
+    containsText(core, "その completion 以降の target 移動がすべて accepted fix によるものであり"),
+  );
+  assert.ok(containsText(core, "連続する targeted closure を跨いでこの条件を辿れます"));
   assert.ok(containsText(core, "current target に対する run が in-flight でない"));
   assert.ok(
     containsText(core, "**既に走っている run の終端を待つ義務と、その member の初回 completion 義務は免除しません。**"),
   );
   assert.ok(containsText(core, "一度も `completed@target` になっていない member へこの例外を適用してはいけません"));
 
-  // A permanently failed/unknown expected member must have a stated exit.
+  // A permanently failed/unknown expected member must have a stated exit —
+  // carrying the same anti-bypass guard its required-member sibling has.
   assert.ok(containsText(core, "条件 2 の成立を無期限に待ちません"));
   assert.ok(
     containsText(core, "Selection Contract を明示的に変更してその member の class を確定し直し"),
+  );
+  assert.ok(containsText(core, "この route を、条件 2 の gate を迂回する経路にしてはいけません"));
+
+  // The wait is on run-record state, not target completion state — the policy
+  // forbids using one vocabulary for both objects.
+  assert.ok(containsText(core, "ここで待つ対象は run record state であり、target completion state ではありません"));
+
+  // The residual-limitation sentence must not re-assert current-target-only
+  // membership after the carry-over rule above it.
+  assert.ok(
+    containsText(core, "**この review flow のいずれの target 上にも**まだ review participation evidence を出していない reviewer"),
+  );
+  assert.ok(
+    containsText(core, "ancestor target で participation evidence を出している reviewer は、上記の carry-over により member です"),
   );
   assert.ok(
     containsText(core, "agent の内心の申告（「この member の沈黙には依拠していない」等）で満たしたことにしてはいけません"),

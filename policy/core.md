@@ -339,8 +339,10 @@ reviewer が非参加を宣言した場合、その required review obligation �
 まで、merge / review completion へ進みません。非参加の宣言を、required review 数の
 gate を迂回する経路にしてはいけません。
 
-expected review set は、consumer が明示しておらず、かつその review target 上へまだ
-review participation evidence を出していない reviewer を含められません。この residual
+expected review set は、consumer が明示しておらず、かつ**この review flow のいずれの
+target 上にも**まだ review participation evidence を出していない reviewer を含め
+られません。ancestor target で participation evidence を出している reviewer は、
+上記の carry-over により member です。この residual
 limitation を、reviewer の不在を `0 findings` とみなす根拠にしてはいけません。
 configured automatic reviewer を明示するかどうかは consumer-owned な選択です。
 
@@ -552,10 +554,11 @@ stopping rules を置き換えず、参照します。
      completion state が `not-bound` / `declined` でも同じ）。
   2. target completion state が `completed@target` または `declined` であること。
      **ただし、次をすべて満たす場合に限り、この条件を要求しません。**
-     - その member が、accepted fix の直前の target では `completed@target` であり、
-       target が移動したことだけによって `not-bound` になった
-     - その target 移動について、Review stopping rules に従い targeted closure で
-       十分と判定されている
+     - その member が、この review flow のいずれかの target で `completed@target`
+       になっている
+     - その completion 以降の target 移動がすべて accepted fix によるものであり、
+       いずれも Review stopping rules に従い targeted closure で十分と判定されて
+       いる（連続する targeted closure を跨いでこの条件を辿れます）
      - その member について、current target に対する run が in-flight でない
 - **optional / advisory member**: その member が既に出した finding の Resolution が
   完了していること。target completion state は blocker ではありません。
@@ -563,9 +566,11 @@ stopping rules を置き換えず、参照します。
 この例外が免除するのは、その member から**新たな** completion evidence を取得しに行く
 義務だけです。**既に走っている run の終端を待つ義務と、その member の初回 completion
 義務は免除しません。** current target に対する run が observed で in-flight なら、
-terminal state（completed / failed / declined）に達するまで待ちます。一度も
-`completed@target` になっていない member へこの例外を適用してはいけません。
-この例外に依拠する場合、上記 3 点の充足を記録します。
+その run が terminate する（run record が `status` の終端値として確定する）まで
+待ちます。ここで待つ対象は run record state であり、target completion state では
+ありません。run が終端した結果 `validity: invalid` であっても、待機義務としては
+充足です。一度も `completed@target` になっていない member へこの例外を適用しては
+いけません。この例外に依拠する場合、上記 3 点の充足を記録します。
 
 expected member の条件 2 を、agent の内心の申告（「この member の沈黙には依拠して
 いない」等）で満たしたことにしてはいけません。判定は observable な target completion
@@ -576,6 +581,9 @@ bounded retry でも解消しない恒久的な `unknown` である場合、条�
 待ちません。Failure / retry に従って escalate するか、Selection Contract を明示的に
 変更してその member の class を確定し直し、その判断と根拠を記録します。いずれの場合
 も、条件 1（既に出した finding の Resolution）は残ります。
+この route を、条件 2 の gate を迂回する経路にしてはいけません。bounded retry を
+形だけ行って恒久 failure と宣言したり、待機を避けるために class を再宣言したりする
+ことは、この route の用途ではありません。
 
 手順 7 は、accepted fix による target 変更のたびに、全 member へ final target の
 full re-review を新たに要求するものではありません。どこまで再 review が必要かは

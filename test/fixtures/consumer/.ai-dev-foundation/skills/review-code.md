@@ -66,9 +66,11 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    set に入れて終わりにしません。membership の境界（何が member になり、presence
    だけでは何が member にならないか）と class ごとの扱いは Selection Contract
    （`policy/core.md`）が定めます。
-   この skill で行う実務は次です。review target 上の actor を fresh acquisition で
-   列挙し、各 actor をどの class としたか、および member とした場合はその根拠（どの
-   surface item を review participation とみなしたか）を記録します。
+   この skill で行う実務は次です。この review flow のいずれかの target 上に現れた
+   actor を fresh acquisition で列挙し（current target に限らず、ancestor target で
+   参加した actor も対象です）、各 actor をどの class としたか、および member と
+   した場合はその根拠（どの surface item を review participation とみなしたか）を
+   記録します。
 4. **Execution** — Execution Contract に従い、Selection で確定した expected
    target SHA / applicable な commit range と target artifact set を各
    reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した
