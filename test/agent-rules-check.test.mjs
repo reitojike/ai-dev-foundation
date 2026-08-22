@@ -105,6 +105,16 @@ test("a `$`-suffixed export identifier (e.g. config$) is matched in full, not tr
   assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
 });
 
+test("agentRules: false as a prefix of a larger expression (false || true) does not count as disabling it", () => {
+  // Codex P2 finding on this PR (5th closure round): `false` must be the
+  // complete property value. `agentRules: false || true` evaluates to
+  // `true` at runtime, so next dev still mutates AGENTS.md even though the
+  // literal text "false" appears right after "agentRules:".
+  const result = runChecker(path.join(fixturesRoot, "incomplete-false-expression"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);

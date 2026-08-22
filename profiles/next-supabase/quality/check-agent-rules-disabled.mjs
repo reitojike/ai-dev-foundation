@@ -20,7 +20,14 @@ const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.co
 // execute consumer config (no import/require of consumer code, no bundler),
 // so it cannot follow indirection such as `agentRules: someImportedFlag`.
 // It catches the direct, documented opt-out Next.js's own docs show.
-const AGENT_RULES_DISABLED_PATTERN = /["']?agentRules["']?\s*:\s*false\b/;
+// `false` must be the complete property value, not merely a prefix of a
+// larger expression such as `agentRules: false || true` (which evaluates to
+// `true`) — the lookahead requires whatever follows (after optional
+// whitespace) to be a property/statement terminator or end of input, not
+// arbitrary trailing expression text. `}` is included for defensiveness
+// even though keepOnlyDirectProperties() below always blanks brace
+// characters before this pattern runs, so a real `}` never reaches here.
+const AGENT_RULES_DISABLED_PATTERN = /["']?agentRules["']?\s*:\s*false(?=\s*[,;}]|\s*$)/;
 
 // A bare text match on the unmodified source would treat a mention inside a
 // comment (e.g. `// TODO: set agentRules: false`) as if it were the actual
