@@ -58,6 +58,23 @@ test("agentRules: false nested inside an unrelated object does not count as the 
   assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
 });
 
+test("agentRules: false in an unrelated top-level object does not shadow the actually exported config", () => {
+  // Codex P2 finding on this PR (closure round): the earlier depth-1 fix
+  // still matched agentRules: false in ANY top-level object, not only the
+  // one `module.exports`/`export default` actually points at. A file that
+  // shadows the exported nextConfig's agentRules: true with an unrelated
+  // metadata object's agentRules: false must stay red.
+  const result = runChecker(path.join(fixturesRoot, "shadowed-by-unrelated-export"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
+test("a directly inlined `export default { agentRules: false }` is green", () => {
+  const result = runChecker(path.join(fixturesRoot, "inline-export"));
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /next\.config\.mjs/);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);
