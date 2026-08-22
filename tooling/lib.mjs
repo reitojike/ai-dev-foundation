@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -111,11 +111,37 @@ export async function diffSkillBundle(consumerDirectory) {
   return diffOwnedDirectory(skillsSourceDirectory, path.join(consumerDirectory, ".ai-dev-foundation", "skills"));
 }
 
+// Resolves symlinks/relative segments to a canonical absolute path for
+// same-directory comparison. A path that doesn't exist yet can't have a
+// realpath, so it falls back to a plain absolute resolution (still enough to
+// detect an already-identical path, which is the only case that matters
+// here — a nonexistent destination can never equal an existing source).
+async function resolveRealOrAbsolutePath(candidatePath) {
+  try {
+    return await realpath(candidatePath);
+  } catch (error) {
+    if (error.code === "ENOENT") return path.resolve(candidatePath);
+    throw error;
+  }
+}
+
 // Replaces destinationDirectory with an exact copy of sourceDirectory
 // (missing, mismatched, and stale-extra entries are all removed/overwritten).
 // Only safe for directories that are entirely Foundation-owned exact-match
 // content, never for a path that may also hold consumer-owned files.
 export async function materializeOwnedDirectory(sourceDirectory, destinationDirectory) {
+  const [resolvedSource, resolvedDestination] = await Promise.all([
+    resolveRealOrAbsolutePath(sourceDirectory),
+    resolveRealOrAbsolutePath(destinationDirectory),
+  ]);
+  if (resolvedSource === resolvedDestination) {
+    // destination already IS the canonical source (e.g. a consumer checkout
+    // whose --consumer path makes .ai-dev-foundation/<dir> resolve back onto
+    // the Foundation checkout itself) — deleting it would destroy the source
+    // this function is about to copy from. Nothing to materialize.
+    return;
+  }
+
   await Promise.all([
     rm(destinationDirectory, { recursive: true, force: true }),
     mkdir(path.dirname(destinationDirectory), { recursive: true }),

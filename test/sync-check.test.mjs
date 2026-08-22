@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { materializeOwnedDirectory } from "../tooling/lib.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = path.join(root, "test", "fixtures", "consumer");
@@ -67,6 +68,26 @@ test("sync creates current adapters and check detects both input and output drif
       await readFile(path.join(skillsSource, file), "utf8"),
     );
   }
+});
+
+test("materializeOwnedDirectory does not destroy the canonical source when destination resolves to the same directory", async (t) => {
+  // Regression test for a Codex P1 finding on PR #42: if a consumer path is
+  // laid out so that .ai-dev-foundation/<owned dir> resolves back onto the
+  // Foundation checkout's own canonical source directory (e.g. the checkout
+  // itself is named .ai-dev-foundation and its parent is passed as
+  // --consumer), the old rm(destination)-then-cp(source, destination)
+  // sequence deleted the canonical source before copying from it, destroying
+  // the source and then failing with ENOENT.
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ai-dev-foundation-"));
+  const sameDirectory = path.join(temporaryRoot, "owned");
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+
+  await mkdir(sameDirectory, { recursive: true });
+  await writeFile(path.join(sameDirectory, "canonical.md"), "canonical content\n", "utf8");
+
+  await materializeOwnedDirectory(sameDirectory, sameDirectory);
+
+  assert.equal(await readFile(path.join(sameDirectory, "canonical.md"), "utf8"), "canonical content\n");
 });
 
 test("sync materializes the skill bundle and check detects skill bundle drift", async (t) => {
