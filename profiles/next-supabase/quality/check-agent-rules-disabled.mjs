@@ -178,6 +178,19 @@ function hasSpreadAfter(directPropertiesText, index) {
   return directPropertiesText.slice(index).includes('...');
 }
 
+// Distinguishes, for the error message only, "agentRules was never set to
+// false" from "agentRules was set to false, but a later duplicate key
+// overrides it" — the generic message is accurate but unhelpfully vague for
+// the latter case (Claude review nit on this PR: a developer who already
+// wrote `agentRules: false` and left a stale duplicate key behind can't
+// tell what's wrong from the generic message alone).
+function hasEarlierDisabledOccurrence(directPropertiesText, lastKeyIndex) {
+  return (
+    lastKeyIndex > 0 &&
+    AGENT_RULES_DISABLED_PATTERN.test(directPropertiesText.slice(0, lastKeyIndex))
+  );
+}
+
 async function findConfigFile(directory) {
   for (const filename of CANDIDATE_CONFIG_FILENAMES) {
     const candidatePath = path.join(directory, filename);
@@ -222,12 +235,21 @@ if (configFile === null) {
     const lastKeyIsDisabled = disabledMatch !== null && disabledMatch.index === 0;
 
     if (!lastKeyIsDisabled) {
-      console.error(
-        `${path.basename(configFile.path)} does not disable Next.js's generated-AGENTS.md agent rules. ` +
-          `Set \`agentRules: false\` in ${path.basename(configFile.path)}, otherwise \`next dev\` upserts a ` +
-          `<!-- BEGIN:nextjs-agent-rules --> block into the Foundation-generated AGENTS.md whenever it detects ` +
-          `an AI coding agent in the environment.`,
-      );
+      if (hasEarlierDisabledOccurrence(directPropertiesText, lastKeyIndex)) {
+        console.error(
+          `${path.basename(configFile.path)} sets \`agentRules: false\` earlier, but a later duplicate ` +
+            `\`agentRules\` key overrides it — JS keeps only the LAST occurrence of a duplicate object ` +
+            `key, and \`next dev\` reads that final value. Remove the earlier \`agentRules: false\` or the ` +
+            `later override so only one, disabling, \`agentRules\` assignment remains.`,
+        );
+      } else {
+        console.error(
+          `${path.basename(configFile.path)} does not disable Next.js's generated-AGENTS.md agent rules. ` +
+            `Set \`agentRules: false\` in ${path.basename(configFile.path)}, otherwise \`next dev\` upserts a ` +
+            `<!-- BEGIN:nextjs-agent-rules --> block into the Foundation-generated AGENTS.md whenever it detects ` +
+            `an AI coding agent in the environment.`,
+        );
+      }
       process.exitCode = 1;
     } else if (hasSpreadAfter(directPropertiesText, lastKeyIndex + disabledMatch[0].length)) {
       console.error(

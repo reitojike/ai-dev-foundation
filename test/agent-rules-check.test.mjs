@@ -145,7 +145,10 @@ test("a duplicate agentRules key that overrides false back to true is determinis
   // `{ agentRules: false, agentRules: true }` effectively sets true.
   const result = runChecker(path.join(fixturesRoot, "duplicate-key-overrides-to-enabled"));
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+  // Claude review nit on this PR: the error message should distinguish
+  // "never set" from "set false, then overridden" so a developer who wrote
+  // agentRules: false but left a stale duplicate key can tell what's wrong.
+  assert.match(result.stderr, /sets `agentRules: false` earlier, but a later duplicate/);
 });
 
 test("a duplicate agentRules key where the later occurrence is still false stays green", () => {
