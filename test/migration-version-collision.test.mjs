@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,6 +55,40 @@ test("a repository with no supabase/migrations directory yet is green, not an er
   const result = runChecker(temporaryRoot);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /checked 0 migration file\(s\)/);
+});
+
+test("a migration file that exists only as a symlink is still scanned, not silently skipped", async (t) => {
+  // Regression for a Claude review finding on PR #46: supabase/cli's own
+  // ListLocalMigrations only excludes directory entries (`if
+  // migration.IsDir() { continue }`), so a migration file that is a symlink
+  // is still picked up by the real Supabase CLI. An earlier implementation
+  // filtered with Dirent.isFile(), which silently excludes symlinks too and
+  // would miss a collision routed through one.
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ai-dev-foundation-migrations-"));
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  const migrationsDirectory = path.join(temporaryRoot, "supabase", "migrations");
+  await mkdir(migrationsDirectory, { recursive: true });
+  await writeFile(path.join(migrationsDirectory, "20260101000000_create_widgets.sql"), "-- real file\n");
+
+  try {
+    await symlink(
+      "20260101000000_create_widgets.sql",
+      path.join(migrationsDirectory, "20260101000000_create_widgets_symlink.sql"),
+    );
+  } catch (error) {
+    // Creating symlinks requires elevated privileges on some platforms
+    // (e.g. Windows without Developer Mode); skip rather than fail there.
+    t.skip(`symlink creation not permitted on this platform: ${error.code}`);
+    return;
+  }
+
+  // Same version prefix as the real file, reached only through the symlink:
+  // this must be detected as a collision, not silently dropped.
+  const result = runChecker(temporaryRoot);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /version 20260101000000/);
+  assert.match(result.stderr, /20260101000000_create_widgets\.sql/);
+  assert.match(result.stderr, /20260101000000_create_widgets_symlink\.sql/);
 });
 
 test("the checker requires no DB, Docker, or Supabase CLI on PATH", () => {

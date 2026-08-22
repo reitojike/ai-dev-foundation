@@ -7,6 +7,11 @@ import path from 'node:path';
 // migrations directory are considered migrations — ListLocalMigrations skips
 // subdirectories rather than recursing into them, and skips any filename
 // that doesn't match "<digits>_name.sql".
+//
+// Version identity is compared as a raw string, not a number: supabase/cli's
+// own schema_migrations table declares `version text NOT NULL PRIMARY KEY`
+// (apps/cli-go/pkg/migration/history.go), so Supabase's own collision check
+// is a text-equality check, not a numeric one.
 const MIGRATION_FILENAME_PATTERN = /^([0-9]+)_(.*)\.sql$/;
 const migrationsDirectory = path.join(process.cwd(), 'supabase', 'migrations');
 
@@ -19,7 +24,10 @@ async function readMigrationFilenames(directory) {
     if (error.code === 'ENOENT') return [];
     throw error;
   }
-  return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+  // Mirrors ListLocalMigrations' `if migration.IsDir() { continue }`: only
+  // directories are excluded, not symlinks — Dirent.isFile() would also
+  // silently exclude a migration file that exists as a symlink.
+  return entries.filter((entry) => !entry.isDirectory()).map((entry) => entry.name);
 }
 
 function groupFilenamesByVersion(filenames) {
