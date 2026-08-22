@@ -133,8 +133,10 @@ object直下）に限定した`agentRules: false`（quoted keyを含む）が見
 object内の同名property（`{ experimental: { agentRules: false } }`）。
 next dev、network、ブラウザのいずれも必要としません。consumer configを
 実行・評価しないtext matchのため、`agentRules`を間接的な変数経由で設定する
-config（例: `agentRules: SOME_FLAG`）は検出できません（直接記述された
-opt-out だけを対象にした bounded guardrail です）。
+config（例: `agentRules: SOME_FLAG`）や、`{ agentRules: false, ...shared }`
+のようなspreadによる後続上書きは検出できません（直接記述された opt-out
+だけを対象にした bounded guardrail です。既知の制約はcheckerのcode comment
+を参照してください）。
 
 このcheckerはNext.jsのupstream agent-rules block本文をFoundation canonical
 policyへコピーしません。`next.config`の設定有無だけを検証します。

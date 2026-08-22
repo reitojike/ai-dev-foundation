@@ -94,6 +94,17 @@ test("a same-named binding shadowed inside a nested function body does not shado
   assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
 });
 
+test("a `$`-suffixed export identifier (e.g. config$) is matched in full, not truncated at the $", () => {
+  // Codex P2 finding on this PR (4th closure round): `\b` right after an
+  // identifier ending in `$` never asserts a boundary there (both sides are
+  // non-word characters), so the capture silently backtracked to the
+  // identifier without its trailing `$` — resolving to an unrelated
+  // same-prefixed binding instead of the one actually exported.
+  const result = runChecker(path.join(fixturesRoot, "dollar-suffixed-shadow"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);

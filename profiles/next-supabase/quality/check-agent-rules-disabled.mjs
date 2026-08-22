@@ -67,14 +67,35 @@ function escapeRegExp(literal) {
 // is excluded by the same anchor. Closing this fully would require
 // scope-aware parsing, which this filesystem-only, non-executing checker
 // deliberately does not do (see the module-level indirection note above).
+//
+// Known, accepted bound (not fixed): a later spread that overrides
+// `agentRules` — `{ agentRules: false, ...shared }` where `shared` sets
+// `agentRules: true` — is not detected; the checker only checks whether the
+// literal `agentRules: false` text appears among the exported object's
+// direct properties, not which property assignment wins once spreads are
+// evaluated in declaration order. Determining the actually-effective value
+// would require evaluating the object literal (including resolving what
+// each spread source contains), which this filesystem-only, non-executing
+// checker deliberately does not do. A `next.config` that spreads a second
+// object into its config after an explicit `agentRules: false` is
+// sufficiently unusual that this is accepted rather than chased further —
+// see the Review Protocol's stopping rules on not spiraling a closure cycle
+// indefinitely against the same bounded-by-design surface.
+//
+// Note that identifier boundaries throughout this function use a
+// `(?![\w$])` negative lookahead, not `\b`: `$` is a valid trailing
+// identifier character but is not a `\w` character, so `\b` immediately
+// after a `$`-suffixed identifier (e.g. `config$`) sits between two
+// non-word characters and never asserts a boundary there, silently
+// truncating the match to `config`.
 function findExportedConfigObjectSource(source) {
   const exportedIdentifierMatch =
-    /(?:export\s+default|module\.exports\s*=)\s*([A-Za-z_$][\w$]*)\b/.exec(source);
+    /(?:export\s+default|module\.exports\s*=)\s*([A-Za-z_$][\w$]*)(?![\w$])/.exec(source);
   const declarationName = exportedIdentifierMatch?.[1];
 
   const openBraceMatch = declarationName
     ? new RegExp(
-        `^(?:export\\s+)?(?:const|let|var)\\s+${escapeRegExp(declarationName)}\\b[^={]*=\\s*\\{`,
+        `^(?:export\\s+)?(?:const|let|var)\\s+${escapeRegExp(declarationName)}(?![\\w$])[^={]*=\\s*\\{`,
         'm',
       ).exec(source)
     : /(?:export\s+default|module\.exports\s*=)\s*\{/.exec(source);
