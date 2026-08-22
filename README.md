@@ -38,6 +38,18 @@ node tooling/check.mjs --consumer path/to/consumer
 は non-zero で終了します。policy、profile、consumer product rule を変更した後は
 再生成してください。
 
+`sync` は同時に、Foundation-owned skill bundle（`skills/`）を consumer の
+`.ai-dev-foundation/skills/` へ exact-match で展開します。これは quality profile の
+`bootstrap-next-supabase.mjs` と異なり、独立した追加コマンドを必要としません。
+consumer が通常実行する `sync` から漏れなく展開されるため、repin 後に skill bundle
+だけ古いまま残る経路はありません。`check` はこの skill bundle の drift（missing /
+content mismatch / stale extra、nested subdirectory を含む）も検証し、drift があれば
+non-zero で終了して `node tooling/sync.mjs --consumer <path>` による再展開を促します。
+`.ai-dev-foundation/skills/` は Foundation-owned な path であり、consumer は編集しません。
+consumer 自身の guidance / skill は、この path および `.ai-dev-foundation/quality/`
+の外側の別 namespace に置きます。Foundation の sync / check / bootstrap は、この
+2 つの exact-match directory 以外の `.ai-dev-foundation/` 配下を読み書き・削除しません。
+
 `check` は、bootstrap 済みの `.ai-dev-foundation/quality/` が、参照している
 Foundation checkout の `profiles/next-supabase/quality/` と一致しているかも
 検証します。file の missing / extra / content mismatch のいずれかがあれば

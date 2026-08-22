@@ -1,9 +1,10 @@
-import { readdir, readFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const foundationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const qualityProfileSourceDirectory = path.join(foundationRoot, "profiles", "next-supabase", "quality");
+export const skillsSourceDirectory = path.join(foundationRoot, "skills");
 
 export function parseConsumerArgument(argv) {
   const index = argv.indexOf("--consumer");
@@ -63,15 +64,14 @@ async function readContentOrNull(filePath) {
   }
 }
 
-// Compares the Foundation-owned quality profile directory
-// (profiles/next-supabase/quality) against a bootstrapped consumer's
-// .ai-dev-foundation/quality. Missing, mismatched, and stale-extra files are
-// all reported as drift so a repin without re-running bootstrap cannot pass.
-export async function diffQualityProfile(consumerDirectory) {
-  const destination = path.join(consumerDirectory, ".ai-dev-foundation", "quality");
+// Compares a Foundation-owned exact-match source directory against a
+// consumer's materialized copy. Missing, mismatched, and stale-extra files
+// (nested subdirectories included) are all reported as drift, so a repin
+// without re-materializing that directory cannot pass.
+export async function diffOwnedDirectory(sourceDirectory, destinationDirectory) {
   const [sourceRelativePaths, destinationRelativePaths] = await Promise.all([
-    listRelativeEntries(qualityProfileSourceDirectory),
-    listRelativeEntries(destination),
+    listRelativeEntries(sourceDirectory),
+    listRelativeEntries(destinationDirectory),
   ]);
   const destinationRelativePathSet = new Set(destinationRelativePaths);
   const drifted = new Set();
@@ -82,8 +82,8 @@ export async function diffQualityProfile(consumerDirectory) {
       continue;
     }
     const [sourceContent, destinationContent] = await Promise.all([
-      readContentOrNull(path.join(qualityProfileSourceDirectory, ...relative.split("/"))),
-      readContentOrNull(path.join(destination, ...relative.split("/"))),
+      readContentOrNull(path.join(sourceDirectory, ...relative.split("/"))),
+      readContentOrNull(path.join(destinationDirectory, ...relative.split("/"))),
     ]);
     if (sourceContent !== destinationContent) drifted.add(relative);
   }
@@ -94,4 +94,29 @@ export async function diffQualityProfile(consumerDirectory) {
   }
 
   return [...drifted].sort();
+}
+
+// profiles/next-supabase/quality against a bootstrapped consumer's
+// .ai-dev-foundation/quality.
+export async function diffQualityProfile(consumerDirectory) {
+  return diffOwnedDirectory(
+    qualityProfileSourceDirectory,
+    path.join(consumerDirectory, ".ai-dev-foundation", "quality"),
+  );
+}
+
+// Foundation-owned skills/ against a synced consumer's
+// .ai-dev-foundation/skills.
+export async function diffSkillBundle(consumerDirectory) {
+  return diffOwnedDirectory(skillsSourceDirectory, path.join(consumerDirectory, ".ai-dev-foundation", "skills"));
+}
+
+// Replaces destinationDirectory with an exact copy of sourceDirectory
+// (missing, mismatched, and stale-extra entries are all removed/overwritten).
+// Only safe for directories that are entirely Foundation-owned exact-match
+// content, never for a path that may also hold consumer-owned files.
+export async function materializeOwnedDirectory(sourceDirectory, destinationDirectory) {
+  await rm(destinationDirectory, { recursive: true, force: true });
+  await mkdir(path.dirname(destinationDirectory), { recursive: true });
+  await cp(sourceDirectory, destinationDirectory, { recursive: true });
 }

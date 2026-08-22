@@ -606,6 +606,33 @@ Contract に従って `unknown` として扱います。特定 provider が常�
 要求するという恒久仕様は Kernel に置かず、observed evidence として capability/profile
 側で再検証可能な形にします。
 
+### Skill routing contract
+
+Review を開始する前に、artifact classification に対応する skill を load することを
+Kernel の provider-neutral な routing contract として表現します。この contract は
+provider 名や provider 固有の skill 機構（特定 CLI の skill directory 等）を含みません。
+
+| artifact classification | load する skill                                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Executable              | `.ai-dev-foundation/skills/review-code.md`                                                                                 |
+| Normative               | `.ai-dev-foundation/skills/review-doc.md`                                                                                  |
+| Informational           | mandatory review skill なし（Artifact classification の定義に従い、open-ended AI review を通常の merge gate にしないため） |
+
+該当する artifact classification の review 手順に入る前に、対応する skill を load
+することは **MUST** です。skill は本節の規範的なルールを複製せず、手順を説明します。
+skill を load せずに review 手順を進めることは、この routing contract への違反です。
+
+`.ai-dev-foundation/skills/` は Foundation-owned な配布物です。consumer はこの path
+を編集しません。canonical source は Foundation リポジトリの `skills/` であり、
+consumer 側の内容がこれと一致しない場合は drift として検知されます。
+
+この routing contract を含む Foundation policy の canonical source は Foundation
+リポジトリの `policy/core.md` です。consumer にはこの規範的なルールが generated
+`AGENTS.md` の `## Foundation policy` section として配布されます。distributed skill
+本文が `policy/core.md` を参照する箇所は、consumer context ではこの生成された
+`AGENTS.md` の `## Foundation policy` section を指すものとして解決します。
+consumer リポジトリに `policy/core.md` という path が存在することを前提にしません。
+
 ## Foundation Change Protocol
 
 Foundation 自身の canonical rule を変更する場合の、provider-neutral な
