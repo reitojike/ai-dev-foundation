@@ -153,6 +153,19 @@ function keepOnlyDirectProperties(objectSource) {
 // function and the caller: only the LAST key occurrence's value is ever
 // the effective one, so evaluating anything before it is pointless, and a
 // spread after it is exactly as override-capable as another explicit key.
+//
+// Out of this checker's documented scope (not a defect against it — the
+// same "regex, not a tokenizer" bound already documented on stripComments()
+// and keepOnlyDirectProperties() for `//`/`/*`/`{`/`}` inside string
+// literals): a string VALUE that happens to contain the literal text
+// `agentRules:` — e.g. `{ agentRules: false, note: 'agentRules: true' }` —
+// is indistinguishable, to this pattern, from a real duplicate key, and
+// would be treated as the last occurrence. This can only make the checker
+// fail closed on an actually-fine config (a false alarm, not a silent
+// pass), and requires a property value that itself contains the exact
+// `agentRules:` key text — a construct this contrived is accepted as
+// outside this filesystem-only checker's scope rather than chased with
+// string-literal-aware tokenization.
 function findLastAgentRulesKeyIndex(directPropertiesText) {
   AGENT_RULES_KEY_PATTERN.lastIndex = 0;
   let lastIndex = -1;
