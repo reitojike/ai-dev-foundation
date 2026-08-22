@@ -75,12 +75,19 @@ test("verify:profile runs the filesystem-only migration collision check before a
   // the DB / Docker / Supabase local stack is ever touched. supabase:types:check
   // stands in for the DB/Docker-touching step here (per profile README, real
   // consumers' supabase:types shells out to `supabase gen types`), so
-  // supabase:migrations:check must be sequenced strictly before it, not just
-  // present somewhere in verify:profile.
+  // supabase:migrations:check must be sequenced strictly before it. Other
+  // filesystem-only guardrails (e.g. Issue #40's agent-rules:check) may sit
+  // anywhere else in the chain without violating this DB/Docker-ordering
+  // invariant, so this asserts relative order rather than an exact string.
   const packageJson = JSON.parse(await readFile(path.join(fixture, "package.json"), "utf8"));
-  assert.equal(
-    packageJson.scripts["verify:profile"],
-    "npm run supabase:migrations:check && npm run supabase:types:check",
+  const steps = packageJson.scripts["verify:profile"].split(" && ").map((step) => step.trim());
+  const migrationsCheckIndex = steps.indexOf("npm run supabase:migrations:check");
+  const typesCheckIndex = steps.indexOf("npm run supabase:types:check");
+  assert.notEqual(migrationsCheckIndex, -1, "verify:profile must run supabase:migrations:check");
+  assert.notEqual(typesCheckIndex, -1, "verify:profile must run supabase:types:check");
+  assert.ok(
+    migrationsCheckIndex < typesCheckIndex,
+    `supabase:migrations:check (index ${migrationsCheckIndex}) must precede supabase:types:check (index ${typesCheckIndex})`,
   );
   assert.equal(
     packageJson.scripts["supabase:migrations:check"],
