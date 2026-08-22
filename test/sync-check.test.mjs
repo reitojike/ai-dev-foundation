@@ -10,6 +10,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = path.join(root, "test", "fixtures", "consumer");
 const skillsSource = path.join(root, "skills");
 
+// Ignores all whitespace so prose assertions survive content-preserving
+// Markdown reflow (mirrors the helper in test/review-protocol.test.mjs).
+function containsText(haystack, needle) {
+  return haystack.replace(/\s+/g, "").includes(needle.replace(/\s+/g, ""));
+}
+
 function run(tool, consumer) {
   return spawnSync(process.execPath, [path.join(root, "tooling", tool), "--consumer", consumer], {
     encoding: "utf8",
@@ -219,20 +225,16 @@ test("the distributed skill bundle does not assume an unresolvable Foundation-re
   const skillFiles = (await readdir(skillsSource)).filter((file) => file.endsWith(".md"));
 
   for (const file of skillFiles) {
-    const content = (await readFile(path.join(fixtureSkillsDirectory, file), "utf8")).replace(/\s+/g, "");
+    const content = await readFile(path.join(fixtureSkillsDirectory, file), "utf8");
     assert.ok(
-      content.includes(
-        "の規範的なルールはgenerated`AGENTS.md`の`##Foundationpolicy`sectionとして配布されます。".replace(
-          /\s+/g,
-          "",
-        ),
+      containsText(
+        content,
+        "の規範的なルールは generated `AGENTS.md` の `## Foundation policy` section として配布されます。",
       ),
       `${file} must state how policy/core.md references resolve in consumer context`,
     );
     assert.ok(
-      content.includes(
-        "consumerリポジトリに`policy/core.md`というpathが存在することは前提にしません。".replace(/\s+/g, ""),
-      ),
+      containsText(content, "consumer リポジトリに `policy/core.md` という path が存在することは前提にしません。"),
       `${file} must not assume a policy/core.md path exists in the consumer repository`,
     );
   }

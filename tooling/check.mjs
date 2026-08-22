@@ -20,7 +20,10 @@ for (const [file, content] of expected) {
   }
 }
 
-const qualityProfileDrift = await diffQualityProfile(consumerDirectory);
+const [qualityProfileDrift, skillBundleDrift] = await Promise.all([
+  diffQualityProfile(consumerDirectory),
+  diffSkillBundle(consumerDirectory),
+]);
 let hasDrift = false;
 
 if (drifted.length > 0) {
@@ -37,7 +40,6 @@ if (qualityProfileDrift.length > 0) {
   hasDrift = true;
 }
 
-const skillBundleDrift = await diffSkillBundle(consumerDirectory);
 if (skillBundleDrift.length > 0) {
   console.error(`Foundation-owned skill bundle is stale (.ai-dev-foundation/skills): ${skillBundleDrift.join(", ")}`);
   console.error("Run: node tooling/sync.mjs --consumer <path>");

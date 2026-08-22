@@ -116,7 +116,9 @@ export async function diffSkillBundle(consumerDirectory) {
 // Only safe for directories that are entirely Foundation-owned exact-match
 // content, never for a path that may also hold consumer-owned files.
 export async function materializeOwnedDirectory(sourceDirectory, destinationDirectory) {
-  await rm(destinationDirectory, { recursive: true, force: true });
-  await mkdir(path.dirname(destinationDirectory), { recursive: true });
+  await Promise.all([
+    rm(destinationDirectory, { recursive: true, force: true }),
+    mkdir(path.dirname(destinationDirectory), { recursive: true }),
+  ]);
   await cp(sourceDirectory, destinationDirectory, { recursive: true });
 }

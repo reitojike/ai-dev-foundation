@@ -169,9 +169,11 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
       upstream task/design の不安定さを疑い、必要に応じて escalate
       します。
     - 追加の full discovery が不要な場合は、手順 10 へ進みます。
-      この cycle が繰り返し発生する場合は無制限に続けず、Review stopping
-      rules（`policy/core.md`）に従って upstream task/design の不安定さを
-      疑い、必要に応じて escalate します。
+
+    この cycle が繰り返し発生する場合は無制限に続けず、Review stopping
+    rules（`policy/core.md`）に従って upstream task/design の不安定さを
+    疑い、必要に応じて escalate します。
+
 13. **Merge-ready** — 以下の条件が成立するのは merge-ready であり、merge
     の実行そのものではありません。merge の実行は `policy/core.md` の
     Merge readiness and merge authority に従い、current Task / Execution

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -755,6 +755,21 @@ test("core policy defines a provider-neutral skill routing contract", async () =
   // Provider-neutral: no provider name and no provider-specific skill mechanism.
   assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
   assert.doesNotMatch(core, /\.claude\/skills|\.codex\/skills/);
+});
+
+test("the skill routing contract table stays in sync with the actual skills/ directory", async () => {
+  // The routing contract table in policy/core.md is static prose, not
+  // generated from skills/. This guards against it silently going stale if a
+  // skill file is added to or removed from skills/ without updating the table.
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+  const skillFiles = (await readdir(path.join(root, "skills"))).filter((file) => file.endsWith(".md")).sort();
+
+  const referencedSkillPaths = [...core.matchAll(/`\.ai-dev-foundation\/skills\/([^`]+)`/g)].map((match) => match[1]);
+  assert.deepEqual(
+    [...new Set(referencedSkillPaths)].sort(),
+    skillFiles,
+    "policy/core.md's Skill routing contract table must list exactly the files in skills/",
+  );
 });
 
 test("review skills document procedure without duplicating normative rules", async () => {
