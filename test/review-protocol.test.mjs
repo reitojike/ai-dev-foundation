@@ -1320,10 +1320,12 @@ test("review skills document procedure without duplicating normative rules", asy
   ]) {
     assert.ok(reviewDoc.includes(phrase), `review-doc.md missing: ${phrase}`);
   }
+  // Issue #45 extended this enumeration with the expected review set; the
+  // Selection step must still name every Selection Contract item it confirms.
   assert.ok(
     containsText(
       reviewDoc,
-      "target SHA / range、target artifact set、reviewer / capability、required review 数を確定します。",
+      "target SHA / range、target artifact set、reviewer / capability、required review 数、および expected review set を確定します。",
     ),
   );
 
@@ -1452,14 +1454,22 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Only valid runs' findings may reach triage; invalid/unknown/failure runs must not,
-  // matching review-code.md's "valid な run から finding を集約し" gate (Fix, Codex P2).
+  // The required count of valid runs remains the gate for *entering* triage.
   assert.ok(
     !containsText(reviewDoc, "確認できない run の finding は triage へ進めず、"),
     "review-doc.md must gate on valid (not just 'confirmable'), since invalid is a determinate Validity outcome, not an inability to confirm",
   );
-  assert.ok(containsText(reviewDoc, "valid な run の finding だけを triage へ進めます。"));
-  assert.ok(containsText(reviewDoc, "invalid / unknown / failure な run の finding は triage に使用しません。"));
+  assert.ok(
+    containsText(reviewDoc, "required 数の valid run が揃うことは triage へ進むための gate ですが、"),
+  );
+
+  // Issue #45 superseded the earlier "only valid runs' findings reach triage"
+  // rule: `validity` is an evidence-axis judgement and is not grounds for
+  // dropping a finding that a non-valid run already produced. The superseded
+  // instructions must be absent, not merely contradicted further down.
+  assert.ok(!containsText(reviewDoc, "valid な run の finding だけを triage へ進めます。"));
+  assert.ok(!containsText(reviewDoc, "invalid / unknown / failure な run の finding は triage に使用しません。"));
+  assert.ok(containsText(reviewDoc, "finding の集約対象は valid な run に限りません。"));
 
   assert.ok(
     containsText(reviewDoc, "closure verification 自体の completion / acquisition / validity も"),

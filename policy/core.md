@@ -278,8 +278,73 @@ Resolution が完了している必要があります。discovery Resolution を
 - artifact classification
 - reviewer / capability の選択
 - required review 数
+- expected review set（下記）
 - target artifact set
 - expected target SHA / commit range
+
+**expected review set は、agent が選択した reviewer だけでは閉じません。** agent が
+選択していなくても、その repository / review target に対して review を行う reviewer が
+存在し得ます。Selection では次の和集合を expected review set として確定します。
+
+1. **required** — Selection Contract で明示的に required とした reviewer。
+   required review 数を満たす対象であり、その review obligation は merge /
+   review completion の blocker です。
+2. **expected** — required ではないが、次のいずれかに該当する reviewer。
+   required review 数には算入しませんが、その review obligation は merge /
+   review completion の blocker です。
+   - consumer が configured automatic reviewer として明示している
+   - 取得済み evidence が、その actor による review 行為をその review target 上で
+     識別させる。**この判定は current target に限りません。** 同じ review flow の
+     中で、ancestor target を含むいずれかの target 上で review 行為を識別できた
+     actor は、以降の target でも expected member として残ります。target が移動
+     しただけで member から外してはいけません
+3. **optional / advisory** — consumer が advisory と宣言した reviewer。target
+   completion state が `unknown` であること自体は blocker にしません。ただし actual
+   finding が観測された場合、その finding は Resolution Contract の対象です。
+
+一つの actor が複数の class の条件を満たす場合、**consumer による明示的な宣言が
+observed evidence に優先します**。consumer が advisory と宣言した reviewer は、実際に
+review 行為を行っても optional のままです（その finding は Resolution Contract の対象
+です）。consumer が required と宣言した reviewer は、他の条件にかかわらず required です。
+
+consumer が reviewer を required / configured automatic / advisory のいずれとして宣言
+するかは、その consumer の product rules、または当該 Task の Selection 記録に置きます。
+Kernel はこの宣言の置き場所を要求しますが、宣言のための schema / field / template を
+規定しません。
+
+2 の後者について、actor を expected member とする根拠は、その surface item 自体が
+**review participation として識別できる**ことです。review target 上に presence が
+あるだけでは足りず、次は単独では expected member 化の根拠になりません。
+
+- 通常の human comment（議論・質問・進捗報告等）
+- CI actor（workflow / status / check の author であること）
+- review 以外の目的で投稿する bot
+
+どの surface item が review participation を構成するかの識別は Review Adapter
+boundary の責務です。Kernel は上記の membership 境界と、**その actor を expected
+member とした根拠を記録すること**のみを要求し、provider 名や surface 名の固定列挙を
+持ちません。
+
+reviewer が非参加を positive に宣言している場合、その状態を `unknown` と区別して
+表現してよく、**expected / optional の member については、その reviewer の target
+completion state を理由に blocker としません**。
+
+**非参加の宣言は、その reviewer が既に出した finding の Resolution obligation を
+discharge しません。** ancestor target で出した finding についても同じです。非参加の
+宣言が免除するのは、その target について新たな completion evidence を得ることだけです。
+
+**required member は非参加の宣言によって blocker から外れません。** required とした
+reviewer が非参加を宣言した場合、その required review obligation は消えず、valid な
+代替 run を得るか、Selection Contract を明示的に変更して required 構成を確定し直す
+まで、merge / review completion へ進みません。非参加の宣言を、required review 数の
+gate を迂回する経路にしてはいけません。
+
+expected review set は、consumer が明示しておらず、かつ**この review flow のいずれの
+target 上にも**まだ review participation evidence を出していない reviewer を含め
+られません。ancestor target で participation evidence を出している reviewer は、
+上記の carry-over により member です。この residual
+limitation を、reviewer の不在を `0 findings` とみなす根拠にしてはいけません。
+configured automatic reviewer を明示するかどうかは consumer-owned な選択です。
 
 #### Execution Contract
 
@@ -374,6 +439,46 @@ recoverable な evidence として扱いません。record schema 自体（特�
 parser 0 件、status success のみを `no findings` へ変換してはいけません。positive
 completion evidence のない empty output は `unknown` として扱います。
 
+**run record state と target completion state は別の対象です。** 上記の record schema の
+`status` / `validity` は、**個々の review run** の状態を表します。`unknown` / `failure`
+の語は本 Contract 内で複数の対象について現れるため、どちらの対象について述べているかを
+必ず明示します。これとは別に、
+**ある reviewer が、確定した review target について現在どこまで完了しているか**を
+**target completion state** と呼び、`completed@target` / `not-bound` / `declined` /
+`failed` / `unknown` で表現します。両者は同じ語で呼ばず、混同してはいけません。
+ancestor target に対する run は、run record としては `status: completed` かつ
+`validity: invalid` であり、同時にその reviewer の current target に対する target
+completion state は `not-bound` です。この 2 つは矛盾しません。
+
+**positive completion evidence は target-bound です。** ある reviewer の target
+completion state を `completed@target` とできるのは、取得済み surface item のうち、
+その target への resolvable な参照を持つ positive completion evidence が存在する場合に
+限ります。そのような evidence が無い場合、その state は `unknown`（または、reviewed
+target を確定できた上で一致しない場合は `not-bound`）であり、`0 findings` へ変換しては
+いけません。
+
+reviewed target を確定させる evidence には、**その review run が実際に review した
+target を安定して表す field / surface** を使います。review target の移動に追随して
+値が変化する field / surface を binding の根拠にしてはいけません。どの field / surface
+が安定であるかの識別は Review Adapter boundary の責務であり、Kernel は安定性の要求と、
+**binding の根拠を記録すること**を定めます。**どちらが安定かを必要な精度で確認できない
+場合、その binding は成立しておらず、target completion state は `unknown` です。**
+
+本 Contract および Selection Contract が「記録すること」を要求する事項——各 actor の
+membership class とその根拠、target completion state とその binding の根拠、および
+current target の clean / discovery evidence として採用した run——は、個々の run record
+schema ではなく、その review stage の Selection / fence 記録として persist します。
+これらは run 単位ではなく reviewer 単位・stage 単位の情報であるためです。
+
+target completion state が `not-bound` である reviewer（reviewed target が expected
+target と一致しない completed run を持つ reviewer）は、次の 2 軸で扱いを分けます。
+両者を混同してはいけません。
+
+- **evidence 軸**: その run を、current target の `0 findings` 主張や discovery
+  evidence の根拠として使えません。
+- **finding 軸**: その run で既に発見された finding は Resolution obligation として
+  残ります。review target が移動したことだけを理由に discharge されません。
+
 review run の状態は少なくとも `none` / `unknown` / `failure` を区別し、混同してはいけません。
 
 #### Resolution Contract
@@ -394,6 +499,9 @@ review run の状態は少なくとも `none` / `unknown` / `failure` を区別�
   の finding（未解決の needs-verification / technical-dispute /
   intent-question 等を含む）が残る間は、その review stage の Resolution
   は完了せず、merge / review completion の根拠にしない
+- 確定した review target より前の target（ancestor）で発見された finding も
+  Resolution Contract の対象である。review target が移動したことだけを理由に
+  discharge されない
 
 ### Merge readiness and merge authority
 
@@ -415,6 +523,88 @@ merge authority が明示されていない場合、または別 authority の�
 ことを意味しません。GitHub の required approval 数を増やす rule でも
 ありません。provider や model 固有の rule にもしません。
 
+#### Merge-ready completion fence
+
+merge-ready を宣言する前に、次を最後の action として評価します。この fence は Review
+stopping rules を置き換えず、参照します。
+
+1. 確定した final candidate target を freeze する。
+2. Selection Contract に従って expected review set を閉じる。observed review
+   participation は、この評価時点の fresh acquisition で判定する。
+3. set の各 member について、fresh acquisition で target completion state を判定する。
+   positive completion evidence が無い member を `0 findings` へ変換しない。
+4. 各 member の finding を収集し、それぞれを安定 evidence 由来の reviewed target へ
+   帰属させる。
+5. finding を Resolution Contract に従って triage する。ancestor target で発見された
+   finding も対象とする。
+6. triage されていない finding が review surface 上に残っていないことを確認する。
+7. merge-ready は、**expected review set の各 member（optional / advisory を含む）の
+   review obligation が satisfied している**ことをもって成立する。
+
+**review obligation** は、member の class ごとに次を指します。この定義が、手順 7 の
+判定対象です。
+
+- **required member**: Selection Contract の required review 数を満たす valid な run が
+  揃っていること、およびその finding の Resolution が完了していること。ここでの
+  `validity` は、**その run が属する review stage の expected target** に対して判定
+  します。必ずしも final target に対して判定するのではありません。非参加の宣言では
+  この obligation は解除されません（Selection Contract 参照）。
+- **expected member**: 次の両方。
+  1. その member が既に出した finding の Resolution が完了していること（target
+     completion state が `not-bound` / `declined` でも同じ）。
+  2. target completion state が `completed@target` または `declined` であること。
+     **ただし、次をすべて満たす場合に限り、この条件を要求しません。**
+     - その member が、この review flow のいずれかの target で `completed@target`
+       になっている
+     - その completion 以降の target 移動がすべて accepted fix によるものであり、
+       いずれも Review stopping rules に従い targeted closure で十分と判定されて
+       いる（連続する targeted closure を跨いでこの条件を辿れます）
+     - その member について、current target に対する run が in-flight でない
+- **optional / advisory member**: その member が既に出した finding の Resolution が
+  完了していること。target completion state は blocker ではありません。
+
+この例外が免除するのは、その member から**新たな** completion evidence を取得しに行く
+義務だけです。**既に走っている run の終端を待つ義務と、その member の初回 completion
+義務は免除しません。** current target に対する run が observed で in-flight なら、
+その run が terminate する（run record が `status` の終端値として確定する）まで
+待ちます。ここで待つ対象は run record state であり、target completion state では
+ありません。run が終端した結果 `validity: invalid` であっても、待機義務としては
+充足です。一度も `completed@target` になっていない member へこの例外を適用しては
+いけません。この例外に依拠する場合、上記 3 点の充足を記録します。
+
+expected member の条件 2 を、agent の内心の申告（「この member の沈黙には依拠して
+いない」等）で満たしたことにしてはいけません。判定は observable な target completion
+state と、上記の記録された stopping rules 判断に基づきます。
+
+expected member の target completion state が `failed`、または Failure / retry の
+bounded retry でも解消しない恒久的な `unknown` である場合、条件 2 の成立を無期限に
+待ちません。Failure / retry に従って escalate するか、Selection Contract を明示的に
+変更してその member の class を確定し直し、その判断と根拠を記録します。いずれの場合
+も、条件 1（既に出した finding の Resolution）は残ります。
+この route を、条件 2 の gate を迂回する経路にしてはいけません。bounded retry を
+形だけ行って恒久 failure と宣言したり、待機を避けるために class を再宣言したりする
+ことは、この route の用途ではありません。
+
+手順 7 は、accepted fix による target 変更のたびに、全 member へ final target の
+full re-review を新たに要求するものではありません。どこまで再 review が必要かは
+Review stopping rules に従い、上記の例外がその範囲を定めます。
+
+この fence の評価後、merge-ready を宣言する前に **review-relevant な state 変化**が
+あった場合、その fence 評価は無効となり、再評価します。review-relevant な state 変化
+とは、review target の変化、および expected review set の membership・target completion
+state・finding・Resolution 状態のいずれかを変えうる surface の変化です。review 意味を
+持たない surface の変化（通常の human comment 等）や、**agent 自身が Review Protocol の
+各 Contract および本 fence に従って persist する durable evidence（acquisition record、
+triage / Resolution の記録、merge-ready report を含む）の記録そのもの**は、
+review-relevant な変化に当たらず、fence を無効化しません。
+
+この再評価は無制限に繰り返しません。review-relevant な変化が繰り返し発生して fence が
+収束しない場合、その繰り返し自体を停止条件として扱い、Review stopping rules と同様に
+upstream task/design の不安定さを疑い、必要に応じて escalate します。
+
+この fence は merge-ready の成立条件であり、merge を実行してよいという判断とは同義では
+ありません。merge execution authority は本節冒頭の分離に従います。
+
 ### Review Adapter boundary
 
 provider 差分は次の 4 つの責務として扱います。Kernel はこの boundary の**形**のみを
@@ -434,6 +624,16 @@ capability/profile の更新時に再検証可能にします。
 
 収集した evidence は、comment ID / review ID / run ID / timestamp / target SHA
 または commit range を可能な範囲で保持します。
+
+次の 2 つの識別も adapter の責務です。Kernel は要求だけを定め、判定材料を持ちません。
+
+- どの surface item が **review participation** を構成するか（Selection Contract の
+  expected review set 参照）
+- どの field / surface が **reviewed target を安定して表す**か、および、どれが review
+  target の移動に追随して値が変化するか（Acquisition & Validity Contract 参照）
+
+これらの判定材料は、恒久仕様ではなく再検証可能な observed evidence として
+capability/profile 側に置きます。
 
 ### Failure / retry
 

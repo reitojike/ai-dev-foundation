@@ -25,8 +25,10 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    上で、markdown の形式チェック（lint / format / link 切れ等、repository
    が持つ機械的な check）を実行します。
 2. **Selection** — Selection Contract（`policy/core.md`）に従い、target SHA /
-   range、target artifact set、reviewer / capability、required review 数を
-   確定します。
+   range、target artifact set、reviewer / capability、required review 数、
+   および expected review set を確定します。expected review set は自分が
+   trigger した reviewer だけでは閉じません。閉じ方と、member とした根拠の
+   記録は Selection Contract（`policy/core.md`）に従います。
    手順 1 で記録した mechanical check 対象の target と、ここで確定する
    target が一致することを確認します。一致しない場合は、確定した target に
    対して手順 1 の mechanical check を再実行してから先へ進みます。
@@ -63,8 +65,17 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    な run が揃うまで triage へ進みません。
    揃わない run（invalid / unknown / failure）の扱いは Failure / retry
    （`policy/core.md`）に従います。
-   valid な run の finding だけを triage へ進めます。
-   invalid / unknown / failure な run の finding は triage に使用しません。
+   required 数の valid run が揃うことは triage へ進むための gate ですが、
+   finding の集約対象は valid な run に限りません。ancestor target に対する run の
+   ように `validity: valid` でない run であっても、そこで既に発見された finding は
+   Resolution Contract（`policy/core.md`）の対象です。`validity` は evidence 軸の
+   判定であり、finding を捨ててよい根拠ではありません。
+   run record の `status` / `validity` とは別に、各 reviewer の target completion
+   state を判定します。positive completion evidence の target-bound 要件、binding へ
+   使う field / surface の安定性要件、および binding が成立しない場合の扱いは、
+   いずれも Acquisition & Validity Contract（`policy/core.md`）が定めます。
+   この skill で行う実務は、どの surface item を positive completion evidence とし、
+   どの field / surface を安定と判断して binding の根拠にしたかを記録することです。
 5. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
    false-positive / needs-verification / technical-dispute / intent-question）へ
    仕分けます。
@@ -106,6 +117,13 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    手順 7 の closure が行われなかった場合（accepted fix が無く target
    SHA / range も target artifact set も変更されていない場合）、この
    手順は不要です。
+9. **Merge-ready fence** — この review 対象を含む変更について merge-ready を
+   宣言する場合は、宣言の直前の最後の action として、Merge-ready completion
+   fence（`policy/core.md`）を評価します。会話内で既に見た snapshot をこの
+   判定の根拠にせず、expected review set と各 member の target completion
+   state を fresh acquisition で判定し直します。merge-ready の成立条件と、
+   review-relevant な state 変化による fence の無効化は `policy/core.md` に
+   従います。
 
 ## 停止条件
 
