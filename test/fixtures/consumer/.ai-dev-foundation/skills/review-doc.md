@@ -70,10 +70,12 @@ Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 
    ように `validity: valid` でない run であっても、そこで既に発見された finding は
    Resolution Contract（`policy/core.md`）の対象です。`validity` は evidence 軸の
    判定であり、finding を捨ててよい根拠ではありません。
-   ある reviewer をその target について `completed@target` とするには、その target
-   への resolvable な参照を持つ positive completion evidence が必要です。binding には
-   reviewed target を安定して表す field / surface を使い、review target の移動に
-   追随して値が変化するものを根拠にしません。
+   run record の `status` / `validity` とは別に、各 reviewer の target completion
+   state を判定します。positive completion evidence の target-bound 要件、binding へ
+   使う field / surface の安定性要件、および binding が成立しない場合の扱いは、
+   いずれも Acquisition & Validity Contract（`policy/core.md`）が定めます。
+   この skill で行う実務は、どの surface item を positive completion evidence とし、
+   どの field / surface を安定と判断して binding の根拠にしたかを記録することです。
 5. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
    false-positive / needs-verification / technical-dispute / intent-question）へ
    仕分けます。

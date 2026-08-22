@@ -90,12 +90,14 @@ function outstandingFindings(member, runs, finalTarget) {
 /**
  * Evaluate the fence. Returns { mergeReady, blockers[] }.
  *
- * `reliedOnForCleanEvidence` encodes the Selection decision described by
- * policy/core.md: whether this member's silence is being used as the current
- * target's `0 findings` / discovery evidence. It is a Selection input, not an
- * oracle for the verdict.
+ * Every gate below is derived from observable inputs (runs, findings, declared
+ * class, declared non-participation). The one judgement input,
+ * `boundedClosureSufficient`, mirrors the single exception policy/core.md
+ * grants: a Review stopping rules decision that targeted closure suffices after
+ * an accepted fix moved the target. Policy requires that decision to be
+ * recorded, so it is an input rather than an unstated agent intention.
  */
-function evaluateFence({ finalTarget, actors, runs, unresolvedFindingSurfaces = 0 }) {
+function evaluateFence({ finalTarget, actors, runs, findingsRequireTriage = true }) {
   const blockers = [];
   const members = actors
     .map((actor) => ({ ...actor, cls: classifyActor(actor) }))
@@ -103,9 +105,14 @@ function evaluateFence({ finalTarget, actors, runs, unresolvedFindingSurfaces = 
 
   for (const member of members) {
     // Finding axis (R3): applies to every class, regardless of the producing
-    // run's validity or target.
+    // run's validity or target, and regardless of non-participation. Declaring
+    // non-participation never discharges a finding already produced.
     const owed = outstandingFindings(member, runs, finalTarget);
     if (owed.length > 0) blockers.push(`unresolved-finding:${member.name}:${owed.length}`);
+    if (findingsRequireTriage) {
+      const untriaged = owed.filter((f) => !f.triage);
+      if (untriaged.length > 0) blockers.push(`untriaged-finding:${member.name}:${untriaged.length}`);
+    }
 
     const bound = runs.filter((r) => r.actor === member.name).some((r) => isTargetBoundEvidence(r, finalTarget));
 
@@ -118,16 +125,15 @@ function evaluateFence({ finalTarget, actors, runs, unresolvedFindingSurfaces = 
       continue;
     }
 
-    if (member.cls === "optional") continue; // R5
+    if (member.cls === "optional") continue; // R5: state is never a blocker
 
-    // expected (R4): unknown blocks only where its silence is being used as the
-    // current target's clean/discovery evidence.
-    if (member.reliedOnForCleanEvidence && !bound) {
+    // expected (R4): the target completion state must be `completed@target` or
+    // `declined`. The sole exception is a recorded stopping-rules decision that
+    // targeted closure suffices after an accepted fix moved the target.
+    if (!bound && !member.declinedParticipation && !member.boundedClosureSufficient) {
       blockers.push(`unknown-completion:${member.name}`);
     }
   }
-
-  if (unresolvedFindingSurfaces > 0) blockers.push(`untriaged-findings:${unresolvedFindingSurfaces}`);
 
   return { mergeReady: blockers.length === 0, blockers };
 }
@@ -167,11 +173,12 @@ test("regression 1: PR #42 type — ancestor-target finding blocks merge-ready",
     "a run on an ancestor target is not clean evidence for the final target",
   );
 
-  // Resolving the finding is what clears it — and nothing else changes here,
-  // so the assertion isolates the finding axis (one variable, not two).
+  // Resolving the finding is what clears the finding axis — and nothing else
+  // changes here, so the assertion isolates one variable. The member's own
+  // completion at the new target is a separate obligation, checked below.
   const resolved = structuredClone(scenario);
   resolved.runs[0].findings[0].resolved = true;
-  assert.deepEqual(evaluateFence(resolved).blockers, []);
+  assert.deepEqual(evaluateFence(resolved).blockers, ["unknown-completion:auto-reviewer"]);
 });
 
 test("finding axis is falsifiable: a target move alone must not discharge a finding", () => {
@@ -264,7 +271,7 @@ test("regression 3: bounded accepted-fix does not re-require full discovery at t
   // its silence is not being used as clean evidence for the new head.
   const scenario = {
     finalTarget: "6800b796", // post-fix head
-    actors: [{ name: "auto-reviewer", participation: "review", reliedOnForCleanEvidence: false }],
+    actors: [{ name: "auto-reviewer", participation: "review", boundedClosureSufficient: true }],
     runs: [
       {
         actor: "auto-reviewer",
@@ -283,11 +290,12 @@ test("regression 3: bounded accepted-fix does not re-require full discovery at t
     `bounded closure must not be blocked on a head re-review: ${blockers.join(", ")}`,
   );
 
-  // Contrast: if the agent DOES lean on that member's silence as the new head's
-  // clean evidence, the missing target-bound run blocks.
-  const relied = structuredClone(scenario);
-  relied.actors[0].reliedOnForCleanEvidence = true;
-  assert.deepEqual(evaluateFence(relied).blockers, ["unknown-completion:auto-reviewer"]);
+  // Contrast: absent a recorded stopping-rules decision, an expected member
+  // that never completed at the final target blocks. The exception must be
+  // claimed explicitly — it is not the default.
+  const noDecision = structuredClone(scenario);
+  delete noDecision.actors[0].boundedClosureSufficient;
+  assert.deepEqual(evaluateFence(noDecision).blockers, ["unknown-completion:auto-reviewer"]);
 });
 
 test("regression 4: optional reviewer — unknown does not block, findings do", () => {
@@ -342,7 +350,7 @@ test("regression 5: ordinary non-review actors are not promoted to expected revi
     actors: [
       { name: "human-collaborator", participation: "comment" },
       { name: "ci", participation: "status" },
-      { name: "auto-reviewer", participation: "review", reliedOnForCleanEvidence: true },
+      { name: "auto-reviewer", participation: "review" },
     ],
     runs: [
       {
@@ -373,7 +381,7 @@ test("regression 6: a required member is not exempted by declaring non-participa
   reselected.actors[0].selectionChangedToDropRequired = true;
   assert.equal(evaluateFence(reselected).mergeReady, true);
 
-  // An expected member, by contrast, may be discharged by declining.
+  // An expected member's *completion* obligation may be discharged by declining.
   assert.equal(
     evaluateFence({
       finalTarget: "abc1234",
@@ -384,10 +392,41 @@ test("regression 6: a required member is not exempted by declaring non-participa
   );
 });
 
+test("declining non-participation never discharges a finding already produced", () => {
+  // The exemption covers the completion obligation only. A reviewer that filed
+  // a finding on an ancestor target and then declined at the new target still
+  // owes that finding's Resolution — otherwise the PR #42 failure mode reopens
+  // through the decline path.
+  const scenario = {
+    finalTarget: "6800b796",
+    actors: [{ name: "auto-reviewer", declaredAutomatic: true, declinedParticipation: true }],
+    runs: [
+      {
+        actor: "auto-reviewer",
+        reviewedTarget: "354187da", // ancestor
+        reviewedTargetIsStable: true,
+        positiveCompletionEvidence: true,
+        findings: [{ id: "P1", resolved: false, triage: "fix" }],
+      },
+    ],
+  };
+
+  const { mergeReady, blockers } = evaluateFence(scenario);
+  assert.equal(mergeReady, false, "a declined member still owes Resolution for findings it produced");
+  assert.deepEqual(blockers, ["unresolved-finding:auto-reviewer:1"]);
+
+  // A permissive implementation — `if (member.declinedParticipation) continue;`
+  // placed before the finding axis — would return merge-ready here. That is the
+  // specific wrong implementation this test exists to reject.
+  const resolvedNow = structuredClone(scenario);
+  resolvedNow.runs[0].findings[0].resolved = true;
+  assert.equal(evaluateFence(resolvedNow).mergeReady, true, "resolving it is what clears the block");
+});
+
 test("silence is `unknown`, never 0 findings, when relied on as clean evidence", () => {
   const scenario = {
     finalTarget: "abc1234",
-    actors: [{ name: "declared-auto", declaredAutomatic: true, reliedOnForCleanEvidence: true }],
+    actors: [{ name: "declared-auto", declaredAutomatic: true }],
     runs: [
       {
         actor: "declared-auto",
@@ -403,7 +442,10 @@ test("silence is `unknown`, never 0 findings, when relied on as clean evidence",
   assert.deepEqual(blockers, ["unknown-completion:declared-auto"]);
 });
 
-test("fence blocks while untriaged findings remain on a review surface", () => {
+test("fence blocks while a finding on a review surface has not been triaged", () => {
+  // Derived from the finding itself, not from a caller-supplied count: a
+  // finding with no triage category is untriaged, and blocks on that ground
+  // separately from being unresolved.
   const scenario = {
     finalTarget: "abc1234",
     actors: [{ name: "auto-reviewer", participation: "review" }],
@@ -413,12 +455,21 @@ test("fence blocks while untriaged findings remain on a review surface", () => {
         reviewedTarget: "abc1234",
         reviewedTargetIsStable: true,
         positiveCompletionEvidence: true,
-        findings: [],
+        findings: [{ id: "P2", resolved: false }], // no triage category
       },
     ],
-    unresolvedFindingSurfaces: 1,
   };
-  assert.equal(evaluateFence(scenario).mergeReady, false);
+  const { mergeReady, blockers } = evaluateFence(scenario);
+  assert.equal(mergeReady, false);
+  assert.ok(blockers.includes("untriaged-finding:auto-reviewer:1"));
+
+  // Assigning a triage category clears the triage blocker but not Resolution:
+  // policy states a triage category alone is not Resolution completion.
+  const triaged = structuredClone(scenario);
+  triaged.runs[0].findings[0].triage = "needs-verification";
+  const after = evaluateFence(triaged);
+  assert.ok(!after.blockers.some((b) => b.startsWith("untriaged-finding")));
+  assert.ok(after.blockers.includes("unresolved-finding:auto-reviewer:1"));
 });
 
 // ---------------------------------------------------------------------------
@@ -470,8 +521,19 @@ test("core policy states the expected review set closure rule", async () => {
 test("a required member cannot be exempted by declaring non-participation", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
-  assert.ok(containsText(core, "expected / optional の member についてはその reviewer を blocker にしません"));
+  assert.ok(
+    containsText(core, "expected / optional の member については、その reviewer の target completion state を理由に blocker としません"),
+  );
   assert.ok(containsText(core, "required member は非参加の宣言によって blocker から外れません"));
+
+  // The exemption must not leak into the finding axis (round-2 F2).
+  assert.ok(
+    containsText(core, "非参加の宣言は、その reviewer が既に出した finding の Resolution obligation を discharge しません"),
+  );
+  assert.ok(containsText(core, "ancestor target で出した finding についても同じです"));
+  assert.ok(
+    containsText(core, "非参加の宣言が免除するのは、その target について新たな completion evidence を得ることだけです"),
+  );
   assert.ok(
     containsText(core, "valid な代替 run を得るか、Selection Contract を明示的に変更して required 構成を確定し直す"),
   );
@@ -562,18 +624,38 @@ test("core policy defines the merge-ready completion fence without overriding st
   assert.ok(containsText(core, "**required member**:"));
   assert.ok(containsText(core, "**expected member**:"));
   assert.ok(containsText(core, "**optional / advisory member**:"));
+  // The expected-member obligation must be decidable from observable state,
+  // not from an agent's unstated intention (round-2 F1).
   assert.ok(
-    containsText(core, "その member の**不在または沈黙を、current target の `0 findings` / discovery evidence として使っていない**こと"),
+    containsText(core, "target completion state が `completed@target` または `declined` であること"),
   );
   assert.ok(
-    containsText(core, "使わない場合、target completion state が `unknown` であること自体は blocker ではありません"),
+    containsText(
+      core,
+      "targeted closure で十分と判定され、その member について追加の discovery が不要と判断される場合、この条件を要求しません",
+    ),
   );
+  assert.ok(
+    containsText(core, "agent の内心の申告（「この member の沈黙には依拠していない」等）で満たしたことにしてはいけません"),
+  );
+  assert.ok(containsText(core, "判定は observable な target completion state と、上記の記録された stopping rules 判断に基づきます"));
+
+  // required-member validity is judged per review stage, not against the final
+  // target (round-2 F7).
+  assert.ok(
+    containsText(core, "その run が属する review stage の expected target"),
+  );
+  assert.ok(containsText(core, "必ずしも final target に対して判定するのではありません"));
 
   // Ordering property: the fence is invalidated by later review-relevant state
   // changes — bounded, and not self-triggering.
   assert.ok(containsText(core, "**review-relevant な state 変化**があった場合、その fence 評価は無効となり、再評価します"));
+  // The self-exemption must name the referent explicitly (round-2 F5).
   assert.ok(
-    containsText(core, "agent 自身が本 Contract に従って persist する durable evidence の記録そのもの"),
+    containsText(
+      core,
+      "agent 自身が Review Protocol の各 Contract および本 fence に従って persist する durable evidence（acquisition record、triage / Resolution の記録、merge-ready report を含む）の記録そのもの",
+    ),
   );
   assert.ok(containsText(core, "fence を無効化しません"));
   assert.ok(containsText(core, "この再評価は無制限に繰り返しません"));
@@ -665,27 +747,48 @@ test("review-code skill carries the procedural detail for the fence", async () =
   assert.ok(containsText(skill, "capability/profile 側で再検証可能な observed evidence として扱います"));
 });
 
-test("the skills reference the Kernel rules rather than restating them", async () => {
+test("both skills reference the Kernel rules rather than restating them", async () => {
   // policy/core.md owns the normative rules; skills explain procedure. The
-  // sentences below are the Kernel's, and must not be duplicated verbatim into
-  // the skill, where the two copies could drift silently.
-  const skill = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  // sentences below are the Kernel's and must not be duplicated into either
+  // skill, where the copies could drift silently. Round 2 found the guard had
+  // covered only review-code.md while review-doc.md gained a fresh (and
+  // incomplete) copy in the same commit — so both are checked here, and the
+  // paraphrase that slipped past the exact-match check is included.
+  const code = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const doc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
 
-  for (const kernelSentence of [
+  const kernelSentences = [
     "全 member が final target で completed であることを要求するものではありません",
     "同じ reviewer による final target の full re-review を強制しません",
     "review target 上に presence があるだけでは足りず",
     "review target の移動に追随して値が変化する field / surface を binding の根拠にしてはいけません",
+    // the review-doc paraphrase of the same rule
+    "review target の移動に追随して値が変化するものを根拠にしません",
+    "その target への resolvable な参照を持つ positive completion evidence が必要です",
+  ];
+
+  for (const [name, text] of [
+    ["review-code.md", code],
+    ["review-doc.md", doc],
   ]) {
+    for (const kernelSentence of kernelSentences) {
+      assert.ok(
+        !containsText(text, kernelSentence),
+        `${name} restates a Kernel rule: ${kernelSentence}`,
+      );
+    }
+    // Each must point at the owner instead of carrying its own copy.
     assert.ok(
-      !containsText(skill, kernelSentence),
-      `review-code.md restates a Kernel rule verbatim: ${kernelSentence}`,
+      containsText(text, "`policy/core.md`"),
+      `${name} must reference the owning policy`,
     );
   }
 
-  // It must point at the owner instead.
-  assert.ok(containsText(skill, "は、いずれも `policy/core.md` が定めます"));
-  assert.ok(containsText(skill, "merge-ready の成立条件、review obligation の定義"));
+  assert.ok(containsText(code, "は、いずれも `policy/core.md` が定めます"));
+  assert.ok(containsText(code, "merge-ready の成立条件、review obligation の定義"));
+  assert.ok(
+    containsText(doc, "いずれも Acquisition & Validity Contract（`policy/core.md`）が定めます"),
+  );
 });
 
 test("the Kernel states the fence without hard-coding provider specifics", async () => {
