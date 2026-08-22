@@ -92,8 +92,58 @@ project IDと生成先パスを使う`supabase:types`を定義し、それを実
 diffを失敗させる`supabase:types:check`をblocking checkへ追加します。これはdrift/error
 検知への入口であり、FoundationはSupabase project設定や生成先を決めません。
 
+`next.config`がNext.js 16.3+の生成AGENTS.md agent rulesを無効化しているかも、DB /
+Docker / Supabase local stackを起動する前にfilesystemだけでdeterministicに検知
+します。Next.js 16.3以降を使うconsumerは`.ai-dev-foundation/quality/check-agent-rules-disabled.mjs`を
+`agent-rules:check`として実行し、blocking checkへ追加します（16.3未満のconsumerは
+`agentRules` optionも自動生成挙動も持たないため、このcheckを追加しません）。詳細は
+「Next.js agent-rules (generated AGENTS.md) drift prevention」を参照してください。
+
 unit/component testとDB/RLS testはtest runnerを固定しません。consumerで該当testが
 存在する場合は、そのcommandをblocking CIへ追加します。
+
+## Next.js agent-rules (generated AGENTS.md) drift prevention
+
+`AGENTS.md`はFoundation canonical inputsから生成されるgenerated artifactです
+（`tooling/sync.mjs`）。consumer/runtimeが実行時に書き換える対象ではありません。
+
+Next.js 16.3以降の`next dev`は、実行環境内にAI coding agent（`CLAUDECODE`、
+`CURSOR_TRACE_ID`、`CODEX_*`、`GEMINI_CLI`等の環境変数で検出）を検出すると、
+`next.config`で`agentRules`が明示的に`false`でない限り、生成済みの`AGENTS.md`へ
+`<!-- BEGIN:nextjs-agent-rules -->`で始まるmanaged blockをupsertします
+（Next.js 16.3.2の`node_modules/next/dist/server/lib/start-server.js`および
+`generate-agent-files.js`で確認済み）。これはFoundation-generated `AGENTS.md`への
+silent mutationであり、通常の`next dev`実行だけでconsumerのworking treeが
+dirtyになります。Next.js 16.3未満はこの自動生成挙動も`agentRules` optionも
+持たないため、この節および次のcheckerの対象外です。
+
+`next.config`自体はconsumer-owned application configであり、Foundationは
+代わりにこのfileを書き込みません。consumerが`next.config`で明示的に
+`agentRules: false`を設定し、そのことを次のcheckerでdeterministicに
+担保します。
+
+```text
+node .ai-dev-foundation/quality/check-agent-rules-disabled.mjs
+```
+
+このcheckerは`next.config.ts` / `next.config.js` / `next.config.mjs`を
+filesystemだけで検査し、comment除去後・brace-depth 1（exportされる config
+object直下）に限定した`agentRules: false`（quoted keyを含む）が見つからない
+場合（fileが存在しない場合を含む）はnon-zeroで失敗します。`false`は完全な
+property valueである場合だけ有効とします（`agentRules: false || true`は
+実際にはtrueとして評価されるため無効）。次はfalseとして扱いません:
+comment内の記述（`// agentRules: false`）、ネストしたobject内の同名property
+（`{ experimental: { agentRules: false } }`）、および完全な値でないもの
+（`agentRules: false || true`）。
+next dev、network、ブラウザのいずれも必要としません。consumer configを
+実行・評価しないtext matchのため、`agentRules`を間接的な変数経由で設定する
+config（例: `agentRules: SOME_FLAG`）や、`{ agentRules: false, ...shared }`
+のようなspreadによる後続上書きは検出できません（直接記述された opt-out
+だけを対象にした bounded guardrail です。既知の制約はcheckerのcode comment
+を参照してください）。
+
+このcheckerはNext.jsのupstream agent-rules block本文をFoundation canonical
+policyへコピーしません。`next.config`の設定有無だけを検証します。
 
 ## `verify` への集約
 
@@ -102,12 +152,14 @@ profile固有の追加は`verify:profile`に置きます。これはextension po
 登録機構ではありません。consumerがSupabaseを使う場合、`supabase:types:check`は
 `verify:profile`から呼び出し、typesの再生成後に生成ファイルのdriftをnon-zeroで検知する
 commandにします。DB/RLS testがあるconsumerは同じ`verify:profile`からそのtest commandを
-呼び出します。
+呼び出します。Next.js 16.3以降を使うconsumerは同じ`verify:profile`から
+`agent-rules:check`を呼び出します（16.3未満では対象外のため呼び出しません。
+本節冒頭の「該当しないcommandは含めない」原則の具体例です）。
 
 ```json
 {
   "scripts": {
-    "verify:profile": "npm run supabase:types:check && npm run test:rls",
+    "verify:profile": "npm run agent-rules:check && npm run supabase:types:check && npm run test:rls",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run foundation:check && npm run verify:profile"
   }
 }
