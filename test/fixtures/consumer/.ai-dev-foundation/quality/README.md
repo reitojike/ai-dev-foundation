@@ -113,7 +113,8 @@ Next.js 16.3以降の`next dev`は、実行環境内にAI coding agent（`CLAUDE
 （Next.js 16.3.2の`node_modules/next/dist/server/lib/start-server.js`および
 `generate-agent-files.js`で確認済み）。これはFoundation-generated `AGENTS.md`への
 silent mutationであり、通常の`next dev`実行だけでconsumerのworking treeが
-dirtyになります。
+dirtyになります。Next.js 16.3未満はこの自動生成挙動も`agentRules` optionも
+持たないため、この節および次のcheckerの対象外です。
 
 `next.config`自体はconsumer-owned application configであり、Foundationは
 代わりにこのfileを書き込みません。consumerが`next.config`で明示的に
@@ -125,11 +126,15 @@ node .ai-dev-foundation/quality/check-agent-rules-disabled.mjs
 ```
 
 このcheckerは`next.config.ts` / `next.config.js` / `next.config.mjs`を
-filesystemだけで検査し、`agentRules: false`（quoted keyを含む）が見つからない
-場合（fileが存在しない場合を含む）はnon-zeroで失敗します。next dev、network、
-ブラウザのいずれも必要としません。consumer configを実行・評価しないtext matchの
-ため、`agentRules`を間接的な変数経由で設定するconfigは検出できません
-（直接記述された opt-out だけを対象にした bounded guardrail です）。
+filesystemだけで検査し、comment除去後・brace-depth 1（exportされる config
+object直下）に限定した`agentRules: false`（quoted keyを含む）が見つからない
+場合（fileが存在しない場合を含む）はnon-zeroで失敗します。次はfalseとして
+扱いません: comment内の記述（`// agentRules: false`）、およびネストした
+object内の同名property（`{ experimental: { agentRules: false } }`）。
+next dev、network、ブラウザのいずれも必要としません。consumer configを
+実行・評価しないtext matchのため、`agentRules`を間接的な変数経由で設定する
+config（例: `agentRules: SOME_FLAG`）は検出できません（直接記述された
+opt-out だけを対象にした bounded guardrail です）。
 
 このcheckerはNext.jsのupstream agent-rules block本文をFoundation canonical
 policyへコピーしません。`next.config`の設定有無だけを検証します。

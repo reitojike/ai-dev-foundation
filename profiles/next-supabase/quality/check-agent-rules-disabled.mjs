@@ -33,6 +33,36 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, '');
 }
 
+// A comment-stripped text match would still treat an unrelated, coincidentally
+// named `agentRules: false` nested inside some other object (for example
+// `{ experimental: { agentRules: false } }`) as if it were the top-level
+// NextConfig property `next.config` actually exports — false-passing a
+// config whose real `agentRules` is unset or `true`. Brace depth is counted
+// (after comment stripping) and only text at depth 1 — directly inside the
+// outermost `{ ... }` object literal(s) in the file, where a `next.config`'s
+// exported config object lives — is kept; deeper text is blanked out before
+// matching. This is brace counting, not full parsing, so a `{` or `}` inside
+// a string literal is a known, accepted edge case, matching the same bound
+// already documented for stripComments().
+function keepOnlyTopLevelBraceDepth(source) {
+  let depth = 0;
+  let result = '';
+  for (const character of source) {
+    if (character === '{') {
+      depth += 1;
+      result += ' ';
+      continue;
+    }
+    if (character === '}') {
+      depth -= 1;
+      result += ' ';
+      continue;
+    }
+    result += depth === 1 ? character : ' ';
+  }
+  return result;
+}
+
 async function findConfigFile(directory) {
   for (const filename of CANDIDATE_CONFIG_FILENAMES) {
     const candidatePath = path.join(directory, filename);
@@ -54,7 +84,9 @@ if (configFile === null) {
       `with \`agentRules: false\`.`,
   );
   process.exitCode = 1;
-} else if (!AGENT_RULES_DISABLED_PATTERN.test(stripComments(configFile.content))) {
+} else if (
+  !AGENT_RULES_DISABLED_PATTERN.test(keepOnlyTopLevelBraceDepth(stripComments(configFile.content)))
+) {
   console.error(
     `${path.basename(configFile.path)} does not disable Next.js's generated-AGENTS.md agent rules. ` +
       `Set \`agentRules: false\` in ${path.basename(configFile.path)}, otherwise \`next dev\` upserts a ` +

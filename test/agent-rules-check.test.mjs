@@ -47,6 +47,17 @@ test("agentRules: false mentioned only inside a comment does not count as disabl
   assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
 });
 
+test("agentRules: false nested inside an unrelated object does not count as the top-level opt-out", () => {
+  // Codex P2 finding on this PR: a bare comment-stripped text match would
+  // still treat a coincidentally named property nested inside some other
+  // object (e.g. `experimental.agentRules`) as if it were the top-level
+  // NextConfig `agentRules` the actual opt-out requires, false-passing a
+  // config whose real top-level agentRules is unset.
+  const result = runChecker(path.join(fixturesRoot, "nested-unrelated"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);
