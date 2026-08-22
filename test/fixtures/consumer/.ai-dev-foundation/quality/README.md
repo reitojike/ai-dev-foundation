@@ -92,22 +92,55 @@ project IDと生成先パスを使う`supabase:types`を定義し、それを実
 diffを失敗させる`supabase:types:check`をblocking checkへ追加します。これはdrift/error
 検知への入口であり、FoundationはSupabase project設定や生成先を決めません。
 
+`supabase/migrations`内のmigration version prefix重複はDB / Docker / Supabase local
+stackを起動する前にfilesystemだけでdeterministicに検知します。consumerは
+`.ai-dev-foundation/quality/check-migration-version-collision.mjs`を
+`supabase:migrations:check`として実行し、DB/Dockerを起動する他のcheckより前の
+blocking checkへ追加します。詳細は「Migration version prefix collision detection」
+を参照してください。
+
 unit/component testとDB/RLS testはtest runnerを固定しません。consumerで該当testが
 存在する場合は、そのcommandをblocking CIへ追加します。
+
+## Migration version prefix collision detection
+
+parallel branch / worktreeでmigrationを追加すると、異なるfilename（例:
+`20260822120000_add_feature_a.sql`と`20260822120000_add_feature_b.sql`）が
+Git上は競合せず共存できます。しかしSupabaseはfilenameの`_`より前の数字列を
+migration versionとして扱うため、これは同一version identityを持つhidden
+collisionです。Git text conflictでは検出できず、実際のDB migrationまで
+表面化しません。
+
+`check-migration-version-collision.mjs`は`supabase/migrations`をfilesystem
+だけで検査し、同一version prefixを持つ異なるfilenameがあればduplicate
+versionと該当filenameすべてを診断してnon-zeroで失敗します。local Supabase
+runtime、Docker、DB接続のいずれも必要としません。`supabase/migrations`
+直下の`<digits>_name.sql`ファイルだけを対象とし、サブディレクトリは
+再帰的に走査しません（Supabase CLI自身の`ListLocalMigrations`と同じ
+scopeです）。
+
+このcheckerはmigration番号のallocationやreservationを行いません。
+collisionを未然に防ぐ機構ではなく、DB / Docker / Supabase local stackを
+起動する前に安価に検出するguardrailです。
+
+```text
+node .ai-dev-foundation/quality/check-migration-version-collision.mjs
+```
 
 ## `verify` への集約
 
 consumerはrequired checkを通常のnpm scriptsとして固定し、`verify` から順番に実行します。
 profile固有の追加は`verify:profile`に置きます。これはextension pointであり、pluginの
-登録機構ではありません。consumerがSupabaseを使う場合、`supabase:types:check`は
-`verify:profile`から呼び出し、typesの再生成後に生成ファイルのdriftをnon-zeroで検知する
-commandにします。DB/RLS testがあるconsumerは同じ`verify:profile`からそのtest commandを
-呼び出します。
+登録機構ではありません。consumerがSupabaseを使う場合、`supabase:migrations:check`
+（DB / Docker / Supabase local stackを起動する他のcheckより前）に続けて
+`supabase:types:check`を`verify:profile`から呼び出し、typesの再生成後に生成ファイルの
+driftをnon-zeroで検知するcommandにします。DB/RLS testがあるconsumerは同じ
+`verify:profile`からそのtest commandを呼び出します。
 
 ```json
 {
   "scripts": {
-    "verify:profile": "npm run supabase:types:check && npm run test:rls",
+    "verify:profile": "npm run supabase:migrations:check && npm run supabase:types:check && npm run test:rls",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run foundation:check && npm run verify:profile"
   }
 }
