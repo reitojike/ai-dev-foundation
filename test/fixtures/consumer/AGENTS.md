@@ -302,7 +302,10 @@ Resolution が完了している必要があります。discovery Resolution を
    review completion の blocker です。
    - consumer が configured automatic reviewer として明示している
    - 取得済み evidence が、その actor による review 行為をその review target 上で
-     識別させる
+     識別させる。**この判定は current target に限りません。** 同じ review flow の
+     中で、ancestor target を含むいずれかの target 上で review 行為を識別できた
+     actor は、以降の target でも expected member として残ります。target が移動
+     しただけで member から外してはいけません
 3. **optional / advisory** — consumer が advisory と宣言した reviewer。target
    completion state が `unknown` であること自体は blocker にしません。ただし actual
    finding が観測された場合、その finding は Resolution Contract の対象です。
@@ -541,8 +544,8 @@ stopping rules を置き換えず、参照します。
 5. finding を Resolution Contract に従って triage する。ancestor target で発見された
    finding も対象とする。
 6. triage されていない finding が review surface 上に残っていないことを確認する。
-7. merge-ready は、**required ∪ expected の各 member の review obligation が
-   satisfied している**ことをもって成立する。
+7. merge-ready は、**expected review set の各 member（optional / advisory を含む）の
+   review obligation が satisfied している**ことをもって成立する。
 
 **review obligation** は、member の class ごとに次を指します。この定義が、手順 7 の
 判定対象です。
@@ -556,21 +559,35 @@ stopping rules を置き換えず、参照します。
   1. その member が既に出した finding の Resolution が完了していること（target
      completion state が `not-bound` / `declined` でも同じ）。
   2. target completion state が `completed@target` または `declined` であること。
-     **ただし、accepted fix による target 変更の後、Review stopping rules に従って
-     targeted closure で十分と判定され、その member について追加の discovery が不要と
-     判断される場合、この条件を要求しません。** この例外に依拠する場合は、どの
-     stopping rules 判断に基づくかを記録します。
+     **ただし、次をすべて満たす場合に限り、この条件を要求しません。**
+     - その member が、accepted fix の直前の target では `completed@target` であり、
+       target が移動したことだけによって `not-bound` になった
+     - その target 移動について、Review stopping rules に従い targeted closure で
+       十分と判定されている
+     - その member について、current target に対する run が in-flight でない
 - **optional / advisory member**: その member が既に出した finding の Resolution が
   完了していること。target completion state は blocker ではありません。
+
+この例外が免除するのは、その member から**新たな** completion evidence を取得しに行く
+義務だけです。**既に走っている run の終端を待つ義務と、その member の初回 completion
+義務は免除しません。** current target に対する run が observed で in-flight なら、
+terminal state（completed / failed / declined）に達するまで待ちます。一度も
+`completed@target` になっていない member へこの例外を適用してはいけません。
+この例外に依拠する場合、上記 3 点の充足を記録します。
 
 expected member の条件 2 を、agent の内心の申告（「この member の沈黙には依拠して
 いない」等）で満たしたことにしてはいけません。判定は observable な target completion
 state と、上記の記録された stopping rules 判断に基づきます。
 
-手順 7 は、**全 member が final target で completed であることを要求するものでは
-ありません**。accepted fix による target 変更後にどこまで再 review が必要かは Review
-stopping rules に従います。targeted closure で十分と判定される bounded fix について、
-同じ reviewer による final target の full re-review を強制しません。
+expected member の target completion state が `failed`、または Failure / retry の
+bounded retry でも解消しない恒久的な `unknown` である場合、条件 2 の成立を無期限に
+待ちません。Failure / retry に従って escalate するか、Selection Contract を明示的に
+変更してその member の class を確定し直し、その判断と根拠を記録します。いずれの場合
+も、条件 1（既に出した finding の Resolution）は残ります。
+
+手順 7 は、accepted fix による target 変更のたびに、全 member へ final target の
+full re-review を新たに要求するものではありません。どこまで再 review が必要かは
+Review stopping rules に従い、上記の例外がその範囲を定めます。
 
 この fence の評価後、merge-ready を宣言する前に **review-relevant な state 変化**が
 あった場合、その fence 評価は無効となり、再評価します。review-relevant な state 変化

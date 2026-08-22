@@ -295,8 +295,9 @@ comment 本文の completion marker を fresh 再取得した上で直接確認�
 field の両方を持つことがあります。実測では、同一 finding について前者は投稿時の target を
 保持し続けた一方、後者は PR の head 移動後に新しい head の値へ変化していました。後者を
 binding の根拠にすると、ancestor target に対する review を current target の completion
-evidence と誤認します。binding には安定側の field を使い、どちらが安定かを確認できない
-場合は `unknown` として扱ってください。
+evidence と誤認します。この observation は、どちらの field を binding の根拠にしてよいかを
+判断するための材料です。binding の安定性要件と、安定性を確認できない場合の扱いは
+Acquisition & Validity Contract（`policy/core.md`）に従ってください。
 
 同じ実測で、次の 2 点も確認しています。いずれも provider の恒久仕様ではなく、
 capability/profile 側で再検証可能な observed evidence として扱います。

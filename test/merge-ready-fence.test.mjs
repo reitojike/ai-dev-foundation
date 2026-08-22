@@ -128,9 +128,16 @@ function evaluateFence({ finalTarget, actors, runs, findingsRequireTriage = true
     if (member.cls === "optional") continue; // R5: state is never a blocker
 
     // expected (R4): the target completion state must be `completed@target` or
-    // `declined`. The sole exception is a recorded stopping-rules decision that
-    // targeted closure suffices after an accepted fix moved the target.
-    if (!bound && !member.declinedParticipation && !member.boundedClosureSufficient) {
+    // `declined`. The sole exception is the narrow post-fix carry-over, and it
+    // requires ALL of its preconditions — it is not a free pass. Note this
+    // branch is reached only for `expected`; `required` returned above, so the
+    // exception can never discharge a required obligation.
+    const exceptionApplies =
+      member.boundedClosureSufficient === true &&
+      member.completedAtPreFixTarget === true && // never completed => no exception
+      member.runInFlightAtCurrentTarget !== true; // must await a terminal state
+
+    if (!bound && !member.declinedParticipation && !exceptionApplies) {
       blockers.push(`unknown-completion:${member.name}`);
     }
   }
@@ -271,7 +278,14 @@ test("regression 3: bounded accepted-fix does not re-require full discovery at t
   // its silence is not being used as clean evidence for the new head.
   const scenario = {
     finalTarget: "6800b796", // post-fix head
-    actors: [{ name: "auto-reviewer", participation: "review", boundedClosureSufficient: true }],
+    actors: [
+      {
+        name: "auto-reviewer",
+        participation: "review",
+        boundedClosureSufficient: true,
+        completedAtPreFixTarget: true, // it HAD completed at 354187da
+      },
+    ],
     runs: [
       {
         actor: "auto-reviewer",
@@ -296,6 +310,112 @@ test("regression 3: bounded accepted-fix does not re-require full discovery at t
   const noDecision = structuredClone(scenario);
   delete noDecision.actors[0].boundedClosureSufficient;
   assert.deepEqual(evaluateFence(noDecision).blockers, ["unknown-completion:auto-reviewer"]);
+});
+
+test("the post-fix exception requires every one of its preconditions", () => {
+  // Closure round found the exception was over-broad in two independent ways:
+  // it could exempt a member that had never completed at all, and it could
+  // exempt waiting for a run already in flight at the current target.
+  const base = {
+    finalTarget: "6800b796",
+    actors: [
+      {
+        name: "auto-reviewer",
+        participation: "review",
+        boundedClosureSufficient: true,
+        completedAtPreFixTarget: true,
+      },
+    ],
+    runs: [],
+  };
+  assert.equal(evaluateFence(base).mergeReady, true, "all preconditions met");
+
+  // (a) never completed before the fix => the exception must not apply, or the
+  // member's initial completion obligation is bypassed entirely.
+  const neverCompleted = structuredClone(base);
+  neverCompleted.actors[0].completedAtPreFixTarget = false;
+  assert.deepEqual(evaluateFence(neverCompleted).blockers, ["unknown-completion:auto-reviewer"]);
+
+  // (b) a run is in flight at the current target => must await a terminal
+  // state. Exempting here is exactly the PR #51 late-arrival failure mode.
+  const inFlight = structuredClone(base);
+  inFlight.actors[0].runInFlightAtCurrentTarget = true;
+  assert.deepEqual(evaluateFence(inFlight).blockers, ["unknown-completion:auto-reviewer"]);
+});
+
+test("the post-fix exception can never discharge a required member", () => {
+  // The exception lives in the `expected` bullet only. An implementation that
+  // honoured it in the required branch would let a required reviewer be
+  // exempted without a valid run or an explicit Selection change.
+  const scenario = {
+    finalTarget: "abc1234",
+    actors: [
+      {
+        name: "required-reviewer",
+        declaredRequired: true,
+        boundedClosureSufficient: true,
+        completedAtPreFixTarget: true,
+      },
+    ],
+    runs: [],
+  };
+  assert.deepEqual(evaluateFence(scenario).blockers, ["required-run-missing:required-reviewer"]);
+});
+
+test("an optional member's unresolved finding blocks merge-ready via step 7", () => {
+  // Step 7 must evaluate the whole expected review set. Scoping it to
+  // `required ∪ expected` would leave the optional member's Resolution
+  // obligation defined but never applied.
+  const scenario = {
+    finalTarget: "abc1234",
+    actors: [{ name: "advisory-bot", declaredAdvisory: true }],
+    runs: [
+      {
+        actor: "advisory-bot",
+        reviewedTarget: "abc1234",
+        reviewedTargetIsStable: true,
+        positiveCompletionEvidence: true,
+        findings: [{ id: "P3", resolved: false, triage: "needs-verification" }],
+      },
+    ],
+  };
+  const { mergeReady, blockers } = evaluateFence(scenario);
+  assert.equal(mergeReady, false, "a triaged-but-unresolved optional finding still blocks");
+  assert.deepEqual(blockers, ["unresolved-finding:advisory-bot:1"]);
+});
+
+test("expected membership survives a target move (ancestor-only participation)", () => {
+  // Closure round: keying membership off the *current* target would drop a
+  // reviewer that only ever participated on an ancestor, and its ancestor
+  // findings would escape collection — reopening the PR #42 failure mode.
+  const ancestorOnly = {
+    name: "auto-reviewer",
+    participation: "review",
+    participationTargets: ["354187da"], // never reappeared at the final target
+  };
+  assert.equal(
+    classifyActor(ancestorOnly),
+    "expected",
+    "an ancestor-only participant remains an expected member",
+  );
+
+  const scenario = {
+    finalTarget: "6800b796",
+    actors: [ancestorOnly],
+    runs: [
+      {
+        actor: "auto-reviewer",
+        reviewedTarget: "354187da",
+        reviewedTargetIsStable: true,
+        positiveCompletionEvidence: true,
+        findings: [{ id: "P1", resolved: false, triage: "fix" }],
+      },
+    ],
+  };
+  assert.ok(
+    evaluateFence(scenario).blockers.includes("unresolved-finding:auto-reviewer:1"),
+    "the ancestor finding must still be collected after the target moved",
+  );
 });
 
 test("regression 4: optional reviewer — unknown does not block, findings do", () => {
@@ -486,6 +606,13 @@ test("core policy states the expected review set closure rule", async () => {
   assert.ok(
     containsText(core, "取得済み evidence が、その actor による review 行為をその review target 上で識別させる"),
   );
+  // Membership must carry across target moves within the same review flow,
+  // or an ancestor-only participant silently leaves the set.
+  assert.ok(containsText(core, "**この判定は current target に限りません。**"));
+  assert.ok(
+    containsText(core, "ancestor target を含むいずれかの target 上で review 行為を識別できた actor は、以降の target でも expected member として残ります"),
+  );
+  assert.ok(containsText(core, "target が移動しただけで member から外してはいけません"));
 
   // Presence alone must not promote an actor.
   assert.ok(containsText(core, "review participation として識別できる"));
@@ -613,10 +740,22 @@ test("core policy defines the merge-ready completion fence without overriding st
   assert.ok(containsText(core, "triage されていない finding が review surface 上に残っていないことを確認する"));
   assert.ok(!core.includes("unresolved review thread"), "the Kernel must not name a provider thread concept");
 
-  // R4: obligation satisfaction, NOT universal completion at the final target.
-  assert.ok(containsText(core, "各 member の review obligation が satisfied している"));
-  assert.ok(containsText(core, "全 member が final target で completed であることを要求するものではありません"));
-  assert.ok(containsText(core, "同じ reviewer による final target の full re-review を強制しません"));
+  // R4: obligation satisfaction. Step 7 must span the WHOLE expected review
+  // set — scoping it to `required ∪ expected` would leave the optional
+  // member's Resolution obligation defined but never evaluated.
+  assert.ok(
+    containsText(core, "**expected review set の各 member（optional / advisory を含む）の review obligation が satisfied している**"),
+  );
+  // The R2 carve-out must remain true when read standalone: it is about not
+  // demanding a NEW full re-review per target move, not about waiving the
+  // default condition.
+  assert.ok(
+    containsText(
+      core,
+      "accepted fix による target 変更のたびに、全 member へ final target の full re-review を新たに要求するものではありません",
+    ),
+  );
+  assert.ok(containsText(core, "上記の例外がその範囲を定めます"));
 
   // The obligation must actually be defined, per class — otherwise step 7 is
   // circular and two agents can read it opposite ways.
@@ -629,11 +768,22 @@ test("core policy defines the merge-ready completion fence without overriding st
   assert.ok(
     containsText(core, "target completion state が `completed@target` または `declined` であること"),
   );
+  // The exception must be narrow: all three preconditions, and it must not
+  // exempt awaiting an in-flight run or a member's first completion.
+  assert.ok(containsText(core, "**ただし、次をすべて満たす場合に限り、この条件を要求しません。**"));
   assert.ok(
-    containsText(
-      core,
-      "targeted closure で十分と判定され、その member について追加の discovery が不要と判断される場合、この条件を要求しません",
-    ),
+    containsText(core, "target が移動したことだけによって `not-bound` になった"),
+  );
+  assert.ok(containsText(core, "current target に対する run が in-flight でない"));
+  assert.ok(
+    containsText(core, "**既に走っている run の終端を待つ義務と、その member の初回 completion 義務は免除しません。**"),
+  );
+  assert.ok(containsText(core, "一度も `completed@target` になっていない member へこの例外を適用してはいけません"));
+
+  // A permanently failed/unknown expected member must have a stated exit.
+  assert.ok(containsText(core, "条件 2 の成立を無期限に待ちません"));
+  assert.ok(
+    containsText(core, "Selection Contract を明示的に変更してその member の class を確定し直し"),
   );
   assert.ok(
     containsText(core, "agent の内心の申告（「この member の沈黙には依拠していない」等）で満たしたことにしてはいけません"),
