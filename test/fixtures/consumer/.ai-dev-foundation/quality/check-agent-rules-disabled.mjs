@@ -29,6 +29,14 @@ const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.co
 // characters before this pattern runs, so a real `}` never reaches here.
 const AGENT_RULES_DISABLED_PATTERN = /["']?agentRules["']?\s*:\s*false(?=\s*[,;}]|\s*$)/;
 
+// Matches an `agentRules` key regardless of its value — used to find every
+// occurrence among an object's direct properties, not just ones that
+// happen to say `false`. JS object literals let the same key appear more
+// than once; whichever occurrence appears LAST wins at runtime (this is
+// legal, unambiguous JS, not a syntax error), so only the last occurrence's
+// value is ever the effective one.
+const AGENT_RULES_KEY_PATTERN = /["']?agentRules["']?\s*:/g;
+
 // A bare text match on the unmodified source would treat a mention inside a
 // comment (e.g. `// TODO: set agentRules: false`) as if it were the actual
 // opt-out, silently passing a config that has not disabled anything. Comments
@@ -137,21 +145,37 @@ function keepOnlyDirectProperties(objectSource) {
   return result;
 }
 
-// `{ agentRules: false, ...shared }` sets agentRules: false, but if `shared`
-// (a spread evaluated after the explicit property, per normal JS object
-// literal semantics) itself has an `agentRules` key, that key wins at
-// runtime — the effective value is whatever `shared.agentRules` is, not
-// `false`. This checker cannot evaluate what an arbitrary spread source
-// contains (see the module-level indirection note above), so unlike the
-// indirection/scope-shadowing bounds documented elsewhere in this file,
-// this is not accepted as an unverifiable case that stays green: a spread
-// appearing anywhere in the direct properties AFTER the matched
-// `agentRules: false` makes the effective value undecidable, so the caller
-// fails closed instead of assuming `false` still holds. A spread BEFORE the
-// explicit property is fine — the explicit `agentRules: false` written
-// after it is what wins, exactly as read.
-function hasSpreadAfter(directPropertiesText, matchEndIndex) {
-  return directPropertiesText.slice(matchEndIndex).includes('...');
+// Finds the start index of the LAST `agentRules` key among an object's
+// direct properties, or -1 if there is none. Two ways a later assignment
+// can override an earlier explicit `agentRules: false` — a duplicate key
+// (`{ agentRules: false, agentRules: true }`, legal JS: the last one wins)
+// and a later spread whose source sets `agentRules` — are unified by this
+// function and the caller: only the LAST key occurrence's value is ever
+// the effective one, so evaluating anything before it is pointless, and a
+// spread after it is exactly as override-capable as another explicit key.
+function findLastAgentRulesKeyIndex(directPropertiesText) {
+  AGENT_RULES_KEY_PATTERN.lastIndex = 0;
+  let lastIndex = -1;
+  let match;
+  while ((match = AGENT_RULES_KEY_PATTERN.exec(directPropertiesText)) !== null) {
+    lastIndex = match.index;
+  }
+  return lastIndex;
+}
+
+// A spread after the winning (last) `agentRules` key can still override it
+// at runtime — `{ agentRules: false, ...shared }` sets agentRules: false,
+// but if `shared` (evaluated after, per normal JS object literal semantics)
+// itself has an `agentRules` key, that key wins, not `false`. This checker
+// cannot evaluate what an arbitrary spread source contains (see the
+// module-level indirection note above), so unlike the indirection/
+// scope-shadowing bounds documented elsewhere in this file, this is not
+// accepted as an unverifiable case that stays green: the caller fails
+// closed instead of assuming `false` still holds. A spread BEFORE the
+// winning key is fine — the explicit `agentRules: false` written after it
+// is what wins, exactly as read.
+function hasSpreadAfter(directPropertiesText, index) {
+  return directPropertiesText.slice(index).includes('...');
 }
 
 async function findConfigFile(directory) {
@@ -190,8 +214,14 @@ if (configFile === null) {
     process.exitCode = 1;
   } else {
     const directPropertiesText = keepOnlyDirectProperties(exportedConfigObjectSource);
-    const agentRulesMatch = AGENT_RULES_DISABLED_PATTERN.exec(directPropertiesText);
-    if (!agentRulesMatch) {
+    const lastKeyIndex = findLastAgentRulesKeyIndex(directPropertiesText);
+    const disabledMatch =
+      lastKeyIndex === -1
+        ? null
+        : AGENT_RULES_DISABLED_PATTERN.exec(directPropertiesText.slice(lastKeyIndex));
+    const lastKeyIsDisabled = disabledMatch !== null && disabledMatch.index === 0;
+
+    if (!lastKeyIsDisabled) {
       console.error(
         `${path.basename(configFile.path)} does not disable Next.js's generated-AGENTS.md agent rules. ` +
           `Set \`agentRules: false\` in ${path.basename(configFile.path)}, otherwise \`next dev\` upserts a ` +
@@ -199,9 +229,7 @@ if (configFile === null) {
           `an AI coding agent in the environment.`,
       );
       process.exitCode = 1;
-    } else if (
-      hasSpreadAfter(directPropertiesText, agentRulesMatch.index + agentRulesMatch[0].length)
-    ) {
+    } else if (hasSpreadAfter(directPropertiesText, lastKeyIndex + disabledMatch[0].length)) {
       console.error(
         `${path.basename(configFile.path)} sets \`agentRules: false\` but also spreads another object ` +
           `(\`...\`) into the config afterward. A later spread can override \`agentRules\` back to enabled ` +

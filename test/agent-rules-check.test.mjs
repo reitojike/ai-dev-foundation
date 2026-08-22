@@ -137,6 +137,25 @@ test("a spread before agentRules: false does not block the check — the explici
   assert.equal(result.status, 0);
 });
 
+test("a duplicate agentRules key that overrides false back to true is deterministically red", () => {
+  // Codex and Claude independently found this in the same review round:
+  // the same root cause as the spread-override fix — a later assignment to
+  // the same key overrides an earlier one, per legal JS object literal
+  // semantics — but via a plain duplicate key instead of a spread.
+  // `{ agentRules: false, agentRules: true }` effectively sets true.
+  const result = runChecker(path.join(fixturesRoot, "duplicate-key-overrides-to-enabled"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
+test("a duplicate agentRules key where the later occurrence is still false stays green", () => {
+  // `{ agentRules: true, agentRules: false }`: the later occurrence is what
+  // JS actually keeps, and it is a complete `false` value with nothing
+  // after it, so this is verifiable and must stay green.
+  const result = runChecker(path.join(fixturesRoot, "duplicate-key-still-disabled"));
+  assert.equal(result.status, 0);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);
