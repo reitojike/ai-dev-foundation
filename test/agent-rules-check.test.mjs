@@ -38,6 +38,15 @@ test("a next.config.js that never sets agentRules is deterministically red", () 
   assert.match(result.stderr, /next\.config\.js/);
 });
 
+test("agentRules: false mentioned only inside a comment does not count as disabling it", () => {
+  // A bare text match without comment-stripping would false-pass this
+  // fixture, defeating the checker's purpose: the config never actually
+  // sets agentRules, so next dev would still mutate AGENTS.md.
+  const result = runChecker(path.join(fixturesRoot, "commented-out"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);

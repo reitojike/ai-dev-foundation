@@ -22,6 +22,17 @@ const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.co
 // It catches the direct, documented opt-out Next.js's own docs show.
 const AGENT_RULES_DISABLED_PATTERN = /["']?agentRules["']?\s*:\s*false\b/;
 
+// A bare text match on the unmodified source would treat a mention inside a
+// comment (e.g. `// TODO: set agentRules: false`) as if it were the actual
+// opt-out, silently passing a config that has not disabled anything. Comments
+// are stripped first so only code the JS/TS parser would actually evaluate
+// can match. This is line/block-comment stripping, not full tokenization, so
+// a `//` or `/*` inside a string literal is a known, accepted edge case for
+// this bounded, filesystem-only checker.
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, '');
+}
+
 async function findConfigFile(directory) {
   for (const filename of CANDIDATE_CONFIG_FILENAMES) {
     const candidatePath = path.join(directory, filename);
@@ -43,7 +54,7 @@ if (configFile === null) {
       `with \`agentRules: false\`.`,
   );
   process.exitCode = 1;
-} else if (!AGENT_RULES_DISABLED_PATTERN.test(configFile.content)) {
+} else if (!AGENT_RULES_DISABLED_PATTERN.test(stripComments(configFile.content))) {
   console.error(
     `${path.basename(configFile.path)} does not disable Next.js's generated-AGENTS.md agent rules. ` +
       `Set \`agentRules: false\` in ${path.basename(configFile.path)}, otherwise \`next dev\` upserts a ` +
