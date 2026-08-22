@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { composeAgents, composeClaude, diffQualityProfile, parseConsumerArgument } from "./lib.mjs";
+import { composeAgents, composeClaude, diffQualityProfile, diffSkillBundle, parseConsumerArgument } from "./lib.mjs";
 
 const consumerDirectory = parseConsumerArgument(process.argv.slice(2));
 const expected = new Map([
@@ -20,7 +20,10 @@ for (const [file, content] of expected) {
   }
 }
 
-const qualityProfileDrift = await diffQualityProfile(consumerDirectory);
+const [qualityProfileDrift, skillBundleDrift] = await Promise.all([
+  diffQualityProfile(consumerDirectory),
+  diffSkillBundle(consumerDirectory),
+]);
 let hasDrift = false;
 
 if (drifted.length > 0) {
@@ -37,8 +40,14 @@ if (qualityProfileDrift.length > 0) {
   hasDrift = true;
 }
 
+if (skillBundleDrift.length > 0) {
+  console.error(`Foundation-owned skill bundle is stale (.ai-dev-foundation/skills): ${skillBundleDrift.join(", ")}`);
+  console.error("Run: node tooling/sync.mjs --consumer <path>");
+  hasDrift = true;
+}
+
 if (hasDrift) {
   process.exitCode = 1;
 } else {
-  console.log(`Generated adapters and quality profile are current in ${consumerDirectory}`);
+  console.log(`Generated adapters, quality profile, and skill bundle are current in ${consumerDirectory}`);
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -701,9 +701,75 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
 
   // The generated consumer adapter must be self-contained: it must not reference
-  // Foundation-repo-only skill paths that are never distributed to the consumer.
+  // a bare, Foundation-repo-only skill path. It may reference the distributed
+  // `.ai-dev-foundation/skills/...` path, since that path is now materialized to
+  // every consumer.
   assert.ok(containsText(core, "実行手順（review skill）は Foundation リポジトリ側に別途保持し、"));
-  assert.doesNotMatch(core, /skills\/review-code\.md|skills\/review-doc\.md/);
+  assert.doesNotMatch(core, /(?<!\.ai-dev-foundation\/)skills\/review-code\.md/);
+  assert.doesNotMatch(core, /(?<!\.ai-dev-foundation\/)skills\/review-doc\.md/);
+});
+
+test("core policy defines a provider-neutral skill routing contract", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+
+  assert.ok(core.includes("### Skill routing contract"));
+  assert.ok(containsText(core, "| Executable | `.ai-dev-foundation/skills/review-code.md` |"));
+  assert.ok(containsText(core, "| Normative | `.ai-dev-foundation/skills/review-doc.md` |"));
+  // Informational stays consistent with Artifact classification: no mandatory review skill.
+  assert.ok(
+    containsText(
+      core,
+      "| Informational | mandatory review skill なし（Artifact classification の定義に従い、" +
+        "open-ended AI review を通常の merge gate にしないため） |",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "対応する skill を load することは **MUST** です。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "consumer はこの path を編集しません。canonical source は Foundation リポジトリの `skills/` であり、",
+    ),
+  );
+
+  // The routing contract itself must resolve `policy/core.md` skill references
+  // to something a consumer repository actually has: the generated AGENTS.md's
+  // Foundation policy section, not a `policy/core.md` file that never ships.
+  assert.ok(
+    containsText(
+      core,
+      "consumer にはこの規範的なルールが generated `AGENTS.md` の `## Foundation policy` section として配布されます。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "consumer リポジトリに `policy/core.md` という path が存在することを前提にしません。",
+    ),
+  );
+
+  // Provider-neutral: no provider name and no provider-specific skill mechanism.
+  assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+  assert.doesNotMatch(core, /\.claude\/skills|\.codex\/skills/);
+});
+
+test("the skill routing contract table stays in sync with the actual skills/ directory", async () => {
+  // The routing contract table in policy/core.md is static prose, not
+  // generated from skills/. This guards against it silently going stale if a
+  // skill file is added to or removed from skills/ without updating the table.
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+  const skillFiles = (await readdir(path.join(root, "skills"))).filter((file) => file.endsWith(".md")).sort();
+
+  const referencedSkillPaths = [...core.matchAll(/`\.ai-dev-foundation\/skills\/([^`]+)`/g)].map((match) => match[1]);
+  assert.deepEqual(
+    [...new Set(referencedSkillPaths)].sort(),
+    skillFiles,
+    "policy/core.md's Skill routing contract table must list exactly the files in skills/",
+  );
 });
 
 test("review skills document procedure without duplicating normative rules", async () => {
@@ -719,6 +785,21 @@ test("review skills document procedure without duplicating normative rules", asy
     );
     // Neither skill restates the drip-fix prohibition; both defer to Resolution Contract.
     assert.doesNotMatch(skill, /drip fix/, "skill must reference Resolution Contract instead of restating drip fix");
+
+    // A distributed skill's many `policy/core.md` references must be resolvable
+    // from consumer context, where no `policy/core.md` file ships — only the
+    // generated AGENTS.md's Foundation policy section does.
+    assert.ok(
+      containsText(
+        skill,
+        "の規範的なルールは generated `AGENTS.md` の `## Foundation policy` section として配布されます。",
+      ),
+      "skill must state how policy/core.md references resolve in consumer context",
+    );
+    assert.ok(
+      containsText(skill, "consumer リポジトリに `policy/core.md` という path が存在することは前提にしません。"),
+      "skill must not assume a policy/core.md path exists in the consumer repository",
+    );
   }
 
   // review-code.md covers the code review procedure, including the closure validity
