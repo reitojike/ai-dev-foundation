@@ -206,6 +206,27 @@ test("an unrelated array property's spread does not block the check", () => {
   assert.equal(result.status, 0);
 });
 
+test("when multiple config files coexist, the checker inspects the one Next.js actually loads (.js), not .ts", () => {
+  // Codex finding on this PR (fresh discovery round, target 65f11c6):
+  // verified against Next.js 16.3.2's actual CONFIG_FILES precedence
+  // (node_modules/next/dist/shared/lib/constants.js: .js, then .mjs, then
+  // .ts) — an earlier version of CANDIDATE_CONFIG_FILENAMES checked .ts
+  // first. A stale next.config.ts left over from a migration, sitting next
+  // to the next.config.js Next.js actually loads, must not make this
+  // checker report a config as disabled when the file `next dev` reads
+  // still has agentRules enabled.
+  const result = runChecker(path.join(fixturesRoot, "multiple-configs-js-wins"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+  assert.match(result.stderr, /next\.config\.js/);
+});
+
+test("when multiple config files coexist and the one Next.js loads (.js) disables agentRules, that's green regardless of other files", () => {
+  const result = runChecker(path.join(fixturesRoot, "multiple-configs-js-disabled"));
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /next\.config\.js/);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);

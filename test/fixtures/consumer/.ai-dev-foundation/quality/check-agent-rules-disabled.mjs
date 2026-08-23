@@ -13,8 +13,18 @@ import path from 'node:path';
 //
 // Only the three filenames Next.js itself accepts for configuration are
 // checked (an unsupported extension such as .cjs/.cts is itself a Next.js
-// config error, not this checker's concern).
-const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.config.mjs'];
+// config error, not this checker's concern). The order matters and matches
+// Next.js's own `CONFIG_FILES` precedence (node_modules/next/dist/shared/
+// lib/constants.js in 16.3.2: `['next.config.js', 'next.config.mjs',
+// 'next.config.ts', ...]`) — if more than one candidate coexists (e.g.
+// mid-migration between formats, or a stale file left behind), Next.js
+// loads only the first it finds in that order, and this checker must
+// inspect the same file Next.js actually loads. Checking a different one
+// (an earlier version of this checker tried `.ts` first) risks reporting
+// a config as disabled based on a file `next dev` never reads, while the
+// file it does read still has agentRules enabled (Codex review finding on
+// this PR).
+const CANDIDATE_CONFIG_FILENAMES = ['next.config.js', 'next.config.mjs', 'next.config.ts'];
 
 // Matches a JS object property key that is EXACTLY `agentRules` — either a
 // bare identifier not embedded in a longer one, or a fully quoted string
@@ -266,6 +276,23 @@ function findLastAgentRulesKeyIndex(directPropertiesText) {
 // closed instead of assuming `false` still holds. A spread BEFORE the
 // winning key is fine — the explicit `agentRules: false` written after it
 // is what wins, exactly as read.
+//
+// Out of this checker's documented scope (not fixed, fail-closed direction
+// only — Claude review finding on this PR): the `.includes('...')` search
+// below is the same "regex, not a tokenizer" bound as the rest of this
+// file — an unrelated FLAT string property value (not wrapped in its own
+// `{`/`[`, so not blanked by keepOnlyDirectProperties()) that happens to
+// contain the literal text `...` — e.g. `{ agentRules: false, note: 'see
+// docs...' }` — is read as a possible spread override, fail-closing an
+// actually-safe config. This can only produce a false alarm (the checker
+// never treats a real spread as absent), not a silent pass, matching the
+// direction already accepted for the analogous bare/quoted-substring cases
+// on findLastAgentRulesKeyIndex() above; requires a property value whose
+// literal text happens to contain `...`, which is not an unusual thing to
+// write (e.g. an ellipsis in prose), so this is a real, if low-severity
+// (fail-closed-only), usability limitation of this filesystem-only,
+// non-executing checker rather than a hidden defect against its stated
+// scope.
 function hasSpreadAfter(directPropertiesText, index) {
   return directPropertiesText.slice(index).includes('...');
 }
