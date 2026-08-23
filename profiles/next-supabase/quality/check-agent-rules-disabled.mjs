@@ -219,16 +219,32 @@ function keepOnlyDirectProperties(objectSource) {
 //
 // Out of this checker's documented scope (not a defect against it — the
 // same "regex, not a tokenizer" bound already documented on stripComments()
-// and keepOnlyDirectProperties() for `//`/`/*`/`{`/`}` inside string
-// literals): a string VALUE that happens to contain the literal text
-// `agentRules:` — e.g. `{ agentRules: false, note: 'agentRules: true' }` —
-// is indistinguishable, to this pattern, from a real duplicate key, and
-// would be treated as the last occurrence. This can only make the checker
-// fail closed on an actually-fine config (a false alarm, not a silent
-// pass), and requires a property value that itself contains the exact
-// `agentRules:` key text — a construct this contrived is accepted as
-// outside this filesystem-only checker's scope rather than chased with
-// string-literal-aware tokenization.
+// and keepOnlyDirectProperties() for `//`/`/*`/`{`/`}`/`[`/`]` inside
+// string literals): a string VALUE whose content happens to contain text
+// that reads as an `agentRules` key is indistinguishable, to this pattern,
+// from a real one, and would be treated as an occurrence — potentially the
+// last one. Two shapes of this have been observed on this PR:
+//   - a bare substring — `{ agentRules: false, note: 'agentRules: true' }`
+//     — which, since a real `agentRules: false` is also present here,
+//     only fails the check closed on an actually-fine config (a false
+//     alarm, not a silent pass);
+//   - a quoted substring that itself parses as a complete disabling
+//     assignment — `{ note: 'Example JSON: "agentRules": false,' }` — which,
+//     when NO real `agentRules` key is present anywhere else, makes the
+//     checker report the config as disabled when it is not (the dangerous
+//     direction: `next dev` still mutates AGENTS.md, but the check passed).
+// Both require a property value whose literal text happens to read as a
+// direct `agentRules` key assignment — a construct that requires
+// deliberately writing JSON-shaped example/documentation text referencing
+// this specific, narrow Next.js option inside one's own next.config. Fully
+// closing this requires distinguishing string-literal content from
+// structural key/value text, i.e. real JS tokenization, which this
+// filesystem-only, non-executing checker deliberately does not do (see the
+// module-level indirection note above) — so, despite including a
+// dangerous-direction shape, this is accepted as outside this checker's
+// scope rather than chased with string-literal-aware tokenization, the
+// same call made for the other string/regex-literal-opacity findings
+// documented in this file.
 function findLastAgentRulesKeyIndex(directPropertiesText) {
   AGENT_RULES_KEY_PATTERN.lastIndex = 0;
   let lastIndex = -1;
