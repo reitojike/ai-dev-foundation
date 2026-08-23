@@ -16,10 +16,40 @@ import path from 'node:path';
 // config error, not this checker's concern).
 const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.config.mjs'];
 
-// Deliberately a text match, not a config evaluation: this checker does not
-// execute consumer config (no import/require of consumer code, no bundler),
-// so it cannot follow indirection such as `agentRules: someImportedFlag`.
-// It catches the direct, documented opt-out Next.js's own docs show.
+// Matches a JS object property key that is EXACTLY `agentRules` — either a
+// bare identifier not embedded in a longer one, or a fully quoted string
+// whose entire content is `agentRules` — not merely a substring of a
+// longer key. Shared between AGENT_RULES_DISABLED_PATTERN and
+// AGENT_RULES_KEY_PATTERN below so both apply identical key-boundary rules
+// (duplicating this by hand in each pattern previously let them drift out
+// of sync — see the fix history in this PR).
+//
+// The bare-identifier alternative's `(?<![\w$])`/`(?![\w$])` require that
+// neither the character immediately before nor immediately after
+// `agentRules` is an identifier character. Without this, a differently
+// named property whose name merely CONTAINS `agentRules` — e.g.
+// `{ notAgentRules: false }`, a config that does not disable the real
+// `agentRules` option at all — would be read as the real key, false-passing
+// a config `next dev` still mutates.
+//
+// The quoted alternative's `(?<=['"])`/`(?=['"])` require an actual quote
+// character immediately on both sides of `agentRules` — not merely that
+// `["']?` optionally matches one. A prior version used an optional quote
+// on each side, which let `{ 'not-agentRules': false }` match: `["']?` can
+// simply match zero characters and start the pattern mid-string, right at
+// `agentRules`, and `-` (unlike `\w`/`$`) doesn't fail the old bare-key
+// lookbehind either. Requiring an actual quote adjacent on both sides
+// closes this: for `'not-agentRules'`, the character immediately before
+// `agentRules` is `-`, not a quote, so the quoted alternative doesn't
+// match there, and the bare-identifier alternative's lookbehind (`-` is
+// not `[\w$]`, so it doesn't reject) is irrelevant because the substring
+// isn't a standalone bare identifier occurrence either — the whole
+// property key `'not-agentRules'` is quoted, so only the quoted
+// alternative could apply, and it correctly requires the quote to sit
+// right next to `agentRules`, which it doesn't here.
+const AGENT_RULES_KEY_SOURCE = /(?:(?<=['"])agentRules(?=['"])|(?<![\w$])agentRules(?![\w$]))/
+  .source;
+
 // `false` must be the complete property value, not merely a prefix of a
 // larger expression such as `agentRules: false || true` (which evaluates to
 // `true`) — the lookahead requires whatever follows (after optional
@@ -27,26 +57,17 @@ const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.co
 // arbitrary trailing expression text. `}` is included for defensiveness
 // even though keepOnlyDirectProperties() below always blanks brace
 // characters before this pattern runs, so a real `}` never reaches here.
-//
-// The leading `(?<![\w$])` requires that whatever immediately precedes the
-// match (the opening quote of a quoted key, or the `a` of a bare key) is
-// not itself an identifier character. Without it, a differently named
-// property whose name merely ENDS in `agentRules` — e.g.
-// `{ notAgentRules: false }`, a config that does not disable the real
-// `agentRules` option at all — would be read as the real key, false-passing
-// a config `next dev` still mutates. A quoted key's leading quote character
-// is not a `\w`/`$` character, so this lookbehind does not reject
-// `"agentRules": false`.
-const AGENT_RULES_DISABLED_PATTERN = /(?<![\w$])["']?agentRules["']?\s*:\s*false(?=\s*[,;}]|\s*$)/;
+const AGENT_RULES_DISABLED_PATTERN = new RegExp(
+  `${AGENT_RULES_KEY_SOURCE}\\s*:\\s*false(?=\\s*[,;}]|\\s*$)`,
+);
 
 // Matches an `agentRules` key regardless of its value — used to find every
 // occurrence among an object's direct properties, not just ones that
 // happen to say `false`. JS object literals let the same key appear more
 // than once; whichever occurrence appears LAST wins at runtime (this is
 // legal, unambiguous JS, not a syntax error), so only the last occurrence's
-// value is ever the effective one. Same `(?<![\w$])` key-start boundary as
-// AGENT_RULES_DISABLED_PATTERN, and for the same reason.
-const AGENT_RULES_KEY_PATTERN = /(?<![\w$])["']?agentRules["']?\s*:/g;
+// value is ever the effective one.
+const AGENT_RULES_KEY_PATTERN = new RegExp(`${AGENT_RULES_KEY_SOURCE}\\s*:`, 'g');
 
 // A bare text match on the unmodified source would treat a mention inside a
 // comment (e.g. `// TODO: set agentRules: false`) as if it were the actual
@@ -142,8 +163,25 @@ function findExportedConfigObjectSource(source) {
 // nothing to do with `agentRules` — as a possible override, fail-closing an
 // actually-safe config (Claude review finding on this PR). This is
 // brace/bracket counting, not full parsing, so a `{`/`}`/`[`/`]` inside a
-// string literal is a known, accepted edge case, matching the same bound
-// already documented for stripComments().
+// string or regex literal is a known, accepted edge case, matching the
+// same bound already documented for stripComments().
+//
+// Out of this checker's documented scope (not fixed): unlike the
+// fail-closed-only string-literal cases documented elsewhere in this file,
+// a `]` inside a string/regex literal VALUE that sits between the winning
+// `agentRules: false` and a real spread — e.g. `{ agentRules: false, note:
+// ']', ...shared }` — can decrement depth prematurely and blank the real
+// `...shared` out of directPropertiesText, hiding it from hasSpreadAfter()
+// below (Codex review finding on this PR). If `shared` sets `agentRules`,
+// this is a dangerous-direction miss (the checker reports green on a
+// config `next dev` can still mutate), not merely a false alarm. Fully
+// closing this requires distinguishing string/regex-literal contents from
+// structural brackets, i.e. real JS tokenization, which this filesystem-
+// only, non-executing checker deliberately does not do (see the
+// module-level indirection note above) — it requires deliberately
+// constructing a property value whose literal text contains an unbalanced
+// bracket character positioned exactly between the winning key and a
+// spread, which is not a plausible accidental `next.config`.
 function keepOnlyDirectProperties(objectSource) {
   let depth = 0;
   let result = '';

@@ -170,6 +170,19 @@ test("a differently named property whose name merely ends in agentRules does not
   assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
 });
 
+test("a quoted property name that merely ends in agentRules (e.g. 'not-agentRules') does not count as the real key", () => {
+  // Codex finding on this PR (closure round): an optional quote on each
+  // side (`["']?agentRules["']?`) let `{ 'not-agentRules': false }` match
+  // by simply not consuming the leading quote and starting mid-string —
+  // the `-` before `agentRules` isn't a `\w`/`$` character, so the old
+  // bare-key lookbehind alone didn't reject it either. Requiring an actual
+  // quote immediately on both sides of `agentRules` (not an optional one)
+  // closes this.
+  const result = runChecker(path.join(fixturesRoot, "quoted-name-suffix-collision"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
 test("an unrelated array property's spread does not block the check", () => {
   // Claude finding on this PR (fresh discovery round, target 10194e5):
   // keepOnlyDirectProperties() only tracked `{`/`}` depth, so an array
