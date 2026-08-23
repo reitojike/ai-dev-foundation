@@ -40,6 +40,28 @@ test("review-code.md gives Claude formal-reviewer selection an execution-reachab
     "the Claude routing section must name Claude, the actual workflow file, and state it as the preferred/default route",
   );
 
+  // Codex P2 (closure round 4): the section must not read as if
+  // .github/workflows/claude-review.yml (or an equivalent) is something
+  // Foundation distributes to every consumer. sync.mjs does not materialize
+  // .github/ into consumers, and the reference consumer fixture has none, so
+  // most consumer repositories will hit the "workflow does not exist" branch
+  // of unavailable and correctly fall back — but only if the text says so
+  // explicitly instead of implying universal availability.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "この workflow は Foundation が consumer へ配布するものではなく、review 対象の repository が個別に用意している必要があります。",
+    ),
+    "the Claude routing section must disclaim that the GitHub-native workflow is Foundation-distributed",
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "review 対象の repository にそもそも該当 workflow が存在しない",
+    ) && containsText(reviewCode, "多くの consumer repository はこれに該当します"),
+    "the unavailable branch must explicitly cover the common case of a consumer repository with no such workflow",
+  );
+
   // The preferred route must not be promoted to a mandatory/automatic gate —
   // that would violate the #22/#49 invariant against making Claude mandatory
   // on every PR or an automatic required CI check.

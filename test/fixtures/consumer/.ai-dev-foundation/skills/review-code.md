@@ -300,18 +300,22 @@ GitHub-native 経路を使わず in-session/subagent review を選ぶ場合は�
 ### Claude formal acquisition routing（Issue #22 決定の execution routing、Issue #49）
 
 Claude が Selection Contract 上 reviewer / capability として selection された
-場合、この repository には GitHub-native な `@claude` mention trigger workflow
-（`.github/workflows/claude-review.yml`）が存在します。この trigger が利用可能
-（workflow が repository に存在し、trigger する権限がある）かつ target/context に
-適している場合、Execution はこれを preferred/default route として使います。
+場合、review 対象の repository に GitHub-native な `@claude` mention trigger
+workflow が存在するかを確認します（この Foundation リポジトリ自身では
+`.github/workflows/claude-review.yml` がその実例です）。この workflow は
+Foundation が consumer へ配布するものではなく、review 対象の repository が
+個別に用意している必要があります。この trigger が利用可能（当該 repository に
+workflow が存在し、trigger する権限がある）かつ target/context に適している
+場合、Execution はこれを preferred/default route として使います。
 
-GitHub-native route が unavailable（workflow が存在しない、trigger 権限がない等）
-または unsuitable（target が workflow の扱える範囲を超える等）な場合に限り、
-in-session/subagent review を Claude の formal acquisition として使ってよく、その
-場合は上記 `collectOutputs()` の no-surface persistence 手順に従い、
-`policy/core.md` の Acquisition & Validity Contract が要求する durable evidence を
-PR/Issue へ明示的に persist します。この fallback は durable evidence requirement
-を免除しません。
+GitHub-native route が unavailable（review 対象の repository にそもそも
+該当 workflow が存在しない——多くの consumer repository はこれに該当します——、
+trigger 権限がない等）または unsuitable（target が workflow の扱える範囲を
+超える等）な場合に限り、in-session/subagent review を Claude の formal
+acquisition として使ってよく、その場合は上記 `collectOutputs()` の
+no-surface persistence 手順に従い、`policy/core.md` の Acquisition &
+Validity Contract が要求する durable evidence を PR/Issue へ明示的に
+persist します。この fallback は durable evidence requirement を免除しません。
 
 この節は Claude という provider に固有な運用手順であり、`policy/core.md` Kernel
 には Claude 固有の rule を追加しません。この節は Claude を全 PR mandatory にする
