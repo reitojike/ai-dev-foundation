@@ -29,6 +29,12 @@ expected review set にも算入しません。selection されていない pref
 してはいけません。この区別は Claude に限らず、他 provider の local/preflight
 利用にも同様に適用します。
 
+Claude が formal reviewer として selection された場合の GitHub-native
+acquisition routing（preferred/default route と fallback 時の durable
+evidence 要件）は artifact classification に関わらず共通であり、
+`skills/review-code.md` の「Claude formal acquisition routing」節に従います。
+この skill では重複定義しません。
+
 ## 手順
 
 1. **Mechanical check** — その時点の target SHA / range と、その mechanical

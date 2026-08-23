@@ -140,6 +140,31 @@ test("review-doc.md also excludes local/preflight usage from formal required rev
   );
 });
 
+test("review-doc.md points Normative Claude formal review at the same GitHub-native acquisition routing", async () => {
+  // Codex P2 on PR #50 closure round 2: the Claude acquisition routing section
+  // only existed in review-code.md (Executable), so a Normative artifact
+  // review following review-doc.md had no reachable path to the preferred
+  // GitHub-native route, leaving Issue #49's routing gap open for that
+  // classification. Fixed by a pointer, not a duplicated section, per this
+  // repo's "skill does not restate normative rules it doesn't own" convention.
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "Claude が formal reviewer として selection された場合の GitHub-native acquisition routing",
+    ) && containsText(reviewDoc, "`skills/review-code.md` の「Claude formal acquisition routing」節に従います。"),
+    "review-doc.md must point Claude formal reviewer selection at review-code.md's Claude acquisition routing section",
+  );
+
+  // Guard against the pointer regressing into a duplicated copy of the
+  // routing rule instead of a reference to the single owning section.
+  assert.ok(
+    !containsText(reviewDoc, ".github/workflows/claude-review.yml"),
+    "review-doc.md must not duplicate the workflow-file-specific routing rule; it must defer to review-code.md",
+  );
+});
+
 test("core policy is not amended with a Claude-specific Kernel rule by Issue #49", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
