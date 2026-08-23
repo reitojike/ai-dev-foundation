@@ -4,6 +4,8 @@
 Normative、Review contracts、Review stopping rules）を使った実行手順です。規範的な
 ルールはここで再定義せず、`policy/core.md` を参照します。本 skill と policy が
 矛盾する場合は policy が優先します。
+Normative artifact の review 手順（`## 手順` と `## 停止条件` の finite flow）の
+canonical source は本 skill であり、`policy/core.md` には置きません。
 
 この skill の canonical source は Foundation リポジトリの `policy/core.md` および
 `skills/review-doc.md` です。consumer には `.ai-dev-foundation/skills/review-doc.md`
@@ -149,3 +151,40 @@ acquisition routing」節に従います。この skill では重複定義しま
 を増やすのではなく、上流の policy / document 自体に defect がある兆候として扱い、
 escalate します。round 数の扱いは Review stopping rules（`policy/core.md`）に
 従います。
+
+Normative artifact の review flow を、`policy/core.md` の Review stopping rules が
+定める stopping semantics（evidence の target 束縛、round / cycle の上限と escalate
+判断）を評価する分岐として表現した finite flow です。`## 手順` の各 step と同じ
+手続きを分岐構造として示したものであり、規範的なルール自体は `policy/core.md` が
+持ちます。
+
+```text
+mechanical check
+  -> mechanical check target と Selection target の consistency 確認
+  -> semantic discovery（1 round）
+  -> triage / fix
+  -> accepted finding の fix で review target が変更された場合:
+       mechanical check
+       -> closure target の Selection / Execution
+       -> closure verification
+       -> closure completion / acquisition / validity 確認
+       -> closure finding の Resolution
+       -> semantic discovery の Resolution 完了
+       -> 完了
+  -> accepted fix が無く review target が変更されていない場合:
+       required review 数の valid semantic discovery と Resolution の完了
+       -> 完了
+```
+
+accepted finding の fix によって review target が変更された場合のみ、
+新しい target に対して mechanical check を再実行してから closure
+verification を行い、その review run も Acquisition & Validity Contract
+に従って completion / acquisition / validity を確認します。closure
+verification の finding も Resolution Contract の対象とし、Resolution が
+完了するまで review を完了しません。
+closure verification の Resolution に加えて、semantic discovery（手順 3）
+の Resolution が完了していることも review completion の条件です。完了
+順序は問いません。
+accepted fix が無く review target が変更されていない場合は、
+required review 数の valid semantic discovery と Resolution の完了をもって、
+新たな closure run を要求せずに review を完了できます。
