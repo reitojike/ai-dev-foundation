@@ -326,7 +326,7 @@ const configFile = await findConfigFile(process.cwd());
 
 if (configFile === null) {
   console.error(
-    `No next.config.{ts,js,mjs} found. Foundation-generated AGENTS.md is a generated artifact ` +
+    `No next.config.{js,mjs,ts} found. Foundation-generated AGENTS.md is a generated artifact ` +
       `(see tooling/sync.mjs) that \`next dev\` will otherwise silently mutate. Add a next.config ` +
       `with \`agentRules: false\`.`,
   );

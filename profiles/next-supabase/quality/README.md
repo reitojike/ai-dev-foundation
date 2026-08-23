@@ -158,8 +158,10 @@ dirtyになります。Next.js 16.3未満はこの自動生成挙動も`agentRul
 node .ai-dev-foundation/quality/check-agent-rules-disabled.mjs
 ```
 
-このcheckerは`next.config.ts` / `next.config.js` / `next.config.mjs`を
-filesystemだけで検査し、comment除去後・brace-depth 1（exportされる config
+このcheckerは`next.config.js` / `next.config.mjs` / `next.config.ts`
+（Next.js自身のCONFIG_FILES優先順位と同じ順で検索し、複数が共存する場合は
+Next.jsが実際に読むfileを検証します）をfilesystemだけで検査し、
+comment除去後・brace-depth 1（exportされる config
 object直下）に限定した`agentRules: false`（quoted keyを含む）が見つからない
 場合（fileが存在しない場合を含む）はnon-zeroで失敗します。`false`は完全な
 property valueである場合だけ有効とします（`agentRules: false || true`は
