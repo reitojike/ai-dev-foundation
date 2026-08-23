@@ -67,6 +67,27 @@ const CANDIDATE_CONFIG_FILENAMES = ['next.config.js', 'next.config.mjs', 'next.c
 // rejecting `{ agentRulesExtra: false }`.
 const AGENT_RULES_KEY_SOURCE = /(?:(['"])agentRules\1|(?<![^{,\s])agentRules(?![\w$]))/.source;
 
+// Out of this checker's documented scope (not fixed — Codex review finding
+// on this PR): AGENT_RULES_KEY_SOURCE, and so AGENT_RULES_KEY_PATTERN
+// below, only match a `key: value` colon form. JS object literals also
+// allow a shorthand duplicate — `const agentRules = true; const nextConfig
+// = { agentRules: false, agentRules };` — where the trailing bare
+// `agentRules` (no colon) is shorthand for `agentRules: agentRules`
+// (the outer binding) and, per the same last-duplicate-wins semantics
+// documented on findLastAgentRulesKeyIndex() below, overrides the earlier
+// `false`. Method (`agentRules() {}`) and accessor (`get agentRules()
+// {}`) forms are the same class of gap. None of these are counted as an
+// `agentRules` occurrence here, so a trailing one of these forms is
+// invisible to this checker. Detecting them would require recognizing
+// several additional JS object-member grammars beyond `key: value`, which
+// pushes this filesystem-only, non-executing checker further toward being
+// a real parser; it is also a dangerous-direction gap in principle, but
+// requires deliberately naming an outer binding exactly `agentRules` and
+// shadowing it with a same-named shorthand/method/accessor member in a
+// `next.config` — not a plausible accidental construct — and is a further
+// example of the "regex, not a tokenizer" bound already accepted
+// repeatedly throughout this file.
+
 // `false` must be the complete property value, not merely a prefix of a
 // larger expression such as `agentRules: false || true` (which evaluates to
 // `true`) — the lookahead requires whatever follows (after optional
