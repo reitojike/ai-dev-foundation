@@ -29,12 +29,13 @@ Selection Contract で reviewer / capability として selection されたもの
 Acquisition & Validity Contract の record も持たないため、required review 数にも
 expected review set にも算入しません。
 
-Claude が Selection Contract 上 reviewer / capability として明示的に selection
-された場合にのみ、以降の手順および下記「Claude formal acquisition routing」が
-適用されます。selection されていない preflight/local 利用を、事後的に
-「Claude review を実施した」として required/expected review の消化根拠にしては
-いけません。この区別は Claude に限らず、他 provider の local/preflight 利用にも
-同様に適用します。
+直後の `## 手順`（Deterministic verify 以降）は、reviewer / capability の選択に
+かかわらず共通に適用します。Claude が Selection Contract 上 reviewer /
+capability として明示的に selection された場合にのみ、下記「Claude formal
+acquisition routing」が追加で適用されます。selection されていない
+preflight/local 利用を、事後的に「Claude review を実施した」として
+required/expected review の消化根拠にしてはいけません。この区別は Claude に
+限らず、他 provider の local/preflight 利用にも同様に適用します。
 
 ## 手順
 

@@ -73,6 +73,21 @@ test("review-code.md gives Claude formal-reviewer selection an execution-reachab
 test("review-code.md excludes local/preflight Claude usage from formal required review counting", async () => {
   const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
 
+  // Closure round (Codex P1 + Claude closure review on PR #50): the boundary
+  // section's phrasing must not read as conditioning the entire common
+  // `## 手順` procedure (Deterministic verify / Selection / Execution /
+  // required review gate) on Claude being the selected reviewer — those
+  // steps apply regardless of which reviewer/capability was selected. Only
+  // the Claude-specific acquisition routing is conditioned on Claude
+  // selection.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "直後の `## 手順`（Deterministic verify 以降）は、reviewer / capability の選択にかかわらず共通に適用します。",
+    ),
+    "the boundary section must state that the common ## 手順 procedure applies regardless of reviewer selection",
+  );
+
   assert.ok(
     containsText(reviewCode, "## Formal review と preflight/local 利用の境界"),
     "review-code.md must have a dedicated section distinguishing preflight/local usage from formal review",
