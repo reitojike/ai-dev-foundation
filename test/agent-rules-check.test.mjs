@@ -19,10 +19,22 @@ test("agentRules: false in next.config.ts is green", () => {
   assert.match(result.stdout, /agentRules: false/);
 });
 
-test("a quoted \"agentRules\": false key in next.config.mjs is also green", () => {
+test("a single-quoted 'agentRules': false key in next.config.mjs is also green", () => {
+  // Codex + Claude review finding on this PR (2nd closure round): this
+  // fixture previously had a *bare* `agentRules` key despite its name and
+  // this test's description, so it never actually exercised quoted-key
+  // matching — a regression that broke every quoted key (lookaround
+  // verifies but doesn't consume the quote, so the required `:` right
+  // after can never be found) went undetected until independent review.
   const result = runChecker(path.join(fixturesRoot, "disabled-quoted-mjs"));
   assert.equal(result.status, 0);
   assert.match(result.stdout, /next\.config\.mjs/);
+});
+
+test("a double-quoted \"agentRules\": false key in next.config.js is also green", () => {
+  const result = runChecker(path.join(fixturesRoot, "disabled-double-quoted"));
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /next\.config\.js/);
 });
 
 test("a next.config.js that never sets agentRules is deterministically red", () => {

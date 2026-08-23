@@ -24,31 +24,38 @@ const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.co
 // (duplicating this by hand in each pattern previously let them drift out
 // of sync — see the fix history in this PR).
 //
-// The bare-identifier alternative's `(?<![\w$])`/`(?![\w$])` require that
-// neither the character immediately before nor immediately after
-// `agentRules` is an identifier character. Without this, a differently
-// named property whose name merely CONTAINS `agentRules` — e.g.
-// `{ notAgentRules: false }`, a config that does not disable the real
-// `agentRules` option at all — would be read as the real key, false-passing
-// a config `next dev` still mutates.
+// The quoted alternative, `(['"])agentRules\1`, CONSUMES both quote
+// characters as part of the match (the backreference `\1` requires the
+// closing quote to be the same character as the captured opening one). An
+// earlier version used zero-width lookaround (`(?<=['"])`/`(?=['"])`)
+// instead, which only verifies a quote is adjacent without consuming it —
+// that let the match end sitting right before the closing quote, so the
+// callers' `\s*:` (which cannot skip over a quote character) then failed
+// to find the colon, breaking the ordinary, documented `"agentRules":
+// false` / `'agentRules': false` cases entirely (independently caught by
+// both Codex and Claude review on this PR — no existing fixture actually
+// exercised a quoted key at the time, despite one being named
+// `disabled-quoted-mjs`). Consuming the quotes fixes this while still
+// correctly rejecting `{ 'not-agentRules': false }`: at the position right
+// before `agentRules` in that string, the preceding character is `-`, not
+// a quote, so `(['"])` doesn't match there.
 //
-// The quoted alternative's `(?<=['"])`/`(?=['"])` require an actual quote
-// character immediately on both sides of `agentRules` — not merely that
-// `["']?` optionally matches one. A prior version used an optional quote
-// on each side, which let `{ 'not-agentRules': false }` match: `["']?` can
-// simply match zero characters and start the pattern mid-string, right at
-// `agentRules`, and `-` (unlike `\w`/`$`) doesn't fail the old bare-key
-// lookbehind either. Requiring an actual quote adjacent on both sides
-// closes this: for `'not-agentRules'`, the character immediately before
-// `agentRules` is `-`, not a quote, so the quoted alternative doesn't
-// match there, and the bare-identifier alternative's lookbehind (`-` is
-// not `[\w$]`, so it doesn't reject) is irrelevant because the substring
-// isn't a standalone bare identifier occurrence either — the whole
-// property key `'not-agentRules'` is quoted, so only the quoted
-// alternative could apply, and it correctly requires the quote to sit
-// right next to `agentRules`, which it doesn't here.
-const AGENT_RULES_KEY_SOURCE = /(?:(?<=['"])agentRules(?=['"])|(?<![\w$])agentRules(?![\w$]))/
-  .source;
+// The bare-identifier alternative requires the character immediately
+// before `agentRules` to be `{`, `,`, or whitespace (or nothing — start of
+// text) — `(?<![^{,\s])` is a negative lookbehind on "any character that
+// is NOT one of those", which also vacuously holds at the start of the
+// string, where there is no preceding character to fail it. This is
+// deliberately narrower than only excluding identifier characters
+// (`(?<![\w$])`, used by an earlier version): a legitimate unquoted object
+// key can only be immediately preceded by one of `{`, `,`, or whitespace,
+// so anything else — punctuation like `-`, another quote, etc. — is never
+// a valid bare-key start. The earlier, looser lookbehind let `agentRules`
+// embedded inside a quoted string right after a `-` (as in
+// `'not-agentRules'`) slip through the bare alternative, since `-` isn't a
+// `\w`/`$` character either. The lookahead `(?![\w$])` still requires
+// nothing immediately after `agentRules` is an identifier character,
+// rejecting `{ agentRulesExtra: false }`.
+const AGENT_RULES_KEY_SOURCE = /(?:(['"])agentRules\1|(?<![^{,\s])agentRules(?![\w$]))/.source;
 
 // `false` must be the complete property value, not merely a prefix of a
 // larger expression such as `agentRules: false || true` (which evaluates to

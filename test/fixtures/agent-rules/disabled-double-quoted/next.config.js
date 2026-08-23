@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  'agentRules': false,
+  "agentRules": false,
 };
 
-export default nextConfig;
+module.exports = nextConfig;
