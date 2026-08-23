@@ -18,6 +18,17 @@ Normative、Review contracts、Review stopping rules）を使った実行手順�
 Normative artifact（AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 agent や
 実装を拘束する文書）の review。
 
+## Formal review と preflight/local 利用の境界（Issue #49）
+
+実装 session 中に Claude Code 本体や subagent を使った critique / self-check /
+design sanity check は自由に行ってよく、この skill の対象外です。これらは
+Selection Contract で reviewer / capability として selection されたものではなく、
+Acquisition & Validity Contract の record も持たないため、required review 数にも
+expected review set にも算入しません。selection されていない preflight/local
+利用を、事後的に「review を実施した」として required/expected review の消化根拠に
+してはいけません。この区別は Claude に限らず、他 provider の local/preflight
+利用にも同様に適用します。
+
 ## 手順
 
 1. **Mechanical check** — その時点の target SHA / range と、その mechanical

@@ -103,6 +103,28 @@ test("review-code.md excludes local/preflight Claude usage from formal required 
   );
 });
 
+test("review-doc.md also excludes local/preflight usage from formal required review counting", async () => {
+  // Claude review on PR #50 flagged that the review-code.md-only boundary left
+  // the same ambiguity possible for Normative artifact review, since the
+  // general "preflight/local doesn't count as formal review" principle isn't
+  // specific to Executable's provider-adapter routing gap that motivated
+  // Issue #49's review-code.md-focused root cause.
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  assert.ok(
+    containsText(reviewDoc, "## Formal review と preflight/local 利用の境界"),
+    "review-doc.md must have a dedicated section distinguishing preflight/local usage from formal review",
+  );
+
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "required review 数にも expected review set にも算入しません。",
+    ),
+    "preflight/local usage must not count toward required/expected review membership in review-doc.md",
+  );
+});
+
 test("core policy is not amended with a Claude-specific Kernel rule by Issue #49", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
