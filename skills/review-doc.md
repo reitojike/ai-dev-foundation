@@ -31,9 +31,10 @@ expected review set にも算入しません。selection されていない pref
 
 Claude が formal reviewer として selection された場合の GitHub-native
 acquisition routing（preferred/default route と fallback 時の durable
-evidence 要件）は artifact classification に関わらず共通であり、
-`skills/review-code.md` の「Claude formal acquisition routing」節に従います。
-この skill では重複定義しません。
+evidence 要件）は artifact classification に関わらず共通であり、Foundation
+リポジトリの `skills/review-code.md`（consumer には
+`.ai-dev-foundation/skills/review-code.md` として配布）の「Claude formal
+acquisition routing」節に従います。この skill では重複定義しません。
 
 ## 手順
 

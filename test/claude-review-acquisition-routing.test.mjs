@@ -153,8 +153,11 @@ test("review-doc.md points Normative Claude formal review at the same GitHub-nat
     containsText(
       reviewDoc,
       "Claude が formal reviewer として selection された場合の GitHub-native acquisition routing",
-    ) && containsText(reviewDoc, "`skills/review-code.md` の「Claude formal acquisition routing」節に従います。"),
-    "review-doc.md must point Claude formal reviewer selection at review-code.md's Claude acquisition routing section",
+    ) && containsText(
+      reviewDoc,
+      "`skills/review-code.md`（consumer には `.ai-dev-foundation/skills/review-code.md` として配布）の「Claude formal acquisition routing」節に従います。",
+    ),
+    "review-doc.md must point Claude formal reviewer selection at review-code.md's Claude acquisition routing section, in a form resolvable from consumer context too",
   );
 
   // Guard against the pointer regressing into a duplicated copy of the
@@ -162,6 +165,15 @@ test("review-doc.md points Normative Claude formal review at the same GitHub-nat
   assert.ok(
     !containsText(reviewDoc, ".github/workflows/claude-review.yml"),
     "review-doc.md must not duplicate the workflow-file-specific routing rule; it must defer to review-code.md",
+  );
+
+  // Codex P2 (closure round 3): the bare Foundation-repo-only path is not
+  // resolvable from a consumer's checkout, since sync.mjs materializes skills
+  // under .ai-dev-foundation/skills/ and consumers have no skills/ at repo
+  // root. The pointer must name the consumer-distributed path too.
+  assert.ok(
+    containsText(reviewDoc, ".ai-dev-foundation/skills/review-code.md"),
+    "review-doc.md's pointer must be resolvable from consumer context, naming the .ai-dev-foundation/skills/ distributed path",
   );
 });
 
