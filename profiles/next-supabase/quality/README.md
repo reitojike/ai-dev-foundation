@@ -99,6 +99,13 @@ stackを起動する前にfilesystemだけでdeterministicに検知します。c
 blocking checkへ追加します。詳細は「Migration version prefix collision detection」
 を参照してください。
 
+`next.config`がNext.js 16.3+の生成AGENTS.md agent rulesを無効化しているかも、DB /
+Docker / Supabase local stackを起動する前にfilesystemだけでdeterministicに検知
+します。Next.js 16.3以降を使うconsumerは`.ai-dev-foundation/quality/check-agent-rules-disabled.mjs`を
+`agent-rules:check`として実行し、blocking checkへ追加します（16.3未満のconsumerは
+`agentRules` optionも自動生成挙動も持たないため、このcheckを追加しません）。詳細は
+「Next.js agent-rules (generated AGENTS.md) drift prevention」を参照してください。
+
 unit/component testとDB/RLS testはtest runnerを固定しません。consumerで該当testが
 存在する場合は、そのcommandをblocking CIへ追加します。
 
@@ -127,6 +134,72 @@ collisionを未然に防ぐ機構ではなく、DB / Docker / Supabase local sta
 node .ai-dev-foundation/quality/check-migration-version-collision.mjs
 ```
 
+## Next.js agent-rules (generated AGENTS.md) drift prevention
+
+`AGENTS.md`はFoundation canonical inputsから生成されるgenerated artifactです
+（`tooling/sync.mjs`）。consumer/runtimeが実行時に書き換える対象ではありません。
+
+Next.js 16.3以降の`next dev`は、実行環境内にAI coding agent（`CLAUDECODE`、
+`CURSOR_TRACE_ID`、`CODEX_*`、`GEMINI_CLI`等の環境変数で検出）を検出すると、
+`next.config`で`agentRules`が明示的に`false`でない限り、生成済みの`AGENTS.md`へ
+`<!-- BEGIN:nextjs-agent-rules -->`で始まるmanaged blockをupsertします
+（Next.js 16.3.2の`node_modules/next/dist/server/lib/start-server.js`および
+`generate-agent-files.js`で確認済み）。これはFoundation-generated `AGENTS.md`への
+silent mutationであり、通常の`next dev`実行だけでconsumerのworking treeが
+dirtyになります。Next.js 16.3未満はこの自動生成挙動も`agentRules` optionも
+持たないため、この節および次のcheckerの対象外です。
+
+`next.config`自体はconsumer-owned application configであり、Foundationは
+代わりにこのfileを書き込みません。consumerが`next.config`で明示的に
+`agentRules: false`を設定し、そのことを次のcheckerでdeterministicに
+担保します。
+
+```text
+node .ai-dev-foundation/quality/check-agent-rules-disabled.mjs
+```
+
+このcheckerは`next.config.js` / `next.config.mjs` / `next.config.ts`
+（Next.js自身のCONFIG_FILES優先順位と同じ順で検索し、複数が共存する場合は
+Next.jsが実際に読むfileを検証します）をfilesystemだけで検査し、
+comment除去後・brace-depth 1（exportされる config
+object直下）に限定した`agentRules: false`（quoted keyを含む）が見つからない
+場合（fileが存在しない場合を含む）はnon-zeroで失敗します。`false`は完全な
+property valueである場合だけ有効とします（`agentRules: false || true`は
+実際にはtrueとして評価されるため無効）。次はfalseとして扱いません:
+comment内の記述（`// agentRules: false`）、ネストしたobject内の同名property
+（`{ experimental: { agentRules: false } }`）、および完全な値でないもの
+（`agentRules: false || true`）。
+next dev、network、ブラウザのいずれも必要としません。consumer configを
+実行・評価しないtext matchのため、`agentRules`を間接的な変数経由で設定する
+config（例: `agentRules: SOME_FLAG`）は検出できません（直接記述された
+opt-out だけを対象にした bounded guardrail です。既知の制約はcheckerの
+code commentを参照してください）。`{ agentRules: false, ...shared }`の
+ようにexplicit propertyの後にspreadがある場合は、実行時にspread側が
+上書きし得るため、effective valueを検証不能としてnon-zeroで失敗します
+（`{ ...shared, agentRules: false }`のようにspreadが先であれば、後続の
+explicit propertyが確実に勝つため引き続き検証できます）。
+
+このcheckerはNext.jsのupstream agent-rules block本文をFoundation canonical
+policyへコピーしません。`next.config`の設定有無だけを検証します。
+
+### 二層contract（proactive + reactive）
+
+`agent-rules:check`は、supportされた直接記述の`next.config`形式をfilesystemだけで
+deterministicに検証するbounded text matcherです。任意のJavaScript/TypeScript
+config semanticsを評価する約束はしません。上記の既知の制約（間接的な変数経由の
+設定、string literal内の紛らわしいtext、spread、shorthand/method/accessor形式の
+duplicate keyなど）は、parser/tokenizer/generalized config evaluatorへ発展させる
+ことでは解消しません。
+
+その代わり、`agent-rules:check`が見逃す exotic な`next.config`形式であっても、
+`next dev`が実際に`AGENTS.md`をmutationすれば、既存の`foundation:check`
+（`tooling/check.mjs`）がFoundationの合成結果と実file を exact比較し
+`Generated adapter drift detected`としてdeterministicに検出し、`tooling/sync.mjs`
+によるremediationを提供します。generated adapterのsilent mutationを防ぐ、または
+安全なremediationをdeterministically提供するという要件は、`agent-rules:check`
+単体ではなく、この proactive blocking layer（`agent-rules:check`）と reactive exact
+layer（`foundation:check`）を合わせたsystem levelで満たします。
+
 ## `verify` への集約
 
 consumerはrequired checkを通常のnpm scriptsとして固定し、`verify` から順番に実行します。
@@ -135,12 +208,14 @@ profile固有の追加は`verify:profile`に置きます。これはextension po
 （DB / Docker / Supabase local stackを起動する他のcheckより前）に続けて
 `supabase:types:check`を`verify:profile`から呼び出し、typesの再生成後に生成ファイルの
 driftをnon-zeroで検知するcommandにします。DB/RLS testがあるconsumerは同じ
-`verify:profile`からそのtest commandを呼び出します。
+`verify:profile`からそのtest commandを呼び出します。Next.js 16.3以降を使うconsumerは
+同じ`verify:profile`から`agent-rules:check`を呼び出します（16.3未満では対象外のため
+呼び出しません。本節冒頭の「該当しないcommandは含めない」原則の具体例です）。
 
 ```json
 {
   "scripts": {
-    "verify:profile": "npm run supabase:migrations:check && npm run supabase:types:check && npm run test:rls",
+    "verify:profile": "npm run agent-rules:check && npm run supabase:migrations:check && npm run supabase:types:check && npm run test:rls",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run foundation:check && npm run verify:profile"
   }
 }
