@@ -21,6 +21,21 @@ review target は Selection Contract に従い、candidate SHA、applicable な
 SHA について述べる箇所は、commit range や target artifact set を使う
 review でも同じ意味で適用します。
 
+## Formal review と preflight/local 利用の境界（Issue #49）
+
+実装 session 中に Claude Code 本体や subagent を使った critique / self-check /
+design sanity check は自由に行ってよく、この skill の対象外です。これらは
+Selection Contract で reviewer / capability として selection されたものではなく、
+Acquisition & Validity Contract の record も持たないため、required review 数にも
+expected review set にも算入しません。
+
+Claude が Selection Contract 上 reviewer / capability として明示的に selection
+された場合にのみ、以降の手順および下記「Claude formal acquisition routing」が
+適用されます。selection されていない preflight/local 利用を、事後的に
+「Claude review を実施した」として required/expected review の消化根拠にしては
+いけません。この区別は Claude に限らず、他 provider の local/preflight 利用にも
+同様に適用します。
+
 ## 手順
 
 1. **Deterministic verify** — AI review を要求する前に、その時点の candidate SHA
@@ -280,6 +295,29 @@ Acquisition & Validity Contract の recoverability 要件を満たしやすい�
 capability record 側で再検証可能な observed evidence として扱ってください。
 GitHub-native 経路を使わず in-session/subagent review を選ぶ場合は、上記の
 `collectOutputs()` の persist 手順を必ず行います。
+
+### Claude formal acquisition routing（Issue #22 決定の execution routing、Issue #49）
+
+Claude が Selection Contract 上 reviewer / capability として selection された
+場合、この repository には GitHub-native な `@claude` mention trigger workflow
+（`.github/workflows/claude-review.yml`）が存在します。この trigger が利用可能
+（workflow が repository に存在し、trigger する権限がある）かつ target/context に
+適している場合、Execution はこれを preferred/default route として使います。
+
+GitHub-native route が unavailable（workflow が存在しない、trigger 権限がない等）
+または unsuitable（target が workflow の扱える範囲を超える等）な場合に限り、
+in-session/subagent review を Claude の formal acquisition として使ってよく、その
+場合は上記 `collectOutputs()` の no-surface persistence 手順に従い、
+`policy/core.md` の Acquisition & Validity Contract が要求する durable evidence を
+PR/Issue へ明示的に persist します。この fallback は durable evidence requirement
+を免除しません。
+
+この節は Claude という provider に固有な運用手順であり、`policy/core.md` Kernel
+には Claude 固有の rule を追加しません。この節は Claude を全 PR mandatory にする
+ものでも、automatic required CI check にするものでもなく、Selection で Claude が
+選ばれた場合の acquisition route の優先順位のみを扱います。他 provider の
+acquisition policy（Codex automatic review trigger、CodeRabbit manual trigger 等）
+を変更するものではありません。
 
 さらに別の観測として、GitHub Actions 経由で PR comment を投稿・編集する reviewer では、
 その reviewer を起動した Actions job/step 自身の conclusion（success/failure）が、同じ
