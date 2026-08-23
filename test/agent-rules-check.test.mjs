@@ -159,6 +159,28 @@ test("a duplicate agentRules key where the later occurrence is still false stays
   assert.equal(result.status, 0);
 });
 
+test("a differently named property whose name merely ends in agentRules does not count as the real key", () => {
+  // Codex finding on this PR (fresh discovery round, target 10194e5):
+  // without a key-start boundary, `{ notAgentRules: false }` was read as if
+  // it were the real `agentRules` key, false-passing a config where the
+  // real agentRules option is unset — the dangerous direction (next dev
+  // still mutates AGENTS.md, but the checker said green).
+  const result = runChecker(path.join(fixturesRoot, "name-suffix-collision"));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+});
+
+test("an unrelated array property's spread does not block the check", () => {
+  // Claude finding on this PR (fresh discovery round, target 10194e5):
+  // keepOnlyDirectProperties() only tracked `{`/`}` depth, so an array
+  // literal property value like `pageExtensions: [...defaultExtensions,
+  // 'mdx']` (an ordinary Next.js config idiom) stayed visible at depth 1,
+  // and hasSpreadAfter() then false-positively flagged its unrelated `...`
+  // as a possible agentRules override on an actually-safe config.
+  const result = runChecker(path.join(fixturesRoot, "array-spread-unrelated-property"));
+  assert.equal(result.status, 0);
+});
+
 test("a consumer with no next.config file at all is deterministically red, not a silent pass", () => {
   const result = runChecker(path.join(fixturesRoot, "missing-config"));
   assert.notEqual(result.status, 0);

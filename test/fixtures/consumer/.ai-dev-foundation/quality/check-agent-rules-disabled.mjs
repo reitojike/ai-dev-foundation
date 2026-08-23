@@ -27,15 +27,26 @@ const CANDIDATE_CONFIG_FILENAMES = ['next.config.ts', 'next.config.js', 'next.co
 // arbitrary trailing expression text. `}` is included for defensiveness
 // even though keepOnlyDirectProperties() below always blanks brace
 // characters before this pattern runs, so a real `}` never reaches here.
-const AGENT_RULES_DISABLED_PATTERN = /["']?agentRules["']?\s*:\s*false(?=\s*[,;}]|\s*$)/;
+//
+// The leading `(?<![\w$])` requires that whatever immediately precedes the
+// match (the opening quote of a quoted key, or the `a` of a bare key) is
+// not itself an identifier character. Without it, a differently named
+// property whose name merely ENDS in `agentRules` — e.g.
+// `{ notAgentRules: false }`, a config that does not disable the real
+// `agentRules` option at all — would be read as the real key, false-passing
+// a config `next dev` still mutates. A quoted key's leading quote character
+// is not a `\w`/`$` character, so this lookbehind does not reject
+// `"agentRules": false`.
+const AGENT_RULES_DISABLED_PATTERN = /(?<![\w$])["']?agentRules["']?\s*:\s*false(?=\s*[,;}]|\s*$)/;
 
 // Matches an `agentRules` key regardless of its value — used to find every
 // occurrence among an object's direct properties, not just ones that
 // happen to say `false`. JS object literals let the same key appear more
 // than once; whichever occurrence appears LAST wins at runtime (this is
 // legal, unambiguous JS, not a syntax error), so only the last occurrence's
-// value is ever the effective one.
-const AGENT_RULES_KEY_PATTERN = /["']?agentRules["']?\s*:/g;
+// value is ever the effective one. Same `(?<![\w$])` key-start boundary as
+// AGENT_RULES_DISABLED_PATTERN, and for the same reason.
+const AGENT_RULES_KEY_PATTERN = /(?<![\w$])["']?agentRules["']?\s*:/g;
 
 // A bare text match on the unmodified source would treat a mention inside a
 // comment (e.g. `// TODO: set agentRules: false`) as if it were the actual
@@ -120,22 +131,29 @@ function findExportedConfigObjectSource(source) {
 // would still treat an unrelated, coincidentally named `agentRules: false`
 // nested inside some other property of that same object (for example
 // `{ experimental: { agentRules: false } }`) as if it were the top-level
-// `agentRules` property NextConfig actually reads. Brace depth is counted
-// and only text at depth 1 relative to the exported object's own opening
-// brace — its direct properties — is kept; deeper text is blanked out
-// before matching. This is brace counting, not full parsing, so a `{` or
-// `}` inside a string literal is a known, accepted edge case, matching the
-// same bound already documented for stripComments().
+// `agentRules` property NextConfig actually reads. Brace/bracket depth is
+// counted and only text at depth 1 relative to the exported object's own
+// opening brace — its direct properties — is kept; deeper text is blanked
+// out before matching. `[`/`]` are tracked the same way as `{`/`}` so an
+// array-literal property VALUE (e.g. `pageExtensions: [...defaultExtensions,
+// 'mdx']`, an ordinary Next.js config idiom) is blanked out too: without
+// this, its contents stayed visible at depth 1, and hasSpreadAfter() below
+// would false-positively read the array's own `...` spread — which has
+// nothing to do with `agentRules` — as a possible override, fail-closing an
+// actually-safe config (Claude review finding on this PR). This is
+// brace/bracket counting, not full parsing, so a `{`/`}`/`[`/`]` inside a
+// string literal is a known, accepted edge case, matching the same bound
+// already documented for stripComments().
 function keepOnlyDirectProperties(objectSource) {
   let depth = 0;
   let result = '';
   for (const character of objectSource) {
-    if (character === '{') {
+    if (character === '{' || character === '[') {
       depth += 1;
       result += ' ';
       continue;
     }
-    if (character === '}') {
+    if (character === '}' || character === ']') {
       depth -= 1;
       result += ' ';
       continue;
