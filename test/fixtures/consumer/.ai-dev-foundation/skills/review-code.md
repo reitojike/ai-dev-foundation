@@ -4,6 +4,8 @@
 Executable、Review contracts、Review Adapter boundary、Failure / retry、Review
 stopping rules）を使った実行手順です。規範的なルールはここで再定義せず、
 `policy/core.md` を参照します。本 skill と policy が矛盾する場合は policy が優先します。
+Executable artifact の review 手順（`## 手順` と `## 停止条件` の finite flow）の
+canonical source は本 skill であり、`policy/core.md` には置きません。
 
 この skill の canonical source は Foundation リポジトリの `policy/core.md` および
 `skills/review-code.md` です。consumer には `.ai-dev-foundation/skills/review-code.md`
@@ -245,6 +247,81 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
     いないことを確認します。会話内で既に見た snapshot をこの判定の根拠に
     しません。provider が thread の resolution 状態を持つ場合は、その
     surface も未 triage finding の確認に使えます。
+
+## 停止条件
+
+Executable artifact の review flow を、`policy/core.md` の Review stopping rules が
+定める stopping semantics（evidence の target 束縛、round / cycle の上限と escalate
+判断）を評価する分岐として表現した finite flow です。`## 手順` の各 step と同じ
+手続きを分岐構造として示したものであり、規範的なルール自体は `policy/core.md` が
+持ちます。round / cycle の上限判断そのものは Review stopping rules
+（`policy/core.md`）に従います。
+
+```text
+deterministic verify
+  -> freeze candidate SHA
+  -> verify target と freeze target の consistency 確認
+  -> discovery（独立 reviewer）
+  -> completion / acquisition / validity 確認
+  -> aggregate / triage
+  -> accepted finding の batch fix で review target が変更された場合:
+       batch fix + root-cause sweep
+       -> deterministic verify
+       -> Review stopping rules に従い 2nd full discovery が必要な場合のみ:
+            second discovery target の Selection / Execution
+            -> full discovery（2nd round、独立 reviewer）
+            -> completion / acquisition / validity 確認
+            -> required review 数の valid run 確認
+            -> aggregate / triage
+            -> accepted finding があれば batch fix
+            -> target が変われば deterministic verify
+            -> この fix でさらに追加の full discovery が必要と判断される
+               場合: 3rd full discovery は起動せず、merge もせず、
+               upstream task/design の不安定さを疑い、必要に応じて
+               escalate する
+       -> closure target の Selection / Execution
+       -> targeted closure
+       -> closure completion / acquisition / validity 確認
+       -> closure finding の Resolution
+       -> accepted closure finding があれば:
+            batch fix
+            -> deterministic verify
+            -> Review stopping rules の再評価
+            -> 2nd full discovery 未使用かつ必要な場合:
+                 second discovery target の Selection / Execution から
+                 上記の full discovery route へ進み、完了後 targeted
+                 closure を再実行する
+            -> 2nd full discovery 使用済みでなお必要な場合:
+                 3rd full discovery は起動せず、merge もせず、
+                 upstream task/design の不安定さを疑い、必要に応じて
+                 escalate する
+            -> 追加の full discovery が不要な場合:
+                 targeted closure を再実行する
+       -> required discovery stage(s) の Resolution 完了
+       -> merge
+  -> accepted fix が無く review target が変更されていない場合:
+       required review 数の valid discovery と Resolution の完了
+       -> merge
+```
+
+accepted finding の batch fix によって review target が変更された場合のみ
+targeted closure を行い、その review run も Acquisition & Validity Contract
+に従って completion / acquisition / validity を確認します。targeted closure
+の finding も Resolution Contract の対象とし、Resolution が完了するまで
+merge しません。
+targeted closure の Resolution に加えて、この review flow で実行した
+discovery stage（2nd full discovery を含む）すべての Resolution が
+完了していることも merge の条件です。完了順序は問いません。
+targeted closure の finding に accepted fix がある場合も、fix 後の
+deterministic verify を経て Review stopping rules を再評価します。2nd
+full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後
+に targeted closure を再実行します。2nd full discovery を使用済みでなお
+full discovery が必要なら、3rd full discovery は起動せず、merge もせず、
+upstream task/design の不安定さを疑い、必要に応じて escalate します。
+追加の full discovery が不要なら、targeted closure を再実行します。
+accepted fix が無く review target が変更されていない場合は、
+required review 数の valid discovery と Resolution の完了をもって、
+新たな closure run を要求せずに merge できます。
 
 ## Adapter boundary（manual pilot）
 

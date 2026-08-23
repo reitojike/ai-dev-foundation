@@ -506,9 +506,10 @@ review run の状態は少なくとも `none` / `unknown` / `failure` を区別�
 ### Merge readiness and merge authority
 
 本節における review completion（Resolution Contract の完了を含む）が
-成立した状態を **merge-ready** と呼びます。Review contracts および
-Review stopping rules で `merge` と記述する到達点は、merge-ready の
-成立を指し、merge を実行してよいという判断そのものとは同義ではありません。
+成立した状態を **merge-ready** と呼びます。Review contracts、Review stopping
+rules、および Skill routing contract が指す review skill の手順で `merge` と
+記述する到達点は、merge-ready の成立を指し、merge を実行してよいという判断
+そのものとは同義ではありません。
 
 merge execution authority は、Review Protocol とは別の contract /
 context として扱います。current Task、Execution Envelope、または
@@ -687,74 +688,6 @@ upstream task/design または policy/document 自体の instability を疑い�
 必要に応じて escalate します。これは Failure / retry の retry count とは
 別の stopping semantics です。
 
-Code review:
-
-```text
-deterministic verify
-  -> freeze candidate SHA
-  -> verify target と freeze target の consistency 確認
-  -> discovery（独立 reviewer）
-  -> completion / acquisition / validity 確認
-  -> aggregate / triage
-  -> accepted finding の batch fix で review target が変更された場合:
-       batch fix + root-cause sweep
-       -> deterministic verify
-       -> fix が behavior / blast radius を materially 変えた場合のみ:
-            second discovery target の Selection / Execution
-            -> full discovery（2nd round、独立 reviewer）
-            -> completion / acquisition / validity 確認
-            -> required review 数の valid run 確認
-            -> aggregate / triage
-            -> accepted finding があれば batch fix
-            -> target が変われば deterministic verify
-            -> この fix でさらに追加の full discovery が必要と判断される
-               場合: 3rd full discovery は起動せず、merge もせず、
-               upstream task/design の不安定さを疑い、必要に応じて
-               escalate する
-       -> closure target の Selection / Execution
-       -> targeted closure
-       -> closure completion / acquisition / validity 確認
-       -> closure finding の Resolution
-       -> accepted closure finding があれば:
-            batch fix
-            -> deterministic verify
-            -> Review stopping rules の再評価
-            -> 2nd full discovery 未使用かつ必要な場合:
-                 second discovery target の Selection / Execution から
-                 上記の full discovery route へ進み、完了後 targeted
-                 closure を再実行する
-            -> 2nd full discovery 使用済みでなお必要な場合:
-                 3rd full discovery は起動せず、merge もせず、
-                 upstream task/design の不安定さを疑い、必要に応じて
-                 escalate する
-            -> 追加の full discovery が不要な場合:
-                 targeted closure を再実行する
-       -> required discovery stage(s) の Resolution 完了
-       -> merge
-  -> accepted fix が無く review target が変更されていない場合:
-       required review 数の valid discovery と Resolution の完了
-       -> merge
-```
-
-accepted finding の batch fix によって review target が変更された場合のみ
-targeted closure を行い、その review run も Acquisition & Validity Contract
-に従って completion / acquisition / validity を確認します。targeted closure
-の finding も Resolution Contract の対象とし、Resolution が完了するまで
-merge しません。
-targeted closure の Resolution に加えて、この review flow で実行した
-discovery stage（2nd full discovery を含む）すべての Resolution が
-完了していることも merge の条件です。完了順序は問いません。
-targeted closure の finding に accepted fix がある場合も、fix 後の
-deterministic verify を経て Review stopping rules を再評価します。2nd
-full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後
-に targeted closure をやり直します。2nd full discovery を使用済みでなお
-full discovery が必要なら、3rd full discovery は起動せず、merge もせず、
-upstream task/design の不安定さを疑い、必要に応じて escalate します。
-追加の full discovery が不要なら、targeted closure をやり直します。
-accepted fix が無く review target が変更されていない場合は、
-required review 数の valid discovery と Resolution の完了をもって、
-新たな closure run を要求せずに merge できます。
-
 full discovery は原則 1 round です。fix が behavior / blast radius を materially
 変えた場合のみ 2 round 目を許容します。それ以上必要な場合は review loop を増やさず、
 upstream task/design の不安定さを疑います。
@@ -763,38 +696,11 @@ blast radius をさらに materially 変えた場合は、3rd full discovery を
 せず、targeted closure だけで merge へ進まず、upstream task/design の
 不安定さを疑い、必要に応じて escalate します。
 
-Normative document review:
-
-```text
-mechanical check
-  -> mechanical check target と Selection target の consistency 確認
-  -> semantic discovery（1 round）
-  -> triage / fix
-  -> accepted finding の fix で review target が変更された場合:
-       mechanical check
-       -> closure target の Selection / Execution
-       -> closure verification
-       -> closure completion / acquisition / validity 確認
-       -> closure finding の Resolution
-       -> semantic discovery の Resolution 完了
-       -> 完了
-  -> accepted fix が無く review target が変更されていない場合:
-       required review 数の valid semantic discovery と Resolution の完了
-       -> 完了
-```
-
-accepted finding の fix によって review target が変更された場合のみ、
-新しい target に対して mechanical check を再実行してから closure
-verification を行い、その review run も Acquisition & Validity Contract
-に従って completion / acquisition / validity を確認します。closure
-verification の finding も Resolution Contract の対象とし、Resolution が
-完了するまで review を完了しません。
-closure verification の Resolution に加えて、semantic discovery（手順 3）
-の Resolution が完了していることも review completion の条件です。完了
-順序は問いません。
-accepted fix が無く review target が変更されていない場合は、
-required review 数の valid semantic discovery と Resolution の完了をもって、
-新たな closure run を要求せずに review を完了できます。
+本節が定める stopping semantics（evidence の target 束縛、round / cycle の上限と
+escalate 判断）を、artifact classification ごとの具体的な review 手順のどこで評価
+するかは、その手順自体に属します。この review 手順の canonical source は
+Foundation-owned な review skill であり、本節には置きません。該当する review 手順
+へ入る前に、Skill routing contract に従って対応する skill を load します。
 
 ### Observed evidence is not a permanent provider rule
 

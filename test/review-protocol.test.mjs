@@ -359,56 +359,12 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   );
   assert.ok(containsText(core, "empty output: positive completion evidence がなければ `unknown`"));
 
-  // Stopping rules, including the closure Acquisition & Validity gate before merge
-  assert.ok(core.includes("closure completion / acquisition / validity 確認"));
-  // Finding 1: the Code accepted-fix branch re-applies Selection/Execution to the
-  // closure target before targeted closure runs.
-  assert.ok(core.includes("closure target の Selection / Execution"));
-  assert.ok(core.includes("-> targeted closure"));
-
-  // Codex P2 (route a material fix through a full 2nd discovery): an optional 2nd
-  // full discovery, gated by the same material-fix condition Review stopping
-  // rules already define, sits between the post-fix deterministic verify and
-  // closure target Selection/Execution — reusing the same discovery Contracts,
-  // not a new Second Discovery Contract or round-counter schema.
-  assert.ok(
-    containsText(
-      core,
-      "deterministic verify -> fix が behavior / blast radius を materially 変えた場合のみ:",
-    ),
-  );
-  assert.ok(core.includes("second discovery target の Selection / Execution"));
-  assert.ok(core.includes("full discovery（2nd round、独立 reviewer）"));
-  assert.ok(
-    containsText(
-      core,
-      "required review 数の valid run 確認 -> aggregate / triage -> accepted finding があれば batch fix -> target が変われば deterministic verify",
-    ),
-  );
-  assert.doesNotMatch(
-    core,
-    /discovery_round|round counter|Second Discovery Contract/,
-    "policy/core.md must not introduce a new round-counter schema or a Second Discovery Contract",
-  );
-  assert.ok(
-    containsText(
-      core,
-      "accepted finding の batch fix によって review target が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
-    ),
-  );
-
-  // Codex P2 (unify closure-entry predicates with the canonical review target
-  // definition): the Code review diagram's accepted-fix branch condition is
-  // "review target changed", not a stage-local "candidate SHA changed" that
-  // drifts from the review target definition established just above.
-  assert.ok(
-    containsText(core, "-> accepted finding の batch fix で review target が変更された場合:"),
-  );
-  assert.doesNotMatch(
-    core,
-    /accepted finding の batch fix で candidate SHA が変更された場合/,
-    "the Code review diagram's closure-entry condition must not regress to a bare candidate-SHA predicate",
-  );
+  // Review stopping rules (Kernel-retained always-on semantics, #51 Phase 1).
+  // The artifact-class finite flow itself moved to the Foundation-owned review
+  // skills; what stays here is the target-bound evidence invariant, the
+  // closure-cycle stopping semantics, and the discovery round limit — all of
+  // which can be violated at any time, including at the merge-ready fence,
+  // without ever entering the skill's procedure.
 
   // Root cause A (closure findings need Resolution too): completed + valid closure
   // runs still gate on Resolution before merge/completion, in both artifacts, using
@@ -427,102 +383,6 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     containsText(
       core,
       "unresolved の finding（未解決の needs-verification / technical-dispute / intent-question 等を含む）が残る間は、その review stage の Resolution は完了せず、merge / review completion の根拠にしない",
-    ),
-  );
-  assert.ok(core.includes("closure finding の Resolution"));
-  assert.ok(
-    containsText(
-      core,
-      "targeted closure の finding も Resolution Contract の対象とし、Resolution が完了するまで merge しません。",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "closure verification の finding も Resolution Contract の対象とし、Resolution が完了するまで review を完了しません。",
-    ),
-  );
-
-  // Codex P1 (resolve discovery findings before merge, Code flow): the
-  // accepted-fix diagram branch now requires required discovery stage(s)'
-  // Resolution to complete, not just closure Resolution, before merge.
-  assert.ok(core.includes("required discovery stage(s) の Resolution 完了"));
-  assert.ok(
-    containsText(
-      core,
-      "closure finding の Resolution -> accepted closure finding があれば:",
-    ),
-  );
-
-  // Codex P1 (re-evaluate materiality of closure fixes): an accepted closure
-  // finding's fix re-enters Review stopping rules — routing to an unused 2nd
-  // discovery if needed, to escalation (no 3rd discovery, no merge) if 2nd was
-  // already used and still insufficient, or back to targeted closure if the
-  // fix wasn't material — instead of falling straight through to merge.
-  assert.ok(
-    containsText(
-      core,
-      "accepted closure finding があれば: batch fix -> deterministic verify -> Review stopping rules の再評価",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "2nd full discovery 未使用かつ必要な場合: second discovery target の Selection / Execution から上記の full discovery route へ進み、完了後 targeted closure を再実行する",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "2nd full discovery 使用済みでなお必要な場合: 3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate する",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "追加の full discovery が不要な場合: targeted closure を再実行する",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "targeted closure の finding に accepted fix がある場合も、fix 後の deterministic verify を経て Review stopping rules を再評価します。",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "2nd full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後に targeted closure をやり直します。",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "2nd full discovery を使用済みでなお full discovery が必要なら、3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate します。",
-    ),
-  );
-  assert.ok(
-    containsText(core, "追加の full discovery が不要なら、targeted closure をやり直します。"),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "targeted closure の Resolution に加えて、この review flow で実行した discovery stage（2nd full discovery を含む）すべての Resolution が完了していることも merge の条件です。完了順序は問いません。",
-    ),
-  );
-
-  // Codex P1 (resolve discovery findings before merge, Normative flow): same
-  // gate for semantic discovery Resolution before review completion.
-  assert.ok(
-    containsText(
-      core,
-      "-> closure finding の Resolution -> semantic discovery の Resolution 完了 -> 完了",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "closure verification の Resolution に加えて、semantic discovery（手順 3）の Resolution が完了していることも review completion の条件です。完了順序は問いません。",
     ),
   );
 
@@ -563,45 +423,20 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   // Range-only target change (Codex P1, commit range for Executable): a commit
   // range's endpoint moving counts as a target change even if head SHA is
   // unchanged, so old evidence isn't carried over just because the SHA looks the
-  // same; and the merge-without-closure branch is keyed on the review target
-  // (SHA-and-range), not head SHA alone, so an independent base/range move
-  // cannot slip through as "unchanged."
+  // same. The canonical review target definition the merge-ready fence and both
+  // skills key on stays in the Kernel.
   assert.ok(
     containsText(
       core,
       "head SHA が不変でも commit range の endpoint が変わった場合、また expected target SHA / commit range が不変でも target artifact set が変わった場合も、review target の変更として同じ scope です。",
     ),
   );
-  assert.ok(core.includes("-> accepted fix が無く review target が変更されていない場合:"));
-  assert.doesNotMatch(
-    core,
-    /accepted fix が無く candidate SHA が変更されていない場合/,
-    "the merge-without-closure branch must key on review target (SHA-and-range), not head SHA alone, or an independent range move could read as unchanged",
-  );
-  assert.ok(core.includes("verify target と freeze target の consistency 確認"));
-  assert.ok(core.includes("mechanical check target と Selection target の consistency 確認"));
-  // Canonical policy: no accepted fix + no SHA change completes via the required
-  // review count's valid discovery + Resolution, with no new closure run required
-  // (matches skills/review-code.md's existing Executable procedure).
-  assert.ok(
-    containsText(
-      core,
-      "accepted fix が無く review target が変更されていない場合は、required review 数の valid discovery と Resolution の完了をもって、新たな closure run を要求せずに merge できます。",
-    ),
-  );
+
+  // Discovery round limit stays always-on: the merge-ready completion fence's
+  // expected-member exception is defined in terms of "targeted closure で十分と
+  // 判定されて" per these rules, so the round limit cannot be skill-only.
   assert.ok(containsText(core, "full discovery は原則 1 round です。"));
   assert.ok(containsText(core, "materially 変えた場合のみ 2 round 目を許容します。"));
-
-  // Codex P1 (stop merge after a materially-changing 2nd discovery fix): the
-  // canonical Code review diagram now re-evaluates materiality after the 2nd
-  // discovery's own accepted-finding fix, not just before entering 2nd
-  // discovery — a further material change stops at escalation, not merge.
-  assert.ok(
-    containsText(
-      core,
-      "-> target が変われば deterministic verify -> この fix でさらに追加の full discovery が必要と判断される場合: 3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate する -> closure target の Selection / Execution",
-    ),
-  );
   assert.ok(
     containsText(
       core,
@@ -613,45 +448,10 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     /4th full discovery|third full discovery|discovery_round|round counter|Materiality Contract|Closure Materiality Contract/i,
     "must not introduce a 3rd discovery phase, round counter, or a new Materiality Contract",
   );
-
-  // Normative must stay unchanged by this fix: no 2nd semantic discovery round.
-  assert.ok(core.includes("semantic discovery（1 round）"));
   assert.doesNotMatch(
     core,
-    /semantic discovery（2nd round）|2nd semantic discovery/,
-    "Normative document review must not gain a 2nd semantic discovery round",
-  );
-  // Canonical policy: Normative closure is likewise conditioned on an accepted-fix
-  // target change, not unconditional (matches skills/review-doc.md's procedure),
-  // and re-runs mechanical check against the post-fix target first (Finding 2).
-  assert.ok(
-    containsText(
-      core,
-      "accepted finding の fix によって review target が変更された場合のみ、新しい target に対して mechanical check を再実行してから closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "accepted fix が無く review target が変更されていない場合は、required review 数の valid semantic discovery と Resolution の完了をもって、新たな closure run を要求せずに review を完了できます。",
-    ),
-  );
-
-  // Codex P2 (unify closure-entry predicates with the canonical review target
-  // definition, Normative sibling): both diagram branches (accepted-fix and
-  // no-change) key on "review target", matching the Code review diagram and
-  // the review target definition established just above, not a stage-local
-  // "target SHA / range" partial predicate.
-  assert.ok(
-    containsText(core, "-> accepted finding の fix で review target が変更された場合:"),
-  );
-  assert.ok(
-    containsText(core, "-> accepted fix が無く review target が変更されていない場合:"),
-  );
-  assert.doesNotMatch(
-    core,
-    /accepted finding の fix で target SHA \/ range が変更された場合/,
-    "the Normative diagram's closure-entry condition must not regress to a bare SHA/range predicate",
+    /discovery_round|round counter|Second Discovery Contract/,
+    "policy/core.md must not introduce a new round-counter schema or a Second Discovery Contract",
   );
 
   // Codex P2 (stage-independent closure-cycle stopping semantics): a repeating
@@ -686,13 +486,13 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "precondition check（Executable の deterministic verify、Normative の mechanical check）を新しい target に対して再成立させます。",
     ),
   );
-  // The Normative accepted-fix branch re-runs mechanical check and re-applies
-  // Selection/Execution to the closure target before closure verification,
-  // without adding a 2nd semantic discovery round.
+
+  // #51 Phase 1: the Kernel keeps the routing pointer to the skill-owned
+  // procedure instead of the procedure itself.
   assert.ok(
     containsText(
       core,
-      "mechanical check -> closure target の Selection / Execution -> closure verification",
+      "この review 手順の canonical source は Foundation-owned な review skill であり、本節には置きません。該当する review 手順へ入る前に、Skill routing contract に従って対応する skill を load します。",
     ),
   );
 
@@ -707,6 +507,303 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(containsText(core, "実行手順（review skill）は Foundation リポジトリ側に別途保持し、"));
   assert.doesNotMatch(core, /(?<!\.ai-dev-foundation\/)skills\/review-code\.md/);
   assert.doesNotMatch(core, /(?<!\.ai-dev-foundation\/)skills\/review-doc\.md/);
+});
+
+// #51 Phase 1 (progressive disclosure canary): the artifact-class review finite
+// flow — the phase-specific part of the former Kernel `Review stopping rules`
+// section — is owned by the Foundation-owned review skills, not by the Kernel.
+// Every assertion below previously ran against `policy/core.md`; the semantics
+// are unchanged, only the canonical location moved.
+test("review skills own the artifact-class review finite flow (#51 Phase 1)", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  // --- Executable finite flow (skills/review-code.md) ---
+
+  // Stopping rules, including the closure Acquisition & Validity gate before merge
+  assert.ok(reviewCode.includes("closure completion / acquisition / validity 確認"));
+  // Finding 1: the Code accepted-fix branch re-applies Selection/Execution to the
+  // closure target before targeted closure runs.
+  assert.ok(reviewCode.includes("closure target の Selection / Execution"));
+  assert.ok(reviewCode.includes("-> targeted closure"));
+
+  // Codex P2 (route a material fix through a full 2nd discovery): an optional 2nd
+  // full discovery sits between the post-fix deterministic verify and closure
+  // target Selection/Execution — reusing the same discovery Contracts, not a new
+  // Second Discovery Contract or round-counter schema. #51 Phase 1: the branch
+  // condition itself defers to the Kernel's Review stopping rules rather than
+  // restating the materiality criterion inside the skill.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "deterministic verify -> Review stopping rules に従い 2nd full discovery が必要な場合のみ:",
+    ),
+  );
+  assert.ok(reviewCode.includes("second discovery target の Selection / Execution"));
+  assert.ok(reviewCode.includes("full discovery（2nd round、独立 reviewer）"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "required review 数の valid run 確認 -> aggregate / triage -> accepted finding があれば batch fix -> target が変われば deterministic verify",
+    ),
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /discovery_round|round counter|Second Discovery Contract/,
+    "the skill must not introduce a new round-counter schema or a Second Discovery Contract",
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "accepted finding の batch fix によって review target が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+    ),
+  );
+
+  // Codex P2 (unify closure-entry predicates with the canonical review target
+  // definition): the Code review diagram's accepted-fix branch condition is
+  // "review target changed", not a stage-local "candidate SHA changed" that
+  // drifts from the review target definition the Kernel still owns.
+  assert.ok(
+    containsText(reviewCode, "-> accepted finding の batch fix で review target が変更された場合:"),
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /accepted finding の batch fix で candidate SHA が変更された場合/,
+    "the Code review diagram's closure-entry condition must not regress to a bare candidate-SHA predicate",
+  );
+
+  assert.ok(reviewCode.includes("closure finding の Resolution"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "targeted closure の finding も Resolution Contract の対象とし、Resolution が完了するまで merge しません。",
+    ),
+  );
+
+  // Codex P1 (resolve discovery findings before merge, Code flow): the
+  // accepted-fix diagram branch requires required discovery stage(s)'
+  // Resolution to complete, not just closure Resolution, before merge.
+  assert.ok(reviewCode.includes("required discovery stage(s) の Resolution 完了"));
+  assert.ok(
+    containsText(reviewCode, "closure finding の Resolution -> accepted closure finding があれば:"),
+  );
+
+  // Codex P1 (re-evaluate materiality of closure fixes): an accepted closure
+  // finding's fix re-enters Review stopping rules — routing to an unused 2nd
+  // discovery if needed, to escalation (no 3rd discovery, no merge) if 2nd was
+  // already used and still insufficient, or back to targeted closure if the
+  // fix wasn't material — instead of falling straight through to merge.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "accepted closure finding があれば: batch fix -> deterministic verify -> Review stopping rules の再評価",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "2nd full discovery 未使用かつ必要な場合: second discovery target の Selection / Execution から上記の full discovery route へ進み、完了後 targeted closure を再実行する",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "2nd full discovery 使用済みでなお必要な場合: 3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate する",
+    ),
+  );
+  assert.ok(
+    containsText(reviewCode, "追加の full discovery が不要な場合: targeted closure を再実行する"),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "targeted closure の finding に accepted fix がある場合も、fix 後の deterministic verify を経て Review stopping rules を再評価します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "2nd full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後に targeted closure を再実行します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "2nd full discovery を使用済みでなお full discovery が必要なら、3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate します。",
+    ),
+  );
+  assert.ok(
+    containsText(reviewCode, "追加の full discovery が不要なら、targeted closure を再実行します。"),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "targeted closure の Resolution に加えて、この review flow で実行した discovery stage（2nd full discovery を含む）すべての Resolution が完了していることも merge の条件です。完了順序は問いません。",
+    ),
+  );
+  assert.ok(reviewCode.includes("verify target と freeze target の consistency 確認"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "accepted fix が無く review target が変更されていない場合は、required review 数の valid discovery と Resolution の完了をもって、新たな closure run を要求せずに merge できます。",
+    ),
+  );
+  assert.ok(reviewCode.includes("-> accepted fix が無く review target が変更されていない場合:"));
+  assert.doesNotMatch(
+    reviewCode,
+    /accepted fix が無く candidate SHA が変更されていない場合/,
+    "the merge-without-closure branch must key on review target (SHA-and-range), not head SHA alone, or an independent range move could read as unchanged",
+  );
+
+  // Codex P1 (stop merge after a materially-changing 2nd discovery fix): the
+  // canonical Code review diagram re-evaluates the need for more discovery after
+  // the 2nd discovery's own accepted-finding fix, not just before entering 2nd
+  // discovery — a further material change stops at escalation, not merge.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "-> target が変われば deterministic verify -> この fix でさらに追加の full discovery が必要と判断される場合: 3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate する -> closure target の Selection / Execution",
+    ),
+  );
+
+  // --- Normative finite flow (skills/review-doc.md) ---
+
+  assert.ok(reviewDoc.includes("closure completion / acquisition / validity 確認"));
+  assert.ok(reviewDoc.includes("closure target の Selection / Execution"));
+  assert.ok(reviewDoc.includes("closure finding の Resolution"));
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "closure verification の finding も Resolution Contract の対象とし、Resolution が完了するまで review を完了しません。",
+    ),
+  );
+  // Codex P1 (resolve discovery findings before merge, Normative flow): same
+  // gate for semantic discovery Resolution before review completion.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "-> closure finding の Resolution -> semantic discovery の Resolution 完了 -> 完了",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "closure verification の Resolution に加えて、semantic discovery（手順 3）の Resolution が完了していることも review completion の条件です。完了順序は問いません。",
+    ),
+  );
+  assert.ok(reviewDoc.includes("mechanical check target と Selection target の consistency 確認"));
+
+  // Normative keeps exactly one semantic discovery round.
+  assert.ok(reviewDoc.includes("semantic discovery（1 round）"));
+  assert.doesNotMatch(
+    reviewDoc,
+    /semantic discovery（2nd round）|2nd semantic discovery/,
+    "Normative document review must not gain a 2nd semantic discovery round",
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "accepted finding の fix によって review target が変更された場合のみ、新しい target に対して mechanical check を再実行してから closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "accepted fix が無く review target が変更されていない場合は、required review 数の valid semantic discovery と Resolution の完了をもって、新たな closure run を要求せずに review を完了できます。",
+    ),
+  );
+
+  // Codex P2 (unify closure-entry predicates with the canonical review target
+  // definition, Normative sibling): both diagram branches key on "review
+  // target", matching the Code review diagram and the Kernel's review target
+  // definition, not a stage-local "target SHA / range" partial predicate.
+  assert.ok(containsText(reviewDoc, "-> accepted finding の fix で review target が変更された場合:"));
+  assert.ok(containsText(reviewDoc, "-> accepted fix が無く review target が変更されていない場合:"));
+  assert.doesNotMatch(
+    reviewDoc,
+    /accepted finding の fix で target SHA \/ range が変更された場合/,
+    "the Normative diagram's closure-entry condition must not regress to a bare SHA/range predicate",
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "mechanical check -> closure target の Selection / Execution -> closure verification",
+    ),
+  );
+});
+
+// #51 Phase 1 contract: routing remains in the Kernel, procedure moved to the
+// skills. This guards both halves at once — a regression that copies the flow
+// back into the Kernel (or into the generated consumer adapter) fails here, and
+// so does a regression that drops the MUST skill-load routing.
+test("Phase 1 migration keeps routing in the Kernel and the procedure in the skills", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+  const generated = await readFile(
+    path.join(root, "test", "fixtures", "consumer", "AGENTS.md"),
+    "utf8",
+  );
+
+  // Distinctive finite-flow markers that must no longer live in always-on context.
+  const flowMarkers = [
+    "-> freeze candidate SHA",
+    "-> verify target と freeze target の consistency 確認",
+    "-> discovery（独立 reviewer）",
+    "-> accepted finding の batch fix で review target が変更された場合:",
+    "second discovery target の Selection / Execution",
+    "-> closure target の Selection / Execution -> targeted closure",
+    "-> closure finding の Resolution",
+    "required discovery stage(s) の Resolution 完了",
+    "mechanical check target と Selection target の consistency 確認",
+    "semantic discovery（1 round）",
+    "-> accepted finding の fix で review target が変更された場合:",
+  ];
+  for (const marker of flowMarkers) {
+    assert.ok(
+      !containsText(core, marker),
+      `Kernel must not carry the migrated finite-flow procedure: ${marker}`,
+    );
+    assert.ok(
+      !containsText(generated, marker),
+      `generated consumer AGENTS.md must not carry the migrated finite-flow procedure: ${marker}`,
+    );
+  }
+
+  // The Kernel keeps a `Review stopping rules` section: the always-on semantics
+  // the merge-ready completion fence and both skills reference by name.
+  assert.ok(core.includes("### Review stopping rules"));
+  assert.ok(generated.includes("### Review stopping rules"));
+
+  // The MUST skill-load routing stays discoverable from always-on context, in
+  // the Kernel and in the generated consumer adapter alike.
+  for (const text of [core, generated]) {
+    assert.ok(
+      containsText(
+        text,
+        "該当する artifact classification の review 手順に入る前に、対応する skill を load することは **MUST** です。",
+      ),
+    );
+    assert.ok(containsText(text, "`.ai-dev-foundation/skills/review-code.md`"));
+    assert.ok(containsText(text, "`.ai-dev-foundation/skills/review-doc.md`"));
+    assert.ok(
+      containsText(
+        text,
+        "この review 手順の canonical source は Foundation-owned な review skill であり、本節には置きません。該当する review 手順へ入る前に、Skill routing contract に従って対応する skill を load します。",
+      ),
+    );
+  }
+
+  // The migrated procedure is reachable from the distributed skill bundle, and
+  // the distributed copy is an exact match of the canonical skill.
+  for (const name of ["review-code.md", "review-doc.md"]) {
+    const canonical = await readFile(path.join(root, "skills", name), "utf8");
+    const distributed = await readFile(
+      path.join(root, "test", "fixtures", "consumer", ".ai-dev-foundation", "skills", name),
+      "utf8",
+    );
+    assert.equal(distributed, canonical, `distributed ${name} must match the canonical skill`);
+    assert.ok(canonical.includes("## 停止条件"), `${name} must own its stopping/finite-flow section`);
+    assert.ok(canonical.includes("```text"), `${name} must carry the migrated finite flow`);
+  }
 });
 
 test("core policy defines a provider-neutral skill routing contract", async () => {
