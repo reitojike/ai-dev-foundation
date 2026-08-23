@@ -182,6 +182,24 @@ explicit propertyが確実に勝つため引き続き検証できます）。
 このcheckerはNext.jsのupstream agent-rules block本文をFoundation canonical
 policyへコピーしません。`next.config`の設定有無だけを検証します。
 
+### 二層contract（proactive + reactive）
+
+`agent-rules:check`は、supportされた直接記述の`next.config`形式をfilesystemだけで
+deterministicに検証するbounded text matcherです。任意のJavaScript/TypeScript
+config semanticsを評価する約束はしません。上記の既知の制約（間接的な変数経由の
+設定、string literal内の紛らわしいtext、spread、shorthand/method/accessor形式の
+duplicate keyなど）は、parser/tokenizer/generalized config evaluatorへ発展させる
+ことでは解消しません。
+
+その代わり、`agent-rules:check`が見逃す exotic な`next.config`形式であっても、
+`next dev`が実際に`AGENTS.md`をmutationすれば、既存の`foundation:check`
+（`tooling/check.mjs`）がFoundationの合成結果と実file を exact比較し
+`Generated adapter drift detected`としてdeterministicに検出し、`tooling/sync.mjs`
+によるremediationを提供します。generated adapterのsilent mutationを防ぐ、または
+安全なremediationをdeterministically提供するという要件は、`agent-rules:check`
+単体ではなく、この proactive blocking layer（`agent-rules:check`）と reactive exact
+layer（`foundation:check`）を合わせたsystem levelで満たします。
+
 ## `verify` への集約
 
 consumerはrequired checkを通常のnpm scriptsとして固定し、`verify` から順番に実行します。

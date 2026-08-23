@@ -128,7 +128,7 @@ function escapeRegExp(literal) {
 
 // Locates, by source span, the object literal that a `next.config` file
 // actually `export default`s or `module.exports`s — following at most one
-// level of the canonical indirection Next.js's own docs show:
+// level of the canonical module-level indirection Next.js's own docs show:
 //   const nextConfig: NextConfig = { ... }; export default nextConfig;
 //   const nextConfig = { ... }; module.exports = nextConfig;
 // or a directly inlined `export default { ... }` / `module.exports = { ... }`.
