@@ -19,6 +19,40 @@ test("agentRules: false in next.config.ts is green", () => {
   assert.match(result.stdout, /agentRules: false/);
 });
 
+// Next.js's own CONFIG_FILES (node_modules/next/dist/shared/lib/constants.js)
+// only includes next.config.mts when the executing Node runtime has native
+// TypeScript support (process.features.typescript is truthy). This checker
+// evaluates the identical condition on its own process, so what counts as
+// "correct" for these two fixtures depends on the Node running this test
+// suite, exactly as it would for `next dev` itself (Issue #56).
+const nodeHasNativeTypeScriptSupport = Boolean(process.features?.typescript);
+
+test("agentRules: false in next.config.mts is green on a Node runtime with native TypeScript support (Issue #56)", () => {
+  const result = runChecker(path.join(fixturesRoot, "disabled-mts"));
+  if (nodeHasNativeTypeScriptSupport) {
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /next\.config\.mts/);
+    assert.match(result.stdout, /agentRules: false/);
+  } else {
+    // Next.js itself does not accept next.config.mts as a config candidate
+    // without native TypeScript support, so this checker must not either —
+    // it should report the same "no config found" state Next.js would face.
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /No next\.config/);
+  }
+});
+
+test("a next.config.mts that never sets agentRules is deterministically red on a Node runtime with native TypeScript support (Issue #56)", () => {
+  const result = runChecker(path.join(fixturesRoot, "not-disabled-mts"));
+  assert.notEqual(result.status, 0);
+  if (nodeHasNativeTypeScriptSupport) {
+    assert.match(result.stderr, /does not disable Next\.js's generated-AGENTS\.md agent rules/);
+    assert.match(result.stderr, /next\.config\.mts/);
+  } else {
+    assert.match(result.stderr, /No next\.config/);
+  }
+});
+
 test("a single-quoted 'agentRules': false key in next.config.mjs is also green", () => {
   // Codex + Claude review finding on this PR (2nd closure round): this
   // fixture previously had a *bare* `agentRules` key despite its name and
