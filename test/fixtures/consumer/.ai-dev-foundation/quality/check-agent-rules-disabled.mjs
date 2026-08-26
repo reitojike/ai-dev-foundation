@@ -11,20 +11,33 @@ import path from 'node:path';
 // artifact (see tooling/sync.mjs); Next.js runtime mutating it is drift this
 // profile's consumers must not hit on an ordinary `next dev`.
 //
-// Only the three filenames Next.js itself accepts for configuration are
-// checked (an unsupported extension such as .cjs/.cts is itself a Next.js
-// config error, not this checker's concern). The order matters and matches
-// Next.js's own `CONFIG_FILES` precedence (node_modules/next/dist/shared/
-// lib/constants.js in 16.3.2: `['next.config.js', 'next.config.mjs',
-// 'next.config.ts', ...]`) — if more than one candidate coexists (e.g.
-// mid-migration between formats, or a stale file left behind), Next.js
-// loads only the first it finds in that order, and this checker must
-// inspect the same file Next.js actually loads. Checking a different one
-// (an earlier version of this checker tried `.ts` first) risks reporting
-// a config as disabled based on a file `next dev` never reads, while the
-// file it does read still has agentRules enabled (Codex review finding on
-// this PR).
-const CANDIDATE_CONFIG_FILENAMES = ['next.config.js', 'next.config.mjs', 'next.config.ts'];
+// The candidates and their order match Next.js's own `CONFIG_FILES`
+// (node_modules/next/dist/shared/lib/constants.js in 16.3.2):
+// `['next.config.js', 'next.config.mjs', 'next.config.ts', ...process?.features
+// ?.typescript ? ['next.config.mts'] : []]`. `.js`/`.mjs`/`.ts` are always
+// accepted; `.mts` is accepted only when the executing Node runtime has
+// native TypeScript support (`process.features.typescript` is truthy — e.g.
+// `'strip'`, confirmed present under stage-tracker's Next.js 16.3.1 runtime,
+// see Issue #56). This checker evaluates the identical condition on its own
+// `process`, rather than assuming `.mts` is always a candidate or treating it
+// as an unsupported extension like `.cjs`/`.cts` (which remain Next.js config
+// errors regardless of runtime and stay out of this checker's concern). If
+// more than one candidate coexists (e.g. mid-migration between formats, or a
+// stale file left behind), Next.js loads only the first it finds in that
+// order, and this checker must inspect the same file Next.js actually loads.
+// Checking a different one (an earlier version of this checker tried `.ts`
+// first) risks reporting a config as disabled based on a file `next dev`
+// never reads, while the file it does read still has agentRules enabled
+// (Codex review finding on this PR).
+const CANDIDATE_CONFIG_EXTENSIONS = [
+  'js',
+  'mjs',
+  'ts',
+  ...(process?.features?.typescript ? ['mts'] : []),
+];
+const CANDIDATE_CONFIG_FILENAMES = CANDIDATE_CONFIG_EXTENSIONS.map(
+  (extension) => `next.config.${extension}`,
+);
 
 // Matches a JS object property key that is EXACTLY `agentRules` — either a
 // bare identifier not embedded in a longer one, or a fully quoted string
@@ -347,8 +360,8 @@ const configFile = await findConfigFile(process.cwd());
 
 if (configFile === null) {
   console.error(
-    `No next.config.{js,mjs,ts} found. Foundation-generated AGENTS.md is a generated artifact ` +
-      `(see tooling/sync.mjs) that \`next dev\` will otherwise silently mutate. Add a next.config ` +
+    `No next.config.{${CANDIDATE_CONFIG_EXTENSIONS.join(',')}} found. Foundation-generated AGENTS.md is a generated ` +
+      `artifact (see tooling/sync.mjs) that \`next dev\` will otherwise silently mutate. Add a next.config ` +
       `with \`agentRules: false\`.`,
   );
   process.exitCode = 1;

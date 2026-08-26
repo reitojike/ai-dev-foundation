@@ -219,12 +219,17 @@ dirtyになります。Next.js 16.3未満はこの自動生成挙動も`agentRul
 node .ai-dev-foundation/quality/check-agent-rules-disabled.mjs
 ```
 
-このcheckerは`next.config.js` / `next.config.mjs` / `next.config.ts`
-（Next.js自身のCONFIG_FILES優先順位と同じ順で検索し、複数が共存する場合は
-Next.jsが実際に読むfileを検証します）をfilesystemだけで検査し、
-comment除去後・brace-depth 1（exportされる config
-object直下）に限定した`agentRules: false`（quoted keyを含む）が見つからない
-場合（fileが存在しない場合を含む）はnon-zeroで失敗します。`false`は完全な
+このcheckerは`next.config.js` / `next.config.mjs` / `next.config.ts`、および
+実行中のNode runtimeがnative TypeScript supportを持つ場合
+（`process.features.typescript`がtruthyな場合）は`next.config.mts`も対象に
+含めます（Next.js自身のCONFIG_FILES優先順位と同じ順で検索し、複数が共存する
+場合はNext.jsが実際に読むfileを検証します）。Next.js自身が`.mts`を受理する
+条件と同じ条件をcheckerが評価するため、`.cjs`/`.cts`等の他の拡張子（Next.js
+自身がconfigとして受理しないため引き続きこのcheckerの対象外）とは異なる
+扱いです。これらの候補fileをfilesystemだけで検査し、comment除去後・
+brace-depth 1（exportされる config object直下）に限定した`agentRules:
+false`（quoted keyを含む）が見つからない場合（fileが存在しない場合を含む）
+はnon-zeroで失敗します。`false`は完全な
 property valueである場合だけ有効とします（`agentRules: false || true`は
 実際にはtrueとして評価されるため無効）。次はfalseとして扱いません:
 comment内の記述（`// agentRules: false`）、ネストしたobject内の同名property
