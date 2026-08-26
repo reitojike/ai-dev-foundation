@@ -8,11 +8,13 @@
     "check:fixture": "node tooling/check.mjs --consumer test/fixtures/consumer",
     "bootstrap:next-supabase:fixture": "node tooling/bootstrap-next-supabase.mjs --consumer test/fixtures/quality-consumer",
     "test:guardrails": "node tooling/verify-guardrails.mjs",
-    "test": "node --test --test-concurrency=1 test/*.test.mjs && npm run test:guardrails"
+    "test": "node --test --test-concurrency=1 test/*.test.mjs && npm run test:guardrails",
+    "test:client-role-table-privileges-guardrail": "node --test test/db/*.test.mjs"
   },
   "devDependencies": {
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.0.0",
+    "pg": "^8.11.0",
     "prettier": "^3.0.0",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.0.0"
