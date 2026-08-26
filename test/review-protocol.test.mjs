@@ -854,6 +854,90 @@ test("core policy defines a provider-neutral skill routing contract", async () =
   assert.doesNotMatch(core, /\.claude\/skills|\.codex\/skills/);
 });
 
+// Issue #57 (O-2 prerequisite hardening): a single review target can straddle
+// multiple artifact classifications (observed on reitojike/stage-tracker
+// PR#60 / #127 — a mix of Executable and Normative artifacts in one target).
+// The 1:1 Skill routing contract table didn't say what to do then; fresh
+// agents independently converged on "load every applicable skill, apply each
+// classification's procedure only to its own artifact subset" without it
+// being written down. This test locks that resolution in as a deterministic,
+// mechanically-checkable rule.
+test("skill routing contract defines mixed-classification review target routing (Issue #57)", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+
+  assert.ok(core.includes("#### Mixed-classification review target"));
+
+  // MUST load every applicable classification's skill — not just one.
+  assert.ok(
+    containsText(
+      core,
+      "target に含まれる artifact classification のうち、mandatory review skill を持つ classification（上記 table の Executable および Normative）が複数含まれる場合、該当する classification すべてに対応する skill を load することを MUST とします。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "いずれか 1 つの classification の skill だけを load し、他の classification に属する artifact もそれで代替したことにしてはいけません。",
+    ),
+  );
+
+  // Each classification's procedural obligations apply only to its own artifact
+  // subset — no cross-classification borrowing of stricter/looser rules.
+  assert.ok(
+    containsText(
+      core,
+      "各 classification の手続き的 obligation（stopping rule、discovery round 数、required review 数、closure / verification 手順を含む）は、その classification に属する artifact subset にのみ適用します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "ある classification の rule を、他の classification に属する artifact へ流用してはいけません",
+    ),
+  );
+
+  // Informational's "no mandatory review skill" definition is unaffected by
+  // being mixed into the same target as Executable/Normative artifacts.
+  assert.ok(
+    containsText(
+      core,
+      "target に Informational な artifact が同時に含まれていても、Informational に mandatory review skill が無いという Artifact classification の定義は変わりません。",
+    ),
+  );
+
+  // Multiple loaded skills run as independent parallel flows, not one forced
+  // merge into a single procedure.
+  assert.ok(
+    containsText(
+      core,
+      "複数の skill を load した場合、各 skill が定義する discovery / closure / stopping semantics は、classification ごとに独立した review flow として並行に適用してよく、単一の flow へ統合することを要求しません。",
+    ),
+  );
+
+  // This routing must not replace or restructure the existing 1:1 table for
+  // single-classification targets (Issue #57 explicitly rules out a matrix
+  // redesign as in-scope discretion).
+  assert.ok(
+    containsText(
+      core,
+      "この routing は Skill routing contract の 1:1 table を置き換えません。target が単一の classification のみで構成される場合は、上記 table のとおり単一の skill を load します。",
+    ),
+  );
+  assert.ok(
+    containsText(core, "| Executable | `.ai-dev-foundation/skills/review-code.md` |"),
+    "the single-classification 1:1 table must survive unchanged",
+  );
+  assert.ok(
+    containsText(core, "| Normative | `.ai-dev-foundation/skills/review-doc.md` |"),
+    "the single-classification 1:1 table must survive unchanged",
+  );
+
+  // Provider-neutral, and no new Kernel-level round-counter/schema invented
+  // just to express this routing rule.
+  assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+  assert.doesNotMatch(core, /mixed_classification|classification_matrix|Mixed Classification Contract/i);
+});
+
 test("the skill routing contract table stays in sync with the actual skills/ directory", async () => {
   // The routing contract table in policy/core.md is static prose, not
   // generated from skills/. This guards against it silently going stale if a

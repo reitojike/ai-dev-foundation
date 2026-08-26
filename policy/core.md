@@ -728,6 +728,36 @@ provider 名や provider 固有の skill 機構（特定 CLI の skill directory
 することは **MUST** です。skill は本節の規範的なルールを複製せず、手順を説明します。
 skill を load せずに review 手順を進めることは、この routing contract への違反です。
 
+#### Mixed-classification review target
+
+1 つの review target が、異なる artifact classification に属する artifact を同時に
+含む場合（mixed-classification review target）、上記の table は 1 つの skill だけを
+選べば足りるという意味ではありません。
+
+- target に含まれる artifact classification のうち、mandatory review skill を持つ
+  classification（上記 table の Executable および Normative）が複数含まれる場合、
+  該当する classification すべてに対応する skill を load することを MUST とします。
+  いずれか 1 つの classification の skill だけを load し、他の classification に
+  属する artifact もそれで代替したことにしてはいけません。
+- 各 classification の手続き的 obligation（stopping rule、discovery round 数、
+  required review 数、closure / verification 手順を含む）は、その classification に
+  属する artifact subset にのみ適用します。ある classification の rule を、他の
+  classification に属する artifact へ流用してはいけません（例: Normative の
+  1 round discovery を Executable の artifact へ適用しない、Executable の
+  discovery -> triage -> batch fix -> verify -> targeted closure を Normative の
+  artifact へ適用しない）。
+- target に Informational な artifact が同時に含まれていても、Informational に
+  mandatory review skill が無いという Artifact classification の定義は変わりません。
+  Informational の artifact subset は、他の classification の skill が定義する
+  手続きの対象に含めません。
+- 複数の skill を load した場合、各 skill が定義する discovery / closure /
+  stopping semantics は、classification ごとに独立した review flow として並行に
+  適用してよく、単一の flow へ統合することを要求しません。
+
+この routing は Skill routing contract の 1:1 table を置き換えません。target が
+単一の classification のみで構成される場合は、上記 table のとおり単一の skill を
+load します。
+
 `.ai-dev-foundation/skills/` は Foundation-owned な配布物です。consumer はこの path
 を編集しません。canonical source は Foundation リポジトリの `skills/` であり、
 consumer 側の内容がこれと一致しない場合は drift として検知されます。
