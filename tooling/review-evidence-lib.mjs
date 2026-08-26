@@ -135,6 +135,7 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
           path
           line
           comments(first: 50) {
+            pageInfo { hasNextPage endCursor }
             nodes {
               id
               databaseId
@@ -150,10 +151,48 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
   }
 }`;
 
+const THREAD_COMMENTS_QUERY = `
+query($id: ID!, $cursor: String) {
+  node(id: $id) {
+    ... on PullRequestReviewThread {
+      comments(first: 50, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          databaseId
+          url
+          createdAt
+          author { login }
+          commit { oid }
+        }
+      }
+    }
+  }
+}`;
+
+// A thread's own `comments` connection can exceed the first page fetched by
+// REVIEW_THREADS_QUERY (>50 replies on one thread). This follows that
+// specific thread's comments to completion so review_threads can only ever
+// report fetch_status "fetched" when every thread's comment list is
+// genuinely complete, not just its first 50.
+async function completeThreadComments(fetchImpl, token, threadId, firstPage) {
+  let comments = firstPage?.nodes ?? [];
+  let pageInfo = firstPage?.pageInfo;
+  while (pageInfo?.hasNextPage) {
+    const data = await fetchGraphQL(fetchImpl, token, THREAD_COMMENTS_QUERY, { id: threadId, cursor: pageInfo.endCursor });
+    const connection = data?.node?.comments;
+    if (!connection) throw new Error("thread comments connection missing from GraphQL response");
+    comments = comments.concat(connection.nodes ?? []);
+    pageInfo = connection.pageInfo;
+  }
+  return comments;
+}
+
 // Review thread resolved/unresolved state is only exposed by the GraphQL
 // API, not REST, so this surface is fetched separately from the other list
 // surfaces. unresolved_count is only trustworthy when fetch_status is
-// "fetched" — a partial/failed fetch cannot claim to have seen every thread.
+// "fetched" — a partial/failed fetch cannot claim to have seen every thread,
+// nor every comment within a thread.
 export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber) {
   let cursor = null;
   let nodes = [];
@@ -191,7 +230,28 @@ export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, p
       break;
     }
   }
+  let threadCommentsFailure = null;
+  for (const node of nodes) {
+    if (!node.comments?.pageInfo?.hasNextPage) continue;
+    try {
+      node.comments = { nodes: await completeThreadComments(fetchImpl, token, node.id, node.comments) };
+    } catch (error) {
+      threadCommentsFailure = error.failure ?? { status: null, message: error.message };
+      break;
+    }
+  }
+
   const unresolvedCount = nodes.filter((node) => node.isResolved === false).length;
+  if (threadCommentsFailure) {
+    return {
+      fetch_status: "partial",
+      count: nodes.length,
+      unresolved_count: unresolvedCount,
+      pages_fetched: pages,
+      items: nodes,
+      failure: threadCommentsFailure,
+    };
+  }
   return { fetch_status: "fetched", count: nodes.length, unresolved_count: unresolvedCount, pages_fetched: pages, items: nodes, failure: null };
 }
 

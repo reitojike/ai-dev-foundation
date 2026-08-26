@@ -292,6 +292,107 @@ test("review thread GraphQL pagination across pages accumulates the full unresol
   assert.equal(result.surfaces.review_threads.unresolved_count, 1);
 });
 
+test("a thread with more than one page of its own comments is paginated to completion, not silently capped", async () => {
+  const routes = baseRoutes();
+  routes[4] = {
+    match: (url, init) => url.endsWith("/graphql") && init.method === "POST",
+    handler: (url, init) => {
+      const variables = graphqlVariables(init);
+      if ("id" in variables) {
+        assert.equal(variables.id, "th1");
+        assert.equal(variables.cursor, "comment-cursor-2");
+        return jsonResponse({
+          data: {
+            node: {
+              comments: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [{ id: "c2", author: { login: "b" }, createdAt: "t2", url: "loc2", commit: { oid: "abc1234" } }],
+              },
+            },
+          },
+        });
+      }
+      return jsonResponse({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: "th1",
+                    isResolved: false,
+                    isOutdated: false,
+                    path: "a.mjs",
+                    line: 1,
+                    comments: {
+                      pageInfo: { hasNextPage: true, endCursor: "comment-cursor-2" },
+                      nodes: [{ id: "c1", author: { login: "a" }, createdAt: "t1", url: "loc1", commit: { oid: "abc1234" } }],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+    },
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.review_threads.fetch_status, "fetched");
+  assert.equal(result.surfaces.review_threads.items[0].comments.length, 2);
+  assert.deepEqual(
+    result.surfaces.review_threads.items[0].comments.map((comment) => comment.id),
+    ["c1", "c2"],
+  );
+});
+
+test("a failure while paginating a thread's own comments downgrades review_threads to partial, not a silent fetched", async () => {
+  const routes = baseRoutes();
+  routes[4] = {
+    match: (url, init) => url.endsWith("/graphql") && init.method === "POST",
+    handler: (url, init) => {
+      const variables = graphqlVariables(init);
+      if ("id" in variables) {
+        return jsonResponse({ errors: [{ message: "server error" }] }, { status: 500 });
+      }
+      return jsonResponse({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: "th1",
+                    isResolved: false,
+                    isOutdated: false,
+                    path: "a.mjs",
+                    line: 1,
+                    comments: {
+                      pageInfo: { hasNextPage: true, endCursor: "comment-cursor-2" },
+                      nodes: [{ id: "c1", author: { login: "a" }, createdAt: "t1", url: "loc1", commit: { oid: "abc1234" } }],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+    },
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.review_threads.fetch_status, "partial");
+  assert.ok(result.surfaces.review_threads.failure);
+  // The thread itself, and what comments were fetched before the failure, are still reported.
+  assert.equal(result.surfaces.review_threads.count, 1);
+});
+
 test("a surface fetch failure is reported as failed with a null count, never a false zero", async () => {
   const routes = baseRoutes();
   routes[1] = {
