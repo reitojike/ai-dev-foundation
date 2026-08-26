@@ -119,7 +119,7 @@ async function fetchGraphQL(fetchImpl, token, query, variables) {
     error.failure = { status: null, message: body.errors.map((graphqlError) => graphqlError.message).join("; ") };
     throw error;
   }
-  return body.data;
+  return body?.data ?? null;
 }
 
 const REVIEW_THREADS_QUERY = `
@@ -190,9 +190,12 @@ async function completeThreadComments(fetchImpl, token, threadId, firstPage) {
 
 // Review thread resolved/unresolved state is only exposed by the GraphQL
 // API, not REST, so this surface is fetched separately from the other list
-// surfaces. unresolved_count is only trustworthy when fetch_status is
-// "fetched" — a partial/failed fetch cannot claim to have seen every thread,
-// nor every comment within a thread.
+// surfaces. unresolved_count reflects the full thread list once that list
+// itself is complete, even if fetch_status ends up "partial" because a
+// single thread's own comments couldn't be paginated to completion — that
+// failure narrows only that thread's comment list, not thread enumeration
+// or resolved state. unresolved_count is unreliable only when fetch_status
+// is "failed" (the thread list itself was never fully enumerated).
 export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber) {
   let cursor = null;
   let nodes = [];

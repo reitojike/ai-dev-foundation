@@ -393,6 +393,20 @@ test("a failure while paginating a thread's own comments downgrades review_threa
   assert.equal(result.surfaces.review_threads.count, 1);
 });
 
+test("a 200 OK GraphQL response with an empty body is reported as a failure, not a crash", async () => {
+  const routes = baseRoutes();
+  routes[4] = {
+    match: (url, init) => url.endsWith("/graphql") && init.method === "POST",
+    handler: () => jsonResponse(null),
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.review_threads.fetch_status, "failed");
+  assert.equal(result.surfaces.review_threads.count, null);
+  assert.ok(result.surfaces.review_threads.failure);
+});
+
 test("a surface fetch failure is reported as failed with a null count, never a false zero", async () => {
   const routes = baseRoutes();
   routes[1] = {
