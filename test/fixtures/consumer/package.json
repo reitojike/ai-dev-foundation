@@ -15,7 +15,11 @@
     "agent-rules:check": "node .ai-dev-foundation/quality/check-agent-rules-disabled.mjs",
     "supabase:migrations:check": "node .ai-dev-foundation/quality/check-migration-version-collision.mjs",
     "supabase:types:check": "node scripts/check-generated-supabase-types.mjs",
-    "verify:profile": "npm run agent-rules:check && npm run supabase:migrations:check && npm run supabase:types:check",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run foundation:check && npm run verify:profile"
+    "verify:profile:code": "npm run agent-rules:check && npm run supabase:migrations:check",
+    "verify:profile:database": "npm run supabase:types:check",
+    "verify:code": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run foundation:check && npm run verify:profile:code",
+    "verify:build": "npm run build",
+    "verify:database": "npm run verify:profile:database",
+    "verify": "npm run verify:code && npm run verify:build && npm run verify:database"
   }
 }

@@ -28,8 +28,8 @@ prettier
 typescript
 ```
 
-Supabaseを使い、`client-role-privileges:check`（後述）を`verify:profile`から呼び出す
-consumerは、これに加えて`pg`を追加します。
+Supabaseを使い、`client-role-privileges:check`（後述）を`verify:profile:database`から
+呼び出すconsumerは、これに加えて`pg`を追加します。
 
 ## 適用方法
 
@@ -266,36 +266,72 @@ duplicate keyなど）は、parser/tokenizer/generalized config evaluatorへ発�
 単体ではなく、この proactive blocking layer（`agent-rules:check`）と reactive exact
 layer（`foundation:check`）を合わせたsystem levelで満たします。
 
-## `verify` への集約
+## `verify` への集約と responsibility lane
 
 consumerはrequired checkを通常のnpm scriptsとして固定し、`verify` から順番に実行します。
-profile固有の追加は`verify:profile`に置きます。これはextension pointであり、pluginの
-登録機構ではありません。consumerがSupabaseを使う場合、`supabase:migrations:check`
-（DB / Docker / Supabase local stackを起動する他のcheckより前）に続けて
-`supabase:types:check`を`verify:profile`から呼び出し、typesの再生成後に生成ファイルの
-driftをnon-zeroで検知するcommandにします。DB/RLS testがあるconsumerは同じ
-`verify:profile`からそのtest commandを呼び出します。Next.js 16.3以降を使うconsumerは
-同じ`verify:profile`から`agent-rules:check`を呼び出します（16.3未満では対象外のため
-呼び出しません。本節冒頭の「該当しないcommandは含めない」原則の具体例です）。
-local Supabase stackを起動するconsumerは、同じ`verify:profile`から
-`client-role-privileges:check`（DB / Docker / Supabase local stackを起動する他の
-checkより後）も呼び出し、残存privilegeの回帰をblockingで検知します。
+`verify`は、GitHub上でも失敗domainを切り分けられるよう、次の3つのresponsibility lane
+の合成として定義します。
+
+- `verify:code` — format / lint / typecheck / unit test、`foundation:check`、および
+  DB / Docker / Supabase local stackを起動しないprofile check
+- `verify:build` — application build
+- `verify:database` — local Supabase runtimeを必要とするprofile check
+
+profile固有の追加は、DB / Docker / Supabase local stackを起動するかどうかで
+`verify:profile:code`（起動しない）と`verify:profile:database`（起動する）のどちらかに
+置きます。これはextension pointであり、pluginの登録機構ではありません。
+consumerがSupabaseを使う場合、`supabase:migrations:check`はfilesystemだけで完結する
+ため`verify:profile:code`から呼び出します。`supabase:types:check`（typesの再生成後に
+生成ファイルのdriftをnon-zeroで検知するcommand）はlocal Supabase runtimeを必要とする
+ため`verify:profile:database`から呼び出します。DB/RLS testがあるconsumerも同じ
+`verify:profile:database`からそのtest commandを呼び出します。Next.js 16.3以降を使う
+consumerは`agent-rules:check`（filesystemだけで完結）を`verify:profile:code`から
+呼び出します（16.3未満では対象外のため呼び出しません。本節冒頭の「該当しない
+commandは含めない」原則の具体例です）。local Supabase stackを起動するconsumerは、
+`verify:profile:database`から`client-role-privileges:check`（DB / Docker / Supabase
+local stackを起動する他のcheckより後）も呼び出し、残存privilegeの回帰をblockingで
+検知します。
 
 ```json
 {
   "scripts": {
     "client-role-privileges:check": "node .ai-dev-foundation/quality/check-client-role-table-privileges.mjs",
-    "verify:profile": "npm run agent-rules:check && npm run supabase:migrations:check && npm run supabase:types:check && npm run test:rls && npm run client-role-privileges:check",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run foundation:check && npm run verify:profile"
+    "verify:profile:code": "npm run agent-rules:check && npm run supabase:migrations:check",
+    "verify:profile:database": "npm run supabase:types:check && npm run test:rls && npm run client-role-privileges:check",
+    "verify:code": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run foundation:check && npm run verify:profile:code",
+    "verify:build": "npm run build",
+    "verify:database": "npm run verify:profile:database",
+    "verify": "npm run verify:code && npm run verify:build && npm run verify:database"
   }
 }
 ```
 
-上記のうちconsumerに該当しないcommandは`verify:profile`に含めません。空の成功commandを
-置かず、必要になった時点で実行可能なcheckとして追加します。
+上記のうちconsumerに該当しないcommandは`verify:profile:code` / `verify:profile:database`
+に含めません。空の成功commandを置かず、必要になった時点で実行可能なcheckとして追加
+します。該当するprofile checkが1つも無いlaneはそのlane自体を`verify`から省略します
+（例えばSupabaseを使わないconsumerは`verify:database`を持たず、`verify`は
+`verify:code`と`verify:build`だけを呼び出します）。
 
 `jscpd`や`knip`などのノイズを含み得るcheckはadvisoryです。blocking quality floorには
 含めません。
+
+### GitHub Actions verification lane（reference、non-normative）
+
+consumerのGitHub Actions上のPR checksを`verify`単一jobとして直列実行すると、format /
+lint / typecheck、build、DB runtimeというfailure domainがすべて1つのcheck結果へ
+collapseし、どの責務が落ちたか一目で切り分けにくくなります。responsibilityごとに
+独立したjobへ分けたいconsumerのための、non-normativeなreference exampleを
+`profiles/next-supabase/ci/verify-lanes.example.yml`に置きます。このfileは`sync` /
+`bootstrap-next-supabase.mjs`のどちらからもconsumerへ自動配布されません。必要な
+consumerが手動でcopy/adaptしてください。
+
+このreferenceは`verify:code` / `verify:build` / `verify:database`をそれぞれ独立した
+GitHub Actions jobとして実行し、job名を`Verify / Code`・`Verify / Build`・
+`Verify / Database`とします。consumer local/agent向けの一括`verify`はこのreferenceの
+有無にかかわらず維持され、このreferenceはGitHub Actions上の実行を3つのlaneへ分ける
+だけで、それ以上の細粒度checkへ分裂させることを意図しません。Supabaseを使わず
+`verify:database`が空のconsumerは、`Verify / Database` job自体をreferenceから
+削除してください。
 
 ## Worktree/checkoutをまたぐlocal Supabase stack
 
@@ -316,7 +352,8 @@ containers / volumes等）を共有する場合、そのstackはshared local sta
 - DB / RLS / auth integration test
 - schema由来のgenerated types生成、およびdrift verification
 - `client-role-privileges:check`（client-role table privilege guardrail）
-- 上記のいずれかを内包する`verify:profile`
+- 上記のいずれかを内包する`verify:profile:database`
+- 上記のいずれかを内包する`verify:database`
 - 上記のいずれかを内包するfull `verify`
 
 shared local stackに対して上記を実行するagentは、少なくとも次を満たします。
