@@ -203,6 +203,28 @@ if (!dockerAvailable()) {
     });
 
     await t.test(
+      'a table whose name requires quoting (mixed-case) is still checked, not silently skipped or crashed',
+      async () => {
+        // Regression for a Claude review finding on this PR: the table
+        // argument to has_table_privilege was originally built via unquoted
+        // string concatenation ('public.' || t.tablename). Postgres's
+        // regclass parsing of an unquoted identifier lowercases it, so a
+        // stored table name that is not already all-lowercase - only
+        // reachable via a quoted identifier at CREATE TABLE time, e.g.
+        // Prisma-style "Users" - resolved to the wrong (usually
+        // nonexistent) relation, either erroring the whole cross-join query
+        // (masking every other table's check) or, if a same-named lowercase
+        // table happened to exist, silently checking the wrong one. Fixed
+        // by format('%I.%I', schema, table) to properly quote both parts.
+        await resetPublicSchemaWithClientRoles(pg17.databaseUrl);
+        await applyFixture(pg17.databaseUrl, 'mixed-case-quoted-table');
+        const result = runChecker(pg17.databaseUrl);
+        assert.notEqual(result.status, 0, result.stdout + result.stderr);
+        assert.match(result.stderr, /authenticated -> Users: TRIGGER/);
+      },
+    );
+
+    await t.test(
       'a grant to the PUBLIC pseudo-role is detected for PUBLIC and propagates to anon/authenticated',
       async () => {
         // Confirms the Issue #44 design-checkpoint decision to check the

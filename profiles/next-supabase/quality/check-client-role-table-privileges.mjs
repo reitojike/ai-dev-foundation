@@ -161,7 +161,7 @@ async function findResidualPrivileges(client, deniedPrivileges) {
      cross join unnest($1::text[]) as r(role)
      cross join unnest($2::text[]) as p(privilege)
      where t.schemaname = 'public'
-       and has_table_privilege(r.role, 'public.' || t.tablename, p.privilege)
+       and has_table_privilege(r.role, format('%I.%I', t.schemaname, t.tablename), p.privilege)
      order by t.tablename, r.role, p.privilege`,
     [CLIENT_ROLES, deniedPrivileges],
   );
