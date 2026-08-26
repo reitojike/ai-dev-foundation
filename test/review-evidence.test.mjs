@@ -68,7 +68,7 @@ function emptyReviewThreadsRoute() {
 
 function emptyCommitStatusRoute() {
   return {
-    match: (url) => url.endsWith("/commits/abc1234/status"),
+    match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/status"),
     handler: () => jsonResponse({ state: "success", total_count: 0, statuses: [] }),
   };
 }
@@ -148,7 +148,7 @@ test("collects a representative multi-surface snapshot with independent per-surf
         }),
     },
     {
-      match: (url) => url.endsWith("/commits/abc1234/status"),
+      match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/status"),
       handler: () => jsonResponse({ state: "success", total_count: 2, statuses: [{ context: "ci/build", state: "success" }] }),
     },
     {
@@ -445,6 +445,128 @@ test("a mid-pagination failure is reported as partial, not silently truncated to
   assert.equal(result.surfaces.conversation_comments.count, 1);
   assert.equal(result.surfaces.conversation_comments.items.length, 1);
   assert.equal(result.fetch_failures, 1);
+});
+
+test("the combined commit status's own statuses list is paginated to completion, not capped at the first page", async () => {
+  const routes = baseRoutes();
+  routes[5] = {
+    match: (url) => url === "https://api.github.com/repos/octo/demo/commits/abc1234/status?per_page=100",
+    handler: () =>
+      jsonResponse(
+        { state: "success", total_count: 2, statuses: [{ context: "ci/a", state: "success" }] },
+        { link: '<https://api.github.com/repos/octo/demo/commits/abc1234/status?per_page=100&page=2>; rel="next"' },
+      ),
+  };
+  routes.splice(6, 0, {
+    match: (url) => url === "https://api.github.com/repos/octo/demo/commits/abc1234/status?per_page=100&page=2",
+    handler: () => jsonResponse({ state: "success", total_count: 2, statuses: [{ context: "ci/b", state: "success" }] }),
+  });
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.commit_status.fetch_status, "fetched");
+  assert.equal(result.surfaces.commit_status.status.statuses.length, 2);
+  assert.deepEqual(
+    result.surfaces.commit_status.status.statuses.map((status) => status.context),
+    ["ci/a", "ci/b"],
+  );
+});
+
+test("a mid-pagination failure on the combined commit status is reported as partial, not a silent fetched", async () => {
+  const routes = baseRoutes();
+  routes[5] = {
+    match: (url) => url === "https://api.github.com/repos/octo/demo/commits/abc1234/status?per_page=100",
+    handler: () =>
+      jsonResponse(
+        { state: "success", total_count: 2, statuses: [{ context: "ci/a", state: "success" }] },
+        { link: '<https://api.github.com/repos/octo/demo/commits/abc1234/status?per_page=100&page=2>; rel="next"' },
+      ),
+  };
+  routes.splice(6, 0, {
+    match: (url) => url === "https://api.github.com/repos/octo/demo/commits/abc1234/status?per_page=100&page=2",
+    handler: () => jsonResponse({ message: "server error" }, { status: 502 }),
+  });
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.commit_status.fetch_status, "partial");
+  assert.equal(result.surfaces.commit_status.status.statuses.length, 1);
+  assert.ok(result.surfaces.commit_status.failure);
+  assert.equal(result.fetch_failures, 1);
+});
+
+// Codex review on this PR (Issue #62): a status's `description` is the field
+// that carries a reviewer's positive non-participation declaration (e.g.
+// CodeRabbit's "Review skipped: automatic reviews are disabled" — the exact
+// case documented in skills/review-code.md). Dropping it made a declined
+// reviewer indistinguishable from an ordinary green status.
+test("a status's description (e.g. a declined-reviewer signal) is preserved, not dropped", async () => {
+  const routes = baseRoutes();
+  routes[5] = {
+    match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/status"),
+    handler: () =>
+      jsonResponse({
+        state: "success",
+        total_count: 1,
+        statuses: [{ context: "CodeRabbit", state: "success", description: "Review skipped: automatic reviews are disabled" }],
+      }),
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.commit_status.status.statuses[0].description, "Review skipped: automatic reviews are disabled");
+});
+
+// Codex review on this PR (Issue #62): without the raw body, an agent using
+// only this tool's --json output cannot see what a reviewer actually said
+// (completion markers, finding text) and would have to re-fetch every
+// comment individually — defeating the point of a single fresh snapshot.
+test("comment/review body text is preserved across every comment-shaped surface, not discarded", async () => {
+  const routes = baseRoutes();
+  routes[1] = {
+    match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/issues/62/comments"),
+    handler: () => jsonResponse([{ id: 1, user: { login: "a" }, html_url: "loc1", body: "conversation body text" }]),
+  };
+  routes[2] = {
+    match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/pulls/62/reviews"),
+    handler: () => jsonResponse([{ id: 2, user: { login: "a" }, state: "APPROVED", html_url: "loc2", body: "review submission body text" }]),
+  };
+  routes[3] = {
+    match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/pulls/62/comments"),
+    handler: () => jsonResponse([{ id: 3, user: { login: "a" }, path: "a.mjs", line: 1, html_url: "loc3", body: "inline comment body text" }]),
+  };
+  routes[4] = {
+    match: (url, init) => url.endsWith("/graphql") && init.method === "POST",
+    handler: () =>
+      jsonResponse({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: "th1",
+                    isResolved: false,
+                    isOutdated: false,
+                    path: "a.mjs",
+                    line: 1,
+                    comments: { nodes: [{ id: "c1", author: { login: "a" }, url: "loc4", body: "thread comment body text" }] },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      }),
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.conversation_comments.items[0].body, "conversation body text");
+  assert.equal(result.surfaces.review_submissions.items[0].body, "review submission body text");
+  assert.equal(result.surfaces.inline_review_comments.items[0].body, "inline comment body text");
+  assert.equal(result.surfaces.review_threads.items[0].comments[0].body, "thread comment body text");
 });
 
 test("a PR-metadata fetch failure does not crash the run and marks head-dependent surfaces not_applicable", async () => {

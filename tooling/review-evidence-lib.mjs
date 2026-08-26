@@ -88,14 +88,21 @@ export async function fetchPaginatedSurface(fetchImpl, token, initialUrl, extrac
   return { fetch_status: "fetched", count: items.length, pages_fetched: pages, items, failure: null };
 }
 
-// Single-object REST surface (e.g. combined commit status), not a list.
-export async function fetchSingleSurface(fetchImpl, token, url) {
-  try {
-    const page = await fetchRestPage(fetchImpl, token, url);
-    return { fetch_status: "fetched", body: page.body, failure: null };
-  } catch (error) {
-    return { fetch_status: "failed", body: null, failure: error.failure ?? { status: null, message: error.message } };
-  }
+// The combined-status endpoint's `statuses` array is itself paginated (one
+// entry per context, which can exceed a single page on a commit with many
+// status contexts). This follows it to completion via fetchPaginatedSurface
+// like every other list surface, while separately capturing the page-level
+// `state`/`total_count` fields that aren't part of the paginated array.
+export async function fetchCombinedStatusSurface(fetchImpl, token, url) {
+  const summary = { state: null, total_count: null };
+  const result = await fetchPaginatedSurface(fetchImpl, token, url, (body) => {
+    if (body && typeof body === "object") {
+      if ("state" in body) summary.state = body.state ?? null;
+      if ("total_count" in body) summary.total_count = body.total_count ?? null;
+    }
+    return body?.statuses ?? [];
+  });
+  return { ...result, state: summary.state, total_count: summary.total_count };
 }
 
 async function fetchGraphQL(fetchImpl, token, query, variables) {
@@ -143,6 +150,7 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
               createdAt
               author { login }
               commit { oid }
+              body
             }
           }
         }
@@ -164,6 +172,7 @@ query($id: ID!, $cursor: String) {
           createdAt
           author { login }
           commit { oid }
+          body
         }
       }
     }
@@ -266,6 +275,7 @@ function normalizeConversationComment(item) {
     created_at: item.created_at ?? null,
     updated_at: item.updated_at ?? null,
     locator: item.html_url ?? null,
+    body: item.body ?? null,
   };
 }
 
@@ -278,6 +288,7 @@ function normalizeReviewSubmission(item) {
     reviewed_sha: item.commit_id ?? null,
     submitted_at: item.submitted_at ?? null,
     locator: item.html_url ?? null,
+    body: item.body ?? null,
   };
 }
 
@@ -294,6 +305,7 @@ function normalizeInlineReviewComment(item) {
     created_at: item.created_at ?? null,
     updated_at: item.updated_at ?? null,
     locator: item.html_url ?? null,
+    body: item.body ?? null,
   };
 }
 
@@ -310,6 +322,7 @@ function normalizeReviewThread(node) {
       created_at: comment.createdAt ?? null,
       reviewed_sha: comment.commit?.oid ?? null,
       locator: comment.url ?? null,
+      body: comment.body ?? null,
     })),
   };
 }
@@ -326,18 +339,14 @@ function normalizeCheckRun(item) {
   };
 }
 
-function normalizeCombinedStatus(body) {
-  if (!body) return null;
+function normalizeStatus(status) {
   return {
-    state: body.state ?? null,
-    total_count: body.total_count ?? null,
-    statuses: (body.statuses ?? []).map((status) => ({
-      context: status.context ?? null,
-      state: status.state ?? null,
-      target_url: status.target_url ?? null,
-      created_at: status.created_at ?? null,
-      updated_at: status.updated_at ?? null,
-    })),
+    context: status.context ?? null,
+    state: status.state ?? null,
+    description: status.description ?? null,
+    target_url: status.target_url ?? null,
+    created_at: status.created_at ?? null,
+    updated_at: status.updated_at ?? null,
   };
 }
 
@@ -376,7 +385,7 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
   let checkRuns;
   if (headSha) {
     [commitStatus, checkRuns] = await Promise.all([
-      fetchSingleSurface(fetchImpl, token, `${restBase}/commits/${headSha}/status`),
+      fetchCombinedStatusSurface(fetchImpl, token, `${restBase}/commits/${headSha}/status?per_page=100`),
       fetchPaginatedSurface(
         fetchImpl,
         token,
@@ -395,9 +404,16 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     inline_review_comments: { ...inlineReviewComments, items: inlineReviewComments.items.map(normalizeInlineReviewComment) },
     review_threads: { ...reviewThreads, items: reviewThreads.items.map(normalizeReviewThread) },
     commit_status:
-      commitStatus.fetch_status === "fetched"
-        ? { fetch_status: "fetched", failure: null, status: normalizeCombinedStatus(commitStatus.body) }
-        : { fetch_status: commitStatus.fetch_status, failure: commitStatus.failure ?? null, status: null, note: commitStatus.note },
+      commitStatus.fetch_status === "not_applicable"
+        ? { fetch_status: "not_applicable", failure: null, status: null, note: commitStatus.note }
+        : {
+            fetch_status: commitStatus.fetch_status,
+            failure: commitStatus.failure,
+            status:
+              commitStatus.fetch_status === "failed"
+                ? null
+                : { state: commitStatus.state, total_count: commitStatus.total_count, statuses: commitStatus.items.map(normalizeStatus) },
+          },
     check_runs: { ...checkRuns, items: checkRuns.items.map(normalizeCheckRun) },
   };
 
@@ -446,7 +462,9 @@ export function formatHumanSummary(result) {
     if (!surface) continue;
     let line = `${label}: ${surface.fetch_status}`;
     if (key === "commit_status") {
-      if (surface.fetch_status === "fetched") line += ` (state: ${surface.status?.state ?? "unknown"}, contexts: ${surface.status?.total_count ?? 0})`;
+      if (surface.fetch_status === "fetched" || surface.fetch_status === "partial") {
+        line += ` (state: ${surface.status?.state ?? "unknown"}, contexts: ${surface.status?.statuses?.length ?? 0})`;
+      }
     } else if (surface.count !== null && surface.count !== undefined) {
       line += ` (${surface.count})`;
     }
