@@ -91,6 +91,34 @@ GitHub token は `--token`、`GH_TOKEN`、`GITHUB_TOKEN`、`gh auth token` の�
 surfaceの `0` へ変換しません。paginationが途中で失敗した場合は `partial`
 として明示し、取得できたitemsはpartialなcountのまま返します。
 
+review completion / target Validity / finding triage / Resolution 等の
+判定材料として使う fresh acquisition（formal acquisition）では `--json`
+を使ってください。`--json` 無しの human-readable summary は surface ごとの
+count と fetch state のみを表示し、判定に必要な actor / body / locator 等の
+item detail を含みません。
+
+**現在の coverage の既知の限界**（呼び出し側は、この範囲外の evidence が
+必要な場合、Review Adapter boundary に従って追加で fresh acquisition する
+必要があります）:
+
+- `commit_status` / `check_runs` は、この snapshot が取得した時点の PR
+  head（`pr_metadata.head_sha`）のみを対象とします。reviewer が ancestor
+  SHA の status/check にのみ review participation や finding を残していた
+  場合、そのevidenceはこの snapshot に含まれません。
+- `check_runs` は GitHub API の既定 filter（`latest`）で取得するため、
+  同一 check が再実行されている場合、最新 run 以外は snapshot に含まれ
+  ません。また `name` / `status` / `conclusion` / `started_at` /
+  `completed_at` / `locator`（`html_url`）のみを保持し、check run 本体の
+  `output.summary` / `output.text` や line-level annotation、投稿元 App の
+  識別情報は取得しません。
+- `commit_status` は GitHub の combined-status endpoint（`context` ごとの
+  最新 status のみを返す）を使います。同一 `(headSha, context)` に対して
+  reviewer が finding を含む status を投稿した後、同じ context が別の
+  status で上書きされた場合、その以前の status はこの snapshot から
+  復元できません。この場合も `fetch_status` は `fetched`（成功）を報告する
+  ため、`fetch_status` の値だけではこの欠落を検知できません。`commit_status`
+  も投稿者（`creator`）を保持しません。
+
 この helper は GitHub durable surface の mechanical acquisition に限定され、
 review completion / target Validity / finding triage / merge-readiness の
 判定は行いません。それらは `policy/core.md` の Review Protocol と
