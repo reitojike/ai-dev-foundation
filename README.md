@@ -105,8 +105,9 @@ item detail を含みません。
   head（`pr_metadata.head_sha`）のみを対象とします。reviewer が ancestor
   SHA の status/check にのみ review participation や finding を残していた
   場合、そのevidenceはこの snapshot に含まれません。
-- `check_runs` は `name` / `status` / `conclusion` / `started_at` /
-  `completed_at` / `locator`（`html_url`）のみを保持します。check run 本体の
+- `check_runs` は `name` / `status` / `conclusion` / `app_slug`（投稿元
+  GitHub App の slug） / `started_at` / `completed_at` /
+  `locator`（`html_url`）のみを保持します。check run 本体の
   `output.summary` / `output.text` や line-level annotation は取得しません。
 - `commit_status` は GitHub の combined-status endpoint（`context` ごとの
   最新 status のみを返す）を使います。同一 `(headSha, context)` に対して
