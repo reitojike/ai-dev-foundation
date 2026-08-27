@@ -335,26 +335,17 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
   使う comment / review submission は、判定するその時点で ID を指定して fresh に
   再取得した state / body を使います。会話内で既に見た comment の内容や、以前取得した
   snapshot をそのまま completion 判定の根拠にせず、pending 継続の理由にもしません。
-- `collectOutputs()`: 収集対象の surface は Review Adapter boundary
-  （`policy/core.md`）が capability として定義するもの（top-level
-  comment、inline/thread、review submission、status/check、workflow
-  log、edited comment 等）です。このうち GitHub REST/GraphQL で取得
-  できる surface（top-level comment = Conversation comment、
-  inline/thread = inline review comment と review thread の resolved
-  状態、review submission、status/check = combined commit status と
-  check runs）は、ai-dev-foundation checkout（この repository 自身の
-  review、または consumer が保持する pinned Foundation checkout ——
-  実例として `FOUNDATION_CHECKOUT` 環境変数で参照する consumer 実装が
-  あります）を利用できる場合、`tooling/review-evidence.mjs`（Issue #62）
-  の 1 command 実行に置き換え、surface ごとの fetch state と pagination
-  完了を機械的に取得します。これらの surface を agent が個別に見て回って
-  「確認したか」を手作業で記録する必要はありません。この helper は
-  review completion / target Validity / finding triage を判定しないため、
-  判定は本 Contract に従い agent が行います。
-  helper が利用できない、または対象としない残りの surface（workflow
-  log、edited comment）については、上記 capability のうち該当する
-  surface を確認し、内容の有無にかかわらず「どの surface を確認したか」を
-  記録します。この surface から `policy/core.md` の
+- `collectOutputs()`: GitHub 上の durable review surface の mechanical
+  acquisition は、ai-dev-foundation checkout を利用できる場合（例:
+  `FOUNDATION_CHECKOUT` で参照する pinned checkout）、
+  `tooling/review-evidence.mjs`（Issue #62）に置き換えます。fetch が
+  failed / partial な場合は empty や success へ変換しません。
+  Completion / Validity / Resolution / triage の semantic judgment は
+  helper ではなく本 Contract に従い agent が行います。helper が対象と
+  しない surface（Review Adapter boundary（`policy/core.md`）参照）は、
+  この provider で確認できる surface を確認し、内容の有無にかかわらず
+  「どの surface を確認したか」を記録します。この surface から
+  `policy/core.md` の
   Acquisition & Validity Contract が定義する Completion と Validity の
   要求事項を後続 session が独立に判定できれば、その surface 自体を同
   Contract の record の recoverable な representation として result

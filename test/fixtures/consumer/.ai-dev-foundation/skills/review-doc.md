@@ -96,10 +96,8 @@ acquisition routing」節に従います。この skill では重複定義しま
    いずれも Acquisition & Validity Contract（`policy/core.md`）が定めます。
    この skill で行う実務は、どの surface item を positive completion evidence とし、
    どの field / surface を安定と判断して binding の根拠にしたかを記録することです。
-   GitHub 上の durable review surface の取得手順は `skills/review-code.md` の
-   Adapter boundary（`collectOutputs()`）に従います。ai-dev-foundation
-   checkout を利用できる場合、`tooling/review-evidence.mjs`（Issue #62）で
-   機械的に取得できます。
+   GitHub 上の durable review surface の取得は `skills/review-code.md` の
+   Adapter boundary（`collectOutputs()`）に従います。
 5. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
    false-positive / needs-verification / technical-dispute / intent-question）へ
    仕分けます。
