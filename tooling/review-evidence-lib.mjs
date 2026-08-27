@@ -327,6 +327,11 @@ function normalizeReviewThread(node) {
   };
 }
 
+// Keeps only name/status/conclusion/timestamps/locator. Does not capture
+// output.summary, output.text, or line-level annotations — a reviewer that
+// posts findings only in those fields is not represented here, and a caller
+// needing that content must fetch it separately (README "Review evidence
+// helper" documents this as a known coverage limit).
 function normalizeCheckRun(item) {
   return {
     id: item.id,
@@ -381,6 +386,11 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber),
   ]);
 
+  // commit_status/check_runs are fetched for this snapshot's headSha only —
+  // GitHub's status/check-runs endpoints are per-commit, with no "all
+  // commits in this PR" equivalent. A reviewer that left status/check
+  // evidence only on an earlier (ancestor) SHA is not represented here; a
+  // caller needing that must fetch it separately for that SHA.
   let commitStatus;
   let checkRuns;
   if (headSha) {

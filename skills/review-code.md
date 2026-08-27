@@ -336,20 +336,16 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
   再取得した state / body を使います。会話内で既に見た comment の内容や、以前取得した
   snapshot をそのまま completion 判定の根拠にせず、pending 継続の理由にもしません。
 - `collectOutputs()`: GitHub 上の durable review surface の mechanical
-  acquisition は、ai-dev-foundation checkout を利用できる場合（例:
-  `FOUNDATION_CHECKOUT` で参照する pinned checkout）、
-  `tooling/review-evidence.mjs --json`（Issue #62）に置き換えます。
-  `--json` 無しの human summary は count / fetch state のみで、
-  Completion / Validity / Resolution / triage の判定に必要な actor /
-  body / locator を含みません。fetch が failed / partial な場合は
-  empty や success へ変換しません。commit status / check runs は
-  helper では現在の head SHA のみが対象のため、ancestor target の
-  status/check は helper 対象外として扱います。Completion / Validity /
-  Resolution / triage の semantic judgment は helper ではなく本
-  Contract に従い agent が行います。helper が対象としない surface
-  （上記 ancestor target 分の status/check を含む。他は Review Adapter
-  boundary（`policy/core.md`）参照）は、この provider で確認できる
-  surface を確認し、内容の有無にかかわらず「どの surface を確認したか」を
+  acquisition は、ai-dev-foundation checkout を利用できる場合、
+  `tooling/review-evidence.mjs --json`（Issue #62、使い方・現在の
+  coverage は同 tool の README 参照）に置き換えます。fetch が failed /
+  partial な場合、または snapshot が review target に必要な evidence を
+  カバーしない場合は、Review Adapter boundary（`policy/core.md`）に
+  従い不足分を fresh acquisition します。empty や success への変換は
+  しません。Completion / Validity / Resolution / triage の semantic
+  judgment は helper ではなく本 Contract に従い agent が行います。
+  helper を利用できない場合は、この provider で確認できる surface を
+  確認し、内容の有無にかかわらず「どの surface を確認したか」を
   記録します。この surface から `policy/core.md` の
   Acquisition & Validity Contract が定義する Completion と Validity の
   要求事項を後続 session が独立に判定できれば、その surface 自体を同
