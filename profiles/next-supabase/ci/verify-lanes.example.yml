@@ -1,0 +1,72 @@
+name: Verify
+
+# Non-normative reference example (profiles/next-supabase/quality/README.md
+# "GitHub Actions verification lane"). Foundation does not distribute or
+# bootstrap this file automatically; a consumer copies and adapts it.
+#
+# Splits the consumer's single `npm run verify` sequence into three GitHub
+# Actions jobs by responsibility (`verify:code` / `verify:build` /
+# `verify:database`) so PR Checks show which responsibility failed instead
+# of one collapsed `verify` result. The local/agent one-command `verify`
+# contract is unchanged; each job below runs one slice of it.
+#
+# `Verify / Database` needs a running local Supabase stack for the
+# DB-backed checks in `verify:profile:database` (generated-types drift,
+# RLS/auth tests, client-role privilege guardrail). Consumers without
+# Supabase have no `verify:database` script and should delete this job.
+# This example intentionally has no separate "start Supabase" step: as in
+# the observed working reference (a consumer's own verify:database-chained
+# npm scripts), provisioning the local stack (e.g. `supabase start` /
+# `db reset`) is consumer-owned and expected to happen inside those scripts,
+# not as a Foundation-prescribed CI step — ubuntu-latest's preinstalled
+# Docker is what those scripts rely on.
+#
+# `database` declares `needs: code`: the three jobs otherwise have no
+# ordering, so `Verify / Database` could start touching a local Supabase
+# stack before `Verify / Code`'s filesystem-only migration-collision
+# preflight (part of `verify:profile:code`) finishes, defeating the quality
+# README's "run the migration-collision guardrail before any DB/Docker
+# command" invariant.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  code:
+    name: Verify / Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.6'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run verify:code
+
+  build:
+    name: Verify / Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.6'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run verify:build
+
+  database:
+    name: Verify / Database
+    needs: code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.6'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run verify:database

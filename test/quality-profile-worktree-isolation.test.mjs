@@ -30,7 +30,8 @@ test("Next.js + Supabase quality profile defines shared local stack exclusive-re
     "migration apply / rollback相当のoperation",
     "DB / RLS / auth integration test",
     "schema由来のgenerated types生成、およびdrift verification",
-    "`verify:profile`",
+    "`verify:profile:database`",
+    "`verify:database`",
     "full `verify`",
   ]) {
     assert.ok(readme.includes(operation), `missing exclusive-resource operation: ${operation}`);
