@@ -20,6 +20,13 @@ name: Verify
 # `db reset`) is consumer-owned and expected to happen inside those scripts,
 # not as a Foundation-prescribed CI step — ubuntu-latest's preinstalled
 # Docker is what those scripts rely on.
+#
+# `database` declares `needs: code`: the three jobs otherwise have no
+# ordering, so `Verify / Database` could start touching a local Supabase
+# stack before `Verify / Code`'s filesystem-only migration-collision
+# preflight (part of `verify:profile:code`) finishes, defeating the quality
+# README's "run the migration-collision guardrail before any DB/Docker
+# command" invariant.
 
 on:
   push:
@@ -53,6 +60,7 @@ jobs:
 
   database:
     name: Verify / Database
+    needs: code
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
