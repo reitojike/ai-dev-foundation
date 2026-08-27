@@ -335,9 +335,19 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
   使う comment / review submission は、判定するその時点で ID を指定して fresh に
   再取得した state / body を使います。会話内で既に見た comment の内容や、以前取得した
   snapshot をそのまま completion 判定の根拠にせず、pending 継続の理由にもしません。
-- `collectOutputs()`: この provider で確認できる surface（top-level PR comment、
-  inline/thread comment、review submission/summary、status/check、必要なら
-  workflow log、edited comment）を確認し、内容の有無にかかわらず「どの surface を
+- `collectOutputs()`: GitHub 上の durable review surface（Conversation
+  comment、review submission、inline review comment、review thread の
+  resolved 状態、combined commit status、check runs）については、
+  ai-dev-foundation checkout を利用できる場合（この repository 自身の
+  review 等）、`tooling/review-evidence.mjs`（Issue #62）で 1 command
+  fresh に取得でき、surface ごとの fetch state と pagination 完了を機械的に
+  報告します。この helper は review completion / target Validity /
+  finding triage を判定しないため、判定は本 Contract に従い agent が
+  行います。helper が利用できない場合、または helper が対象としない
+  surface（workflow log 等）については、この provider で確認できる
+  surface（top-level PR comment、inline/thread comment、review
+  submission/summary、status/check、必要なら workflow log、edited
+  comment）を確認し、内容の有無にかかわらず「どの surface を
   確認したか」を記録します。この surface から `policy/core.md` の
   Acquisition & Validity Contract が定義する Completion と Validity の
   要求事項を後続 session が独立に判定できれば、その surface 自体を同
