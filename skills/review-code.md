@@ -338,9 +338,10 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 - `collectOutputs()`: 収集対象の surface は Review Adapter boundary
   （`policy/core.md`）が capability として定義するもの（top-level
   comment、inline/thread、review submission、status/check、workflow
-  log、edited comment 等）です。このうち GitHub 上の durable review
-  surface（Conversation comment、review submission、inline review
-  comment、review thread の resolved 状態、combined commit status、
+  log、edited comment 等）です。このうち GitHub REST/GraphQL で取得
+  できる surface（top-level comment = Conversation comment、
+  inline/thread = inline review comment と review thread の resolved
+  状態、review submission、status/check = combined commit status と
   check runs）は、ai-dev-foundation checkout（この repository 自身の
   review、または consumer が保持する pinned Foundation checkout ——
   実例として `FOUNDATION_CHECKOUT` 環境変数で参照する consumer 実装が
@@ -351,7 +352,7 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
   review completion / target Validity / finding triage を判定しないため、
   判定は本 Contract に従い agent が行います。
   helper が利用できない、または対象としない残りの surface（workflow
-  log、edited comment 等）については、上記 capability のうち該当する
+  log、edited comment）については、上記 capability のうち該当する
   surface を確認し、内容の有無にかかわらず「どの surface を確認したか」を
   記録します。この surface から `policy/core.md` の
   Acquisition & Validity Contract が定義する Completion と Validity の
