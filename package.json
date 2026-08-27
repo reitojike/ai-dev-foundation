@@ -1,7 +1,7 @@
 {
   "name": "ai-dev-foundation",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "sync:fixture": "node tooling/sync.mjs --consumer test/fixtures/consumer",
