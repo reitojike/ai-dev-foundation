@@ -335,20 +335,25 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
   使う comment / review submission は、判定するその時点で ID を指定して fresh に
   再取得した state / body を使います。会話内で既に見た comment の内容や、以前取得した
   snapshot をそのまま completion 判定の根拠にせず、pending 継続の理由にもしません。
-- `collectOutputs()`: GitHub 上の durable review surface（Conversation
-  comment、review submission、inline review comment、review thread の
-  resolved 状態、combined commit status、check runs）については、
-  ai-dev-foundation checkout を利用できる場合（この repository 自身の
-  review 等）、`tooling/review-evidence.mjs`（Issue #62）で 1 command
-  fresh に取得でき、surface ごとの fetch state と pagination 完了を機械的に
-  報告します。この helper は review completion / target Validity /
-  finding triage を判定しないため、判定は本 Contract に従い agent が
-  行います。helper が利用できない場合、または helper が対象としない
-  surface（workflow log 等）については、この provider で確認できる
-  surface（top-level PR comment、inline/thread comment、review
-  submission/summary、status/check、必要なら workflow log、edited
-  comment）を確認し、内容の有無にかかわらず「どの surface を
-  確認したか」を記録します。この surface から `policy/core.md` の
+- `collectOutputs()`: 収集対象の surface は Review Adapter boundary
+  （`policy/core.md`）が capability として定義するもの（top-level
+  comment、inline/thread、review submission、status/check、workflow
+  log、edited comment 等）です。このうち GitHub 上の durable review
+  surface（Conversation comment、review submission、inline review
+  comment、review thread の resolved 状態、combined commit status、
+  check runs）は、ai-dev-foundation checkout（この repository 自身の
+  review、または consumer が保持する pinned Foundation checkout ——
+  実例として `FOUNDATION_CHECKOUT` 環境変数で参照する consumer 実装が
+  あります）を利用できる場合、`tooling/review-evidence.mjs`（Issue #62）
+  の 1 command 実行に置き換え、surface ごとの fetch state と pagination
+  完了を機械的に取得します。これらの surface を agent が個別に見て回って
+  「確認したか」を手作業で記録する必要はありません。この helper は
+  review completion / target Validity / finding triage を判定しないため、
+  判定は本 Contract に従い agent が行います。
+  helper が利用できない、または対象としない残りの surface（workflow
+  log、edited comment 等）については、上記 capability のうち該当する
+  surface を確認し、内容の有無にかかわらず「どの surface を確認したか」を
+  記録します。この surface から `policy/core.md` の
   Acquisition & Validity Contract が定義する Completion と Validity の
   要求事項を後続 session が独立に判定できれば、その surface 自体を同
   Contract の record の recoverable な representation として result
