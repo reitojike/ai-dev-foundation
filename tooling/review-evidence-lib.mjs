@@ -327,17 +327,19 @@ function normalizeReviewThread(node) {
   };
 }
 
-// Keeps only name/status/conclusion/timestamps/locator. Does not capture
-// output.summary, output.text, or line-level annotations — a reviewer that
-// posts findings only in those fields is not represented here, and a caller
-// needing that content must fetch it separately (README "Review evidence
-// helper" documents this as a known coverage limit).
+// Keeps name/status/conclusion/timestamps/locator plus the posting App's
+// slug (check runs are created by a GitHub App, not a user). Does not
+// capture output.summary, output.text, or line-level annotations — a
+// reviewer that posts findings only in those fields is not represented
+// here, and a caller needing that content must fetch it separately (README
+// "Review evidence helper" documents this as a known coverage limit).
 function normalizeCheckRun(item) {
   return {
     id: item.id,
     name: item.name ?? null,
     status: item.status ?? null,
     conclusion: item.conclusion ?? null,
+    app_slug: item.app?.slug ?? null,
     started_at: item.started_at ?? null,
     completed_at: item.completed_at ?? null,
     locator: item.html_url ?? null,
@@ -349,6 +351,8 @@ function normalizeStatus(status) {
     context: status.context ?? null,
     state: status.state ?? null,
     description: status.description ?? null,
+    actor: status.creator?.login ?? null,
+    actor_type: status.creator?.type ?? null,
     target_url: status.target_url ?? null,
     created_at: status.created_at ?? null,
     updated_at: status.updated_at ?? null,

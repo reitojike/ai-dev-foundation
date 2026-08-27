@@ -75,7 +75,9 @@ function emptyCommitStatusRoute() {
 
 function emptyCheckRunsRoute() {
   return {
-    match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/check-runs"),
+    // filter=all: check-runs must not silently drop earlier runs of a
+    // re-run check suite by relying on the GitHub API's "latest" default.
+    match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/check-runs") && url.includes("filter=all"),
     handler: () => jsonResponse({ total_count: 0, check_runs: [] }),
   };
 }
@@ -152,7 +154,7 @@ test("collects a representative multi-surface snapshot with independent per-surf
       handler: () => jsonResponse({ state: "success", total_count: 2, statuses: [{ context: "ci/build", state: "success" }] }),
     },
     {
-      match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/check-runs"),
+      match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/check-runs") && url.includes("filter=all"),
       handler: () => jsonResponse({ total_count: 1, check_runs: [{ id: 9, name: "test", status: "completed", conclusion: "success" }] }),
     },
   ];
