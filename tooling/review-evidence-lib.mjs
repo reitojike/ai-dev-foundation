@@ -391,15 +391,23 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
   // commits in this PR" equivalent. A reviewer that left status/check
   // evidence only on an earlier (ancestor) SHA is not represented here; a
   // caller needing that must fetch it separately for that SHA.
+  //
+  // commit_status uses the combined-status endpoint, which GitHub defines
+  // as the *latest* status per context — an earlier status on the same
+  // (headSha, context) pair that a later status superseded is not
+  // recoverable from this surface, and fetch_status still reports "fetched"
+  // (this is a known coverage gap, not a fetch failure; see README).
   let commitStatus;
   let checkRuns;
   if (headSha) {
     [commitStatus, checkRuns] = await Promise.all([
       fetchCombinedStatusSurface(fetchImpl, token, `${restBase}/commits/${headSha}/status?per_page=100`),
+      // filter=all (not the API default "latest") so a re-run check suite's
+      // earlier runs on this headSha are included, not silently dropped.
       fetchPaginatedSurface(
         fetchImpl,
         token,
-        `${restBase}/commits/${headSha}/check-runs?per_page=100`,
+        `${restBase}/commits/${headSha}/check-runs?filter=all&per_page=100`,
         (body) => body?.check_runs ?? [],
       ),
     ]);

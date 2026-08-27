@@ -108,6 +108,12 @@ item detail を含みません。
 - `check_runs` は `name` / `status` / `conclusion` / `started_at` /
   `completed_at` / `locator`（`html_url`）のみを保持します。check run 本体の
   `output.summary` / `output.text` や line-level annotation は取得しません。
+- `commit_status` は GitHub の combined-status endpoint（`context` ごとの
+  最新 status のみを返す）を使います。同一 `(headSha, context)` に対して
+  reviewer が finding を含む status を投稿した後、同じ context が別の
+  status で上書きされた場合、その以前の status はこの snapshot から
+  復元できません。この場合も `fetch_status` は `fetched`（成功）を報告する
+  ため、`fetch_status` の値だけではこの欠落を検知できません。
 
 この helper は GitHub durable surface の mechanical acquisition に限定され、
 review completion / target Validity / finding triage / merge-readiness の
