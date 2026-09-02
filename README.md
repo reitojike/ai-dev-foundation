@@ -86,7 +86,7 @@ reviewer ごとに表現するもの:
 | `default_class`                                                                          | `required` / `expected` / `advisory`。portfolio 上の default であり Task 固有の obligation ではない             |
 | `actors`                                                                                 | この reviewer が投稿する login。surface item の帰属に使う                                                       |
 | `trigger`                                                                                | `kind` と、`comment_command` なら投稿する literal command。`target_argument` は `{target_sha}` を結果へ持ち込む |
-| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence の文字列（省略可）                                          |
+| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence の文字列（**必須**）                                        |
 | `non_participation_marker` / `rate_limit_marker` / `failure_marker` / `in_flight_marker` | `declined` / rate limit / `failed` / in-flight の evidence（いずれも省略可）                                    |
 | `fallback_order`                                                                         | この reviewer が使えない場合に次に選ぶ reviewer の id                                                           |
 | `observed_at`                                                                            | marker を最後に実測した日付。marker は observed evidence であり恒久仕様ではない                                 |

@@ -151,6 +151,16 @@ test("the completion marker is required, the rest are optional", () => {
 
   // A reviewer that never declines, rate-limits or fails omits those markers.
   assert.deepEqual(validateReviewerRecord(baseRecord()), []);
+
+  // The field table a consumer writes their record from has to agree with the
+  // schema that rejects it, or the documented shape fails `check`.
+  const readmeLines = readFileSync(path.join(root, "README.md"), "utf8").split("\n");
+  const rowFor = (field) => readmeLines.find((line) => line.startsWith(`| \`${field}\``));
+  assert.ok(rowFor("completion_marker")?.includes("必須"), "README must document completion_marker as required");
+  assert.ok(
+    rowFor("non_participation_marker")?.includes("省略可"),
+    "README must keep the remaining markers documented as optional",
+  );
 });
 
 test("a target_pattern must compile and actually capture something", () => {
