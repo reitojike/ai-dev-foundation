@@ -6,6 +6,8 @@
 // semantic judgments stay in policy/core.md's Review Protocol and the
 // review skills; this file must not encode them.
 
+import { HEAD_BOUND_SURFACES, MARKER_KINDS } from "./reviewer-record-lib.mjs";
+
 const GITHUB_API_ROOT = "https://api.github.com";
 
 function defaultFetch(...args) {
@@ -501,6 +503,286 @@ export function formatHumanSummary(result) {
   return lines.join("\n");
 }
 
+// --- Reviewer target completion state (Issue #72 Phase 1) -------------------
+//
+// Given a snapshot from collectReviewEvidence() and a consumer's reviewer
+// capability record, this reports each reviewer's target completion state
+// mechanically, together with the surface item locator and the literal marker
+// that decided it. It stays inside the same boundary as the rest of this file:
+// it matches declared markers and compares SHAs. It never categorizes a
+// finding, never decides whether a run satisfies a review obligation, and never
+// converts a missing or unfetched surface into `0 findings`.
+
+const SHA_MIN_PREFIX_LENGTH = 7;
+
+// Flattens one snapshot surface into uniform items so marker matching does not
+// have to know each surface's field names. `actor` is null on the per-commit
+// surfaces, which carry no author in this snapshot's normalized shape — those
+// items are matched by marker text alone (a known narrowing, documented in the
+// README alongside the surfaces' other coverage limits).
+function surfaceItems(evidence, surfaceKey) {
+  const surface = evidence?.surfaces?.[surfaceKey];
+  if (!surface) return [];
+  const base = { surface: surfaceKey, head_bound: HEAD_BOUND_SURFACES.includes(surfaceKey) };
+
+  switch (surfaceKey) {
+    case "conversation_comments":
+      return surface.items.map((item) => ({
+        ...base,
+        actor: item.actor,
+        body: item.body,
+        locator: item.locator,
+        timestamp: item.updated_at ?? item.created_at,
+        fields: {},
+      }));
+    case "review_submissions":
+      return surface.items.map((item) => ({
+        ...base,
+        actor: item.actor,
+        body: item.body,
+        locator: item.locator,
+        timestamp: item.submitted_at,
+        fields: { reviewed_sha: item.reviewed_sha },
+      }));
+    case "inline_review_comments":
+      return surface.items.map((item) => ({
+        ...base,
+        actor: item.actor,
+        body: item.body,
+        locator: item.locator,
+        timestamp: item.updated_at ?? item.created_at,
+        fields: { reviewed_sha: item.reviewed_sha, original_commit_sha: item.original_commit_sha },
+      }));
+    case "review_threads":
+      return surface.items.flatMap((thread) =>
+        (thread.comments ?? []).map((comment) => ({
+          ...base,
+          actor: comment.actor,
+          body: comment.body,
+          locator: comment.locator,
+          timestamp: comment.created_at,
+          fields: { reviewed_sha: comment.reviewed_sha },
+        })),
+      );
+    case "commit_status":
+      return (surface.status?.statuses ?? []).map((status) => ({
+        ...base,
+        actor: null,
+        body: [status.context, status.description].filter(Boolean).join(" "),
+        locator: status.target_url,
+        timestamp: status.updated_at ?? status.created_at,
+        fields: {},
+      }));
+    case "check_runs":
+      return surface.items.map((item) => ({
+        ...base,
+        actor: null,
+        body: [item.name, item.status, item.conclusion].filter(Boolean).join(" "),
+        locator: item.locator,
+        timestamp: item.completed_at ?? item.started_at,
+        fields: {},
+      }));
+    default:
+      return [];
+  }
+}
+
+function surfaceIsComplete(evidence, surfaceKey) {
+  return evidence?.surfaces?.[surfaceKey]?.fetch_status === "fetched";
+}
+
+function markerSurfaces(reviewer) {
+  const surfaces = new Set(reviewer.result_surfaces ?? []);
+  for (const kind of MARKER_KINDS) {
+    for (const surface of reviewer[kind]?.surfaces ?? []) surfaces.add(surface);
+  }
+  return [...surfaces];
+}
+
+// Returns the literal marker string that matched, or null. `any_of` is a set of
+// alternative markers (one is enough); `all_of` adds conjunctive terms that must
+// all be present.
+function matchedMarkerText(marker, body) {
+  const text = body ?? "";
+  const matched = (marker.any_of ?? []).find((needle) => text.includes(needle));
+  if (matched === undefined) return null;
+  if (marker.all_of && !marker.all_of.every((needle) => text.includes(needle))) return null;
+  return matched;
+}
+
+function resolveBoundTarget(marker, item, headSha) {
+  if (marker.target_field) return item.fields?.[marker.target_field] ?? null;
+  if (marker.target_pattern) return new RegExp(marker.target_pattern).exec(item.body ?? "")?.[1] ?? null;
+  if (item.head_bound) return headSha;
+  return null;
+}
+
+// Abbreviated SHAs appear in comment bodies, so a prefix relation counts as the
+// same target — but only from a length that cannot collide by accident.
+function shaMatches(left, right) {
+  if (!left || !right) return false;
+  const a = left.toLowerCase();
+  const b = right.toLowerCase();
+  const shorter = a.length <= b.length ? a : b;
+  if (shorter.length < SHA_MIN_PREFIX_LENGTH) return false;
+  return a.startsWith(b) || b.startsWith(a);
+}
+
+function byTimestampDescending(left, right) {
+  if (!left.timestamp) return 1;
+  if (!right.timestamp) return -1;
+  if (left.timestamp === right.timestamp) return 0;
+  return left.timestamp < right.timestamp ? 1 : -1;
+}
+
+function collectMatches(reviewer, evidence, kind, headSha) {
+  const marker = reviewer[kind];
+  if (!marker) return [];
+  const actors = new Set((reviewer.actors ?? []).map((actor) => actor.toLowerCase()));
+  const matches = [];
+  for (const surfaceKey of marker.surfaces ?? []) {
+    for (const item of surfaceItems(evidence, surfaceKey)) {
+      if (item.actor !== null && !actors.has(item.actor.toLowerCase())) continue;
+      const markerText = matchedMarkerText(marker, item.body);
+      if (markerText === null) continue;
+      matches.push({
+        marker_kind: kind,
+        surface: item.surface,
+        actor: item.actor,
+        locator: item.locator,
+        timestamp: item.timestamp ?? null,
+        marker: markerText,
+        bound_target: resolveBoundTarget(marker, item, headSha),
+      });
+    }
+  }
+  return matches.sort(byTimestampDescending);
+}
+
+function evaluateReviewer(reviewer, evidence, expectedTarget, headSha) {
+  const surfacesUsed = markerSurfaces(reviewer);
+  const incompleteSurfaces = surfacesUsed.filter((surface) => !surfaceIsComplete(evidence, surface));
+  const evidenceComplete = incompleteSurfaces.length === 0;
+
+  const matches = Object.fromEntries(
+    MARKER_KINDS.map((kind) => [kind, collectMatches(reviewer, evidence, kind, headSha)]),
+  );
+
+  const completionAtTarget = matches.completion_marker.find((match) => shaMatches(match.bound_target, expectedTarget));
+  const completionElsewhere = matches.completion_marker.find(
+    (match) => match.bound_target && !shaMatches(match.bound_target, expectedTarget),
+  );
+  const completionUnbound = matches.completion_marker.find((match) => !match.bound_target);
+
+  let state;
+  let reason;
+  let decisive = null;
+  if (completionAtTarget) {
+    state = "completed@target";
+    reason = "completion_marker_bound_to_target";
+    decisive = completionAtTarget;
+  } else if (matches.non_participation_marker.length > 0) {
+    state = "declined";
+    reason = "non_participation_marker";
+    [decisive] = matches.non_participation_marker;
+  } else if (matches.failure_marker.length > 0) {
+    state = "failed";
+    reason = "failure_marker";
+    [decisive] = matches.failure_marker;
+  } else if (completionElsewhere) {
+    state = "not-bound";
+    reason = "completion_marker_bound_to_other_target";
+    decisive = completionElsewhere;
+  } else if (completionUnbound) {
+    state = "unknown";
+    reason = "completion_marker_target_unresolved";
+    decisive = completionUnbound;
+  } else {
+    state = "unknown";
+    reason = evidenceComplete ? "no_matching_marker" : "fetch_incomplete";
+  }
+
+  // An operational signal refines a non-completion state into the next action
+  // (fall back now vs. wait for a run that is still going). It is deliberately a
+  // separate field: policy/core.md's target completion state vocabulary is
+  // `completed@target` / `not-bound` / `declined` / `failed` / `unknown`, and
+  // rate-limited/in-flight are both `unknown`-side refinements, not new states.
+  let operationalSignal = "none";
+  let signalMatch = null;
+  if (state !== "completed@target" && state !== "declined") {
+    if (matches.rate_limit_marker.length > 0) {
+      operationalSignal = "rate-limited";
+      [signalMatch] = matches.rate_limit_marker;
+    } else if (matches.in_flight_marker.length > 0) {
+      operationalSignal = "in-flight";
+      [signalMatch] = matches.in_flight_marker;
+    }
+  }
+
+  const matchedEvidence = [];
+  for (const candidate of [decisive, signalMatch]) {
+    if (candidate && !matchedEvidence.includes(candidate)) matchedEvidence.push(candidate);
+  }
+  for (const kind of MARKER_KINDS) {
+    const [latest] = matches[kind];
+    if (latest && !matchedEvidence.includes(latest)) matchedEvidence.push(latest);
+  }
+
+  return {
+    id: reviewer.id,
+    display_name: reviewer.display_name,
+    default_class: reviewer.default_class,
+    trigger: reviewer.trigger,
+    expected_target: expectedTarget,
+    target_completion_state: state,
+    operational_signal: operationalSignal,
+    reason,
+    evidence_complete: evidenceComplete,
+    incomplete_surfaces: incompleteSurfaces,
+    fallback_order: reviewer.fallback_order ?? [],
+    observed_at: reviewer.observed_at ?? null,
+    matched_evidence: matchedEvidence,
+  };
+}
+
+// Evaluates every reviewer in the record against one snapshot. `targetSha` is
+// the Selection Contract's expected target; it defaults to the snapshot's head
+// SHA, which is only correct when the PR head IS the frozen review target.
+export function evaluateReviewerStates(evidence, record, { targetSha } = {}) {
+  const headSha = evidence?.pr_metadata?.head_sha ?? null;
+  const expectedTarget = targetSha ?? headSha;
+  return {
+    expected_target: expectedTarget,
+    expected_target_source: targetSha ? "explicit" : "snapshot_head",
+    reviewers: (record?.reviewers ?? []).map((reviewer) =>
+      evaluateReviewer(reviewer, evidence, expectedTarget, headSha),
+    ),
+  };
+}
+
+export function formatReviewerStateSummary(states) {
+  const lines = ["", `Reviewer target completion state (expected target: ${states.expected_target ?? "unknown"})`];
+  for (const reviewer of states.reviewers) {
+    const signal = reviewer.operational_signal === "none" ? "" : `, signal: ${reviewer.operational_signal}`;
+    lines.push(
+      `${reviewer.id} [${reviewer.default_class}]: ${reviewer.target_completion_state}${signal} (${reviewer.reason})`,
+    );
+    for (const match of reviewer.matched_evidence) {
+      lines.push(`  ${match.marker_kind}: "${match.marker}" @ ${match.locator ?? "no locator"}`);
+    }
+    if (!reviewer.evidence_complete) {
+      lines.push(`  incomplete surfaces: ${reviewer.incomplete_surfaces.join(", ")}`);
+    }
+    if (reviewer.target_completion_state !== "completed@target" && reviewer.fallback_order.length > 0) {
+      lines.push(`  fallback order: ${reviewer.fallback_order.join(" -> ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+const USAGE =
+  "Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>] [--reviewers <path>] [--target-sha <sha>]";
+
 export function parseReviewEvidenceArgs(argv) {
   const args = { json: false };
   for (let index = 0; index < argv.length; index += 1) {
@@ -514,6 +796,12 @@ export function parseReviewEvidenceArgs(argv) {
     } else if (arg === "--token") {
       args.token = argv[index + 1];
       index += 1;
+    } else if (arg === "--reviewers") {
+      args.reviewers = argv[index + 1];
+      index += 1;
+    } else if (arg === "--target-sha") {
+      args.targetSha = argv[index + 1];
+      index += 1;
     } else if (arg === "--json") {
       args.json = true;
     } else {
@@ -521,10 +809,16 @@ export function parseReviewEvidenceArgs(argv) {
     }
   }
   if (!args.repo || !args.repo.includes("/")) {
-    throw new Error("Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>]");
+    throw new Error(USAGE);
   }
   if (!args.pr || !/^\d+$/.test(args.pr)) {
-    throw new Error("Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>]");
+    throw new Error(USAGE);
+  }
+  if (args.reviewers !== undefined && !args.reviewers) {
+    throw new Error("--reviewers must be followed by a path to a reviewer capability record");
+  }
+  if (args.targetSha !== undefined && !/^[0-9a-f]{7,40}$/i.test(args.targetSha ?? "")) {
+    throw new Error("--target-sha must be a commit SHA (at least 7 hex characters)");
   }
   return args;
 }

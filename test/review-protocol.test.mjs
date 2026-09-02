@@ -995,11 +995,23 @@ test("review skills document procedure without duplicating normative rules", asy
     "Closure Resolution",
     "Merge",
     "Adapter boundary",
-    "Manual review pilot",
+    "Happy path",
+    "reviewer capability record",
   ]) {
     assert.ok(reviewCode.includes(phrase), `review-code.md missing: ${phrase}`);
   }
-  assert.ok(containsText(reviewCode, "Claude / Codex / CodeRabbit"));
+
+  // Issue #72 Phase 1: reviewer-provider knowledge (which reviewers exist, how
+  // they are triggered, which markers mean completion / rate limit) moved out
+  // of this skill into the consumer-owned reviewer capability record. The skill
+  // still names Claude Code where it draws the preflight/local boundary around
+  // the *implementing* agent's own tooling, but no longer names any reviewer
+  // provider, so the two can no longer drift apart.
+  assert.doesNotMatch(
+    reviewCode,
+    /Codex|CodeRabbit/,
+    "reviewer provider names belong in the reviewer capability record, not in review-code.md",
+  );
 
   // Issue #22: collectOutputs() must cover mechanisms with no external
   // surface of their own (e.g. in-session/subagent review) by persisting the
@@ -1012,13 +1024,15 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
   assert.ok(
-    containsText(reviewCode, "GitHub-native trigger 経路を持つならそれを優先する方が"),
-    "review-code.md must document the observed GitHub-native-trigger preference without hardcoding a permanent provider rule",
+    containsText(
+      reviewCode,
+      "record が、結果を durable な GitHub surface へ残す trigger 経路を宣言している場合は、その経路を preferred route として使います。",
+    ),
+    "review-code.md must keep the durable-surface trigger route preference, expressed against the record rather than a named provider",
   );
-  assert.doesNotMatch(
-    reviewCode,
-    /GitHub-native trigger[^\n]*(Claude|Codex|CodeRabbit)/,
-    "the GitHub-native-trigger preference must stay an anonymized observed example, not a provider-specific permanent rule",
+  assert.ok(
+    containsText(reviewCode, "この fallback は durable evidence requirement を免除しません"),
+    "falling back to in-session/subagent acquisition must not drop the durable evidence requirement",
   );
 
   // Closure round (Codex P2 on PR #24): collectOutputs() must state that a

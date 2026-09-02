@@ -16,10 +16,12 @@ consumer repository が必要とする provider 向けの小さなファイル�
 
 ## Consumer contract
 
-consumer は product-specific rule を次のパスに置きます。
+consumer は product-specific rule と reviewer capability record を次のパスに置きます。
+どちらも consumer-owned であり、Foundation は生成・上書きしません。
 
 ```text
 .ai-dev-foundation/product-rules.md
+.ai-dev-foundation/reviewers.json
 ```
 
 adapter を生成するには、次を実行します。
@@ -57,7 +59,53 @@ non-zero で終了し、`node tooling/bootstrap-next-supabase.mjs --consumer <pa
 による再展開を促します。Foundation を repin しても quality profile の再展開を
 忘れると、この quality profile の drift 検知だけが non-zero になります。
 
+`check` は最後に、`policy/core.md`・`skills/*.md`・生成した `AGENTS.md` の byte 数を
+advisory として標準出力へ出します。threshold は持たず、exit code にも影響しません。
+
 同梱の reference consumer は `npm test` で検証できます。
+
+## Reviewer capability record
+
+`.ai-dev-foundation/reviewers.json` は、その repository で利用できる reviewer に関する
+運用知識を機械可読にした consumer-owned な record です。Kernel（`policy/core.md` の
+Selection Contract）は record の存在と Selection 時の参照を要求し、schema と check は
+Foundation tooling（`tooling/reviewer-record-lib.mjs`、`tooling/check.mjs`）が持ちます。
+provider 名は record の中にのみ現れます。
+
+example を写して編集してください。この file は `sync` / `bootstrap` で自動配布されません。
+
+```text
+cp templates/reviewers.example.json <consumer>/.ai-dev-foundation/reviewers.json
+```
+
+reviewer ごとに表現するもの:
+
+| field                                                                                    | 用途                                                                                                            |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `id` / `display_name` / `provider_family`                                                | 識別と、implementer と異なる family を選ぶための比較軸                                                          |
+| `default_class`                                                                          | `required` / `expected` / `advisory`。portfolio 上の default であり Task 固有の obligation ではない             |
+| `actors`                                                                                 | この reviewer が投稿する login。surface item の帰属に使う                                                       |
+| `trigger`                                                                                | `kind` と、`comment_command` なら投稿する literal command。`target_argument` は `{target_sha}` を結果へ持ち込む |
+| `result_surfaces`                                                                        | 結果が現れる surface（`review-evidence.mjs` の surface key と同じ語彙）                                         |
+| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence と、reviewed target を安定に表す binding                    |
+| `non_participation_marker` / `rate_limit_marker` / `failure_marker` / `in_flight_marker` | `declined` / rate limit / `failed` / in-flight の evidence                                                      |
+| `fallback_order`                                                                         | この reviewer が使えない場合に次に選ぶ reviewer の id                                                           |
+| `observed_at`                                                                            | marker を最後に実測した日付。marker は observed evidence であり恒久仕様ではない                                 |
+
+top-level には `required_selection`（required slot の数と埋め方）と `durable_record`
+（Selection / run / fence record の投稿形式）を置きます。後者は schema が
+`new-comment-per-stage`（stage ごとに新規 comment を投稿し、最新を正とする）だけを
+supported value としており、1 comment の in-place 編集は採用しません。
+
+`completion_marker` の `target_field` には、review target が移動しても値が変わらない
+field だけを指定できます。head へ追随する field（inline review comment の `reviewed_sha`
+等）は、ancestor target の review を current target の completion と誤認させるため、
+schema 側で reject されます。SHA を持たない surface では `target_pattern` で本文から
+capture します。
+
+`check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
+non-zero で終了します。record の内容（どの reviewer を required にするか等）は
+consumer-owned のままです。
 
 consumer fixture自身の一括verifyは次で実行できます。
 実行にはNode.js 22.6.0以上が必要です。
@@ -84,6 +132,33 @@ snapshot tool です。
 ```text
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json]
 ```
+
+`--reviewers <path>`（reviewer capability record）を渡すと、同じ snapshot から
+reviewer ごとの target completion state も出力します。`--target-sha` で Selection
+Contract の expected target を指定します（省略時は snapshot の head SHA）。
+
+```text
+node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
+  --reviewers <consumer>/.ai-dev-foundation/reviewers.json --target-sha <frozen SHA>
+```
+
+出力の `reviewer_states.reviewers[]` は次を持ちます。
+
+- `target_completion_state`: `completed@target` / `not-bound` / `declined` / `failed` /
+  `unknown`。`policy/core.md` の語彙と同じです。
+- `operational_signal`: `rate-limited` / `in-flight` / `none`。これは新しい state ではなく
+  `unknown` 側の refinement であり、次の一手（fallback へ進むか、走っている run の終端だけ
+  待つか）を分けるためだけに独立した field にしています。
+- `reason` と `matched_evidence`（判定に使った surface item の locator と literal marker）。
+  agent が本文を解釈し直さずに済むようにするためのものです。
+- `evidence_complete` / `incomplete_surfaces`: 依存する surface の fetch が完了していない
+  場合は `false` になり、marker 不在は `no_matching_marker` ではなく `fetch_incomplete`
+  として報告されます。fetch failure が `0 findings` へ変換されることはありません。
+
+この state 出力も mechanical acquisition の範囲に留まります。record が宣言した marker の
+照合と SHA の比較のみを行い、finding の分類、review obligation の充足判定、merge 可否の
+判断は行いません。`commit_status` / `check_runs` は normalize 後に投稿者を保持しないため、
+これらの surface 上の item は actor では絞り込めず marker 一致のみで判定されます。
 
 GitHub token は `--token`、`GH_TOKEN`、`GITHUB_TOKEN`、`gh auth token` の順で
 解決します。surface ごとに `fetch_status`（`fetched` / `partial` / `failed` /

@@ -716,8 +716,18 @@ test("core policy states the expected review set closure rule", async () => {
   assert.ok(containsText(core, "consumer が advisory と宣言した reviewer は、実際に review 行為を行っても optional のまま"));
 
   // The declaration must have a stated home, so agents do not diverge on where
-  // to look for it.
-  assert.ok(containsText(core, "その consumer の product rules、または当該 Task の Selection 記録に置きます"));
+  // to look for it. Issue #72 Phase 1 made that home a single named artifact
+  // (the consumer-owned reviewer capability record) instead of a choice between
+  // two places, and gave Selection an obligation to consult it — the Kernel
+  // still owns neither the schema nor the record's contents.
+  assert.ok(containsText(core, "consumer-owned な **reviewer capability record** に置きます"));
+  assert.ok(containsText(core, "Kernel はこの record が存在すること、および Selection がそれを参照することを要求します"));
+  assert.ok(containsText(core, "schema / template と、その存在 / parse / 最小妥当性の check は Foundation tooling"));
+  assert.ok(containsText(core, "record の内容は consumer-owned のままです"));
+  assert.ok(
+    containsText(core, "当該 Task の required / expected obligation の正本ではありません"),
+    "the record must not become a second source of truth for the Selection Contract",
+  );
 
   // Provider-neutrality: identification is the adapter's job, not the Kernel's.
   assert.ok(containsText(core, "どの surface item が review participation を構成するかの識別は Review Adapter"));
@@ -998,10 +1008,19 @@ test("review-code skill carries the procedural detail for the fence", async () =
   assert.ok(containsText(skill, "会話内で既に見た snapshot をこの判定の根拠にしません"));
   assert.ok(containsText(skill, "triage されていない finding が review surface 上に残っていないことを確認します"));
 
-  // Provider observations stay observations.
-  assert.ok(containsText(skill, "check/status surface を一切生成しませんでした"));
-  assert.ok(containsText(skill, "green な status が review 完了ではなく **review 未実施**を意味する"));
-  assert.ok(containsText(skill, "capability/profile 側で再検証可能な observed evidence として扱います"));
+  // Provider observations stay observations — and, since Issue #72 Phase 1,
+  // they live in the reviewer capability record rather than in the skill, with
+  // an observed_at date that makes their staleness visible. The specific
+  // observation guarded here is the one that is easiest to get wrong: a green
+  // status that means review was SKIPPED, not review completed.
+  const example = JSON.parse(await readFile(path.join(root, "templates", "reviewers.example.json"), "utf8"));
+  const observed = JSON.stringify(example);
+  assert.ok(observed.includes("check/status surface を一切生成しない"));
+  assert.ok(observed.includes("green な status が review 完了ではなく review 未実施を意味する"));
+  assert.ok(
+    example.reviewers.every((reviewer) => /^\d{4}-\d{2}-\d{2}$/.test(reviewer.observed_at)),
+    "every reviewer's markers must carry the date they were last observed",
+  );
 });
 
 test("both skills reference the Kernel rules rather than restating them", async () => {

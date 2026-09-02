@@ -1,0 +1,104 @@
+{
+  "schema": "ai-dev-foundation/reviewer-capability-record@1",
+  "notes": "consumer-owned な reviewer capability record の example。consumer は .ai-dev-foundation/reviewers.json へこれを写して自分の portfolio と observed marker に合わせて編集する。この file は sync / bootstrap で自動配布されない。marker は observed evidence であり恒久仕様ではない（policy/core.md の Observed evidence is not a permanent provider rule）。",
+  "durable_record": {
+    "posting": "new-comment-per-stage",
+    "note": "Selection / run / fence record は stage ごとに新規 comment を投稿し、最新を正とする。1 comment の in-place 編集は、到着済みの結果を後続 session から見えなくするため採用しない。"
+  },
+  "required_selection": {
+    "count": 1,
+    "prefer": "different-provider-family-from-implementer",
+    "note": "required slot は default_class が required の reviewer から埋める。実装した agent と異なる provider_family の reviewer を第一候補にする（AI-only review での独立性を上げる目的）。第一候補が使えない場合は fallback_order に従い、Selection amendment で required slot を代替 reviewer の run へ移す。この record は Task 固有の Selection Contract の第二正本ではない。"
+  },
+  "reviewers": [
+    {
+      "id": "codex",
+      "display_name": "Codex Cloud Review",
+      "default_class": "required",
+      "provider_family": "openai",
+      "actors": ["chatgpt-codex-connector"],
+      "trigger": {
+        "kind": "comment_command",
+        "value": "@codex review",
+        "target_argument": "レビュー対象の commit は {target_sha} です。結果に `Reviewed commit: {target_sha}` を含めてください。"
+      },
+      "result_surfaces": ["conversation_comments", "inline_review_comments", "review_threads"],
+      "completion_marker": {
+        "surfaces": ["conversation_comments"],
+        "any_of": ["Reviewed commit:"],
+        "target_pattern": "Reviewed commit:[*\\s`]*([0-9a-fA-F]{7,40})"
+      },
+      "non_participation_marker": null,
+      "rate_limit_marker": null,
+      "failure_marker": null,
+      "in_flight_marker": null,
+      "fallback_order": ["claude"],
+      "observed_at": "2026-09-02",
+      "notes": "本結果 comment の前に環境案内 comment を複数投稿することがあるため、最初の comment の到着を completion と誤認しない。reviewed target は本結果 comment の `**Reviewed commit:**` 行から binding する。PR-open automatic review が有効かどうかは repository code では完結しない operator/account 側の設定であり、その設定変更を repository code から完了したものとして扱わない。"
+    },
+    {
+      "id": "claude",
+      "display_name": "Claude Code Review (GitHub Actions)",
+      "default_class": "required",
+      "provider_family": "anthropic",
+      "actors": ["claude", "claude[bot]", "github-actions[bot]"],
+      "trigger": {
+        "kind": "comment_command",
+        "value": "@claude review",
+        "target_argument": "レビュー対象の commit は {target_sha} です。review 結果の末尾に `Reviewed commit: {target_sha}` の行を必ず含めてください。"
+      },
+      "result_surfaces": ["conversation_comments"],
+      "completion_marker": {
+        "surfaces": ["conversation_comments"],
+        "any_of": ["**Claude finished"],
+        "all_of": ["Reviewed commit:"],
+        "target_pattern": "Reviewed commit:[*\\s`]*([0-9a-fA-F]{7,40})"
+      },
+      "non_participation_marker": null,
+      "rate_limit_marker": null,
+      "failure_marker": {
+        "surfaces": ["conversation_comments"],
+        "any_of": ["max-turns", "Claude encountered an error"]
+      },
+      "in_flight_marker": {
+        "surfaces": ["conversation_comments"],
+        "any_of": ["Claude Code is working"]
+      },
+      "fallback_order": ["codex"],
+      "observed_at": "2026-09-02",
+      "notes": "単一の conversation comment を in-place 編集して進行し、`**Claude finished ...**` で完成する。新着 comment ではなく既存 comment の本文変化を見る（`--reviewers` を付けた review-evidence helper は updated_at を見るためこれを自動で扱う）。completion comment 自体は reviewed SHA を持たないため、trigger.target_argument で結果へ `Reviewed commit:` 行を要求し、それを binding に使う。その行が無ければ helper は unknown / completion_marker_target_unresolved を返す（`0 findings` へ変換しない）。GitHub-native な mention trigger workflow（例: .github/workflows/claude-review.yml）は review 対象 repository が個別に用意する必要があり、Foundation は配布しない。workflow が無い repository ではこの trigger は unavailable。",
+      "run_budget": {
+        "kind": "monthly-agent-sdk-credit",
+        "observed_at": "2026-09-02",
+        "note": "2026-06-15 以降、GitHub Actions を含む Agent SDK 経由の利用は interactive usage とは別の月次 Agent SDK credit から消費される（一度の opt-in が必要）。interactive 枠とは競合しないが月内で枯渇して unavailable になり得る bounded budget。恒久前提にせず observed evidence として扱う。"
+      }
+    },
+    {
+      "id": "coderabbitai",
+      "display_name": "CodeRabbit",
+      "default_class": "advisory",
+      "provider_family": "coderabbit",
+      "actors": ["coderabbitai", "coderabbitai[bot]"],
+      "trigger": {
+        "kind": "comment_command",
+        "value": "@coderabbitai review"
+      },
+      "result_surfaces": ["conversation_comments", "inline_review_comments", "review_threads"],
+      "completion_marker": {
+        "surfaces": ["conversation_comments"],
+        "any_of": ["Actionable comments posted:"],
+        "target_pattern": "Reviewed commit:[*\\s`]*([0-9a-fA-F]{7,40})"
+      },
+      "non_participation_marker": null,
+      "rate_limit_marker": {
+        "surfaces": ["conversation_comments"],
+        "any_of": ["Review rate limited", "0 remain"]
+      },
+      "failure_marker": null,
+      "in_flight_marker": null,
+      "fallback_order": [],
+      "observed_at": "2026-09-02",
+      "notes": "advisory member。completion を待たず、未参加・rate limit でも blocker にしない。ただし merge までに到着した finding の triage / Resolution obligation は class に関係なく残る。`Action performed` の返信と、finding を含む summary comment は別 item として投稿される。summary comment は安定した reviewed target field を持たないため target_completion_state は通常 unknown になるが、advisory member の completion は blocker ではないためそのまま進んでよい。rate limit の観測（無料枠 1 件/時）は fallback ではなく advisory 継続の根拠として扱い、復帰を待たない。過去の観測では、この reviewer は review 結果を comment 系 surface にのみ残し check/status surface を一切生成しない一方、`success` の commit status を出しながらその description が automatic review 無効化による review スキップを表す（green な status が review 完了ではなく review 未実施を意味する）ことがあった。この repository では `.coderabbit.yaml` の `commit_status: false` でその surface 自体を無効化しているため、現在は commit_status を result_surfaces に含めない。status の state だけを completion へ変換しないことは class に関係なく維持する。"
+    }
+  ]
+}

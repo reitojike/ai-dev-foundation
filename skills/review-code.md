@@ -23,6 +23,58 @@ review target は Selection Contract に従い、candidate SHA、applicable な
 SHA について述べる箇所は、commit range や target artifact set を使う
 review でも同じ意味で適用します。
 
+## Happy path
+
+迷ったらこの順に進めます。各 step の詳細・分岐・例外は `## 手順` にあります。
+
+1. repository が定義する deterministic verify（`npm test` 等）を実行する。
+2. review 対象の commit SHA を freeze する。
+3. reviewer capability record（`.ai-dev-foundation/reviewers.json`）を読む。無ければ
+   Selection へ進まず停止して escalate する。
+4. record の `required_selection` に従って required slot を埋め、expected review set を
+   確定して Selection を記録する。
+5. 選んだ reviewer の `trigger.value` を PR へ comment として投稿する。
+   `trigger.target_argument` があれば `{target_sha}` を freeze した SHA へ置換し、同じ
+   comment に含める。
+6. state は会話内の記憶ではなく、次の fresh 取得で機械的に確認する。
+
+   ```text
+   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
+     --reviewers <consumer>/.ai-dev-foundation/reviewers.json --target-sha <freeze した SHA>
+   ```
+
+7. 出力の `target_completion_state` / `operational_signal` で次を決める。
+   - `completed@target` — finding を triage する（手順 6 以降）
+   - `rate-limited` — 復帰を待たない。record の `fallback_order` の次の reviewer へ進み、
+     Selection amendment を記録する
+   - `in-flight` — その run の終端だけを待つ
+   - `declined` / `failed` / `not-bound` / `unknown` — `0 findings` へ変換せず、
+     Failure / retry（`policy/core.md`）に従う
+   - advisory member — completion を待たず blocker にしない。ただし到着済みの finding は
+     class に関係なく triage / Resolution の対象
+8. accepted finding を batch で fix し、target が動いたら targeted closure を回す。
+9. merge-ready fence を評価してから merge-ready を宣言する。merge の実行は authority に従う。
+
+## reviewer capability record
+
+利用可能な reviewer、その trigger、結果が出る surface、completion / 非参加 / rate-limit /
+failure の marker、fallback order は、consumer-owned な reviewer capability record
+（`.ai-dev-foundation/reviewers.json`）が持ちます。本 skill は provider 名も marker も
+持ちません。
+
+- record の schema と、その存在 / parse / 最小妥当性の check は Foundation tooling
+  （`tooling/reviewer-record-lib.mjs`、`tooling/check.mjs`）が所有します。durable
+  record（Selection / run / fence record）の投稿形式も schema 側が定めます。
+- record に宣言されていない reviewer、および in-session / local review（`/code-review`
+  等）は formal acquisition になりません。
+- record の marker は observed evidence であり恒久仕様ではありません（`policy/core.md`
+  の Observed evidence is not a permanent provider rule）。実挙動が record と食い違った
+  場合は待ち続けず、record と `observed_at` を更新します。
+- record の trigger が repository code の外側（operator / account 設定、review 対象
+  repository が個別に用意する GitHub workflow 等）に依存する場合、その設定変更を
+  repository code から完了したものとして扱いません。unavailable なら fallback order に
+  従います。
+
 ## Formal review と preflight/local 利用の境界（Issue #49）
 
 実装 session 中に Claude Code 本体や subagent を使った critique / self-check /
@@ -32,9 +84,8 @@ Acquisition & Validity Contract の record も持たないため、required revi
 expected review set にも算入しません。
 
 直後の `## 手順`（Deterministic verify 以降）は、reviewer / capability の選択に
-かかわらず共通に適用します。Claude が Selection Contract 上 reviewer /
-capability として明示的に selection された場合にのみ、下記「Claude formal
-acquisition routing」が追加で適用されます。selection されていない
+かかわらず共通に適用します。provider ごとの trigger / marker / acquisition
+routing は、上記の reviewer capability record が持ちます。selection されていない
 preflight/local 利用を、事後的に「Claude review を実施した」として
 required/expected review の消化根拠にしてはいけません。この区別は Claude に
 限らず、他 provider の local/preflight 利用にも同様に適用します。
@@ -66,7 +117,11 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    その旧 review target / run を現在 target の evidence として扱いません。
    新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら
    re-freeze して必要な discovery をやり直します。
-3. **Selection** — Selection Contract に従い、artifact classification、reviewer /
+3. **Selection** — 最初に reviewer capability record を読みます。record が存在しない、
+   または parse / 最小妥当性 check を通らない場合は、Selection へ進まず停止して
+   escalate します。record の `required_selection` に従って required slot を埋め、
+   各 reviewer の `default_class` を portfolio 上の default として扱います。
+   その上で Selection Contract に従い、artifact classification、reviewer /
    capability、required review 数、target artifact set、expected target
    SHA / applicable な commit range を決めます。commit range を使う場合は、
    対象範囲が曖昧にならない形で確定します。
@@ -91,8 +146,13 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    記録します。
 4. **Execution** — Execution Contract に従い、Selection で確定した expected
    target SHA / applicable な commit range と target artifact set を各
-   reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した
-   target と artifact set、required context を記録します。
+   reviewer の trigger へ渡して起動します。trigger は record の `trigger.value`
+   を PR へ comment として投稿することです。`trigger.target_argument` がある
+   場合は `{target_sha}` を freeze した target へ置換して同じ comment に含め、
+   reviewer の結果自体が reviewed target を持つようにします。record に宣言され
+   ていない reviewer、および in-session / local review（`/code-review` 等）は
+   formal acquisition になりません。
+   trigger 方法、実際に渡した target と artifact set、required context を記録します。
 5. **Acquisition & Validity** — reviewer の run ごとに Acquisition & Validity
    Contract（`policy/core.md`）に従って record schema を埋めます。
    completion と validity は独立した判定とし、completed な run についてのみ
@@ -105,10 +165,20 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    completion evidence の target-bound 要件、binding へ使う field / surface の安定性
    要件、binding が成立しない場合の扱い、および `not-bound` な reviewer の evidence 軸 /
    finding 軸の分離は、いずれも `policy/core.md` が定めます。
-   この skill で行う実務は次です。どの surface item を positive completion evidence と
-   したか、どの field / surface を安定と判断して binding の根拠にしたか、そしてその
-   判断を確認できたかどうかを記録します。安定性を必要な精度で確認できないまま binding が
-   成立したものとして扱わないでください。
+   この skill で行う実務は次です。completion 判定は record の completion marker を、
+   comment ID を指定した fresh 取得で確認します。in-place 編集される surface では、
+   新着 comment ではなく既存 comment の本文変化を見ます。
+   `node tooling/review-evidence.mjs --reviewers <record> --target-sha <SHA> --json` は、
+   この判定を marker と locator つきで機械的に出力します。
+   どの surface item を positive completion evidence とし、どの field / surface を安定と
+   判断して binding の根拠にしたかを記録します。安定性を必要な精度で確認できないまま
+   binding が成立したものとして扱わないでください。
+   rate-limit marker を観測したら復帰を待ちません。record の `fallback_order` で次の
+   reviewer へ進み、Selection amendment を記録します。待つのは in-flight な run の
+   終端だけです。
+   advisory member の completion は待たず、blocker にしません。ただし merge-ready 判定
+   までに review surface へ到着した finding は、class に関係なく triage / Resolution の
+   対象です。
 6. **Required review gate & aggregate / triage** — Selection Contract で
    required とした review 数ぶんの `validity: valid` な run が揃うまで triage
    へ進みません。
@@ -328,17 +398,18 @@ required review 数の valid discovery と Resolution の完了をもって、
 provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()` /
 `collectOutputs()` / `normalizeFindings()` を人手で埋めます。
 
-- `trigger()`: reviewer をどう起動したか（PR 更新での automatic trigger、
-  `@reviewer review` のような明示的な command 等）を記録します。
-- `pollCompletion()`: completion をどう確認したか（status の変化、comment の投稿、
-  run の所要時間等）を記録します。CI/status のみでの判断はしません。completion 判定に
+- `trigger()`: record の `trigger` に従って起動し、どう起動したかを記録します。
+- `pollCompletion()`: completion をどう確認したか（record のどの marker を、どの
+  surface item で観測したか）を記録します。CI/status のみでの判断はしません。判定に
   使う comment / review submission は、判定するその時点で ID を指定して fresh に
   再取得した state / body を使います。会話内で既に見た comment の内容や、以前取得した
   snapshot をそのまま completion 判定の根拠にせず、pending 継続の理由にもしません。
 - `collectOutputs()`: GitHub 上の durable review surface の mechanical
   acquisition は、ai-dev-foundation checkout を利用できる場合、
   `tooling/review-evidence.mjs --json`（Issue #62、使い方・現在の
-  coverage は同 tool の README 参照）に置き換えます。fetch が failed /
+  coverage は同 tool の README 参照）に置き換えます。`--reviewers` /
+  `--target-sha` を付けると、record の marker に基づく reviewer ごとの
+  target completion state も同じ snapshot から出力されます。fetch が failed /
   partial な場合、または snapshot が review target に必要な evidence を
   カバーしない場合は、Review Adapter boundary（`policy/core.md`）に
   従い不足分を fresh acquisition します。empty や success への変換は
@@ -362,128 +433,8 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 - `normalizeFindings()`: 集めた出力を record schema と triage category へ変換し、
   finding ごとに出典 surface と locator を残します。
 
-### Observed example（provider 固有の恒久 rule ではない）
-
-ある PR では、Draft -> Ready の automatic review trigger が確認できず、明示的な
-manual trigger command を送って初めて review completion の evidence が得られたことが
-あります。これは「expected trigger behavior は completion evidence と同義ではない」
-という一般原則の実測例として扱い、特定 provider が常に manual trigger を要求すると
-いう恒久仕様には昇格させません。同種の provider を扱う際は、automatic trigger を
-仮定せず、completion evidence が得られるまで `unknown` として扱ってください。
-
-別の観測として、ある reviewer は PR 上の明示的な mention コメントを trigger と
-する GitHub-native workflow を経由した場合、result（target 参照・finding・
-completion 状態）が PR の comment として繰り返し durable に残ることを確認して
-います。この観測は、in-session/subagent 実行のみに依存するより、reviewer が
-そのような GitHub-native trigger 経路を持つならそれを優先する方が
-Acquisition & Validity Contract の recoverability 要件を満たしやすい、という
-運用上の判断材料になります。ただしこれも特定 provider の恒久仕様ではなく、
-capability record 側で再検証可能な observed evidence として扱ってください。
-GitHub-native 経路を使わず in-session/subagent review を選ぶ場合は、上記の
-`collectOutputs()` の persist 手順を必ず行います。
-
-### Claude formal acquisition routing（Issue #22 決定の execution routing、Issue #49）
-
-Claude が Selection Contract 上 reviewer / capability として selection された
-場合、review 対象の repository に GitHub-native な `@claude` mention trigger
-workflow が存在するかを確認します（この Foundation リポジトリ自身では
-`.github/workflows/claude-review.yml` がその実例です）。この workflow は
-Foundation が consumer へ配布するものではなく、review 対象の repository が
-個別に用意している必要があります。この trigger が利用可能（当該 repository に
-workflow が存在し、trigger する権限がある）かつ target/context に適している
-場合、Execution はこれを preferred/default route として使います。
-
-GitHub-native route が unavailable（review 対象の repository にそもそも
-該当 workflow が存在しない——多くの consumer repository はこれに該当します——、
-trigger 権限がない等）または unsuitable（target が workflow の扱える範囲を
-超える等）な場合に限り、in-session/subagent review を Claude の formal
-acquisition として使ってよく、その場合は上記 `collectOutputs()` の
-no-surface persistence 手順に従い、`policy/core.md` の Acquisition &
-Validity Contract が要求する durable evidence を PR/Issue へ明示的に
-persist します。この fallback は durable evidence requirement を免除しません。
-
-この節は Claude という provider に固有な運用手順であり、`policy/core.md` Kernel
-には Claude 固有の rule を追加しません。この節は Claude を全 PR mandatory にする
-ものでも、automatic required CI check にするものでもなく、Selection で Claude が
-選ばれた場合の acquisition route の優先順位のみを扱います。他 provider の
-acquisition policy（Codex automatic review trigger、CodeRabbit manual trigger 等）
-を変更するものではありません。
-
-さらに別の観測として、GitHub Actions 経由で PR comment を投稿・編集する reviewer では、
-その reviewer を起動した Actions job/step 自身の conclusion（success/failure）が、同じ
-job が編集した comment 本文の completion 状態と一致しないことが実測されています。
-具体的には、job/step の conclusion が `failure` であっても、対応する comment の body には
-completion を示す marker（例: 全項目 checked の todo list、明示的な complete 文言）と
-実質的な review 内容が既に存在していたケースがありました。この種の reviewer では、
-wrapping job/step の conclusion 単独を completion または failure の根拠にせず、
-comment 本文の completion marker を fresh 再取得した上で直接確認してください。これも
-特定 provider の恒久仕様ではなく、observed evidence として capability/profile 側で
-再検証可能な形で扱います。
-
-さらに別の観測として、inline/thread comment を持つ reviewer では、その comment が
-「実際に review された target」を表す field と、「現在の head」に追随して値が更新される
-field の両方を持つことがあります。実測では、同一 finding について前者は投稿時の target を
-保持し続けた一方、後者は PR の head 移動後に新しい head の値へ変化していました。後者を
-binding の根拠にすると、ancestor target に対する review を current target の completion
-evidence と誤認します。この observation は、どちらの field を binding の根拠にしてよいかを
-判断するための材料です。binding の安定性要件と、安定性を確認できない場合の扱いは
-Acquisition & Validity Contract（`policy/core.md`）に従ってください。
-
-同じ実測で、次の 2 点も確認しています。いずれも provider の恒久仕様ではなく、
-capability/profile 側で再検証可能な observed evidence として扱います。
-
-- ある automatic reviewer は、review 結果を comment 系 surface にのみ残し、
-  check/status surface を一切生成しませんでした。この reviewer について
-  check/status の有無を completion の根拠にはできません。
-- 別の reviewer は、`success` の commit status を出しながら、その description が
-  「automatic review は無効化されているため review をスキップした」ことを表して
-  いました。green な status が review 完了ではなく **review 未実施**を意味する
-  実例です。status の state だけを見て completion へ変換してはいけません。一方、
-  これは非参加を positive に宣言している evidence でもあるため、`unknown` とは
-  区別して扱えます。
-
-## Manual review pilot
-
-次の manual pilot では、Claude / Codex / CodeRabbit のそれぞれについて、本 skill と
-同じ Review Contract を使って Selection / Completion / Acquisition / Validity /
-Resolution を人手で判定できることを確認します。この skill の範囲では pilot 自体を
-実施・拡張せず、contract を適用できる準備を整えるところまでとします。
-
-## Manual-on-demand review runtime preference（current runtime preference、Issue #59）
-
-上記 Manual review pilot が確認した準備を踏まえた、current environment における
-runtime preference です。Kernel の provider-neutral な Selection Contract / required
-review 数を置換せず、task risk / artifact / capability による別 Selection を引き続き
-許容します。特定 provider を Kernel へ固定するものではありません。
-
-複数 perspective が必要な通常の Executable review における current runtime
-preference は次のとおりです。
-
-- Claude が selection された場合は、上記「Claude formal acquisition routing」の
-  GitHub-native `@claude` preferred route を使います。
-- CodeRabbit の manual acquisition（明示的な `@coderabbitai review` 系 command）を、
-  複数 perspective が必要な場合の primary candidate の一つとして扱ってよいです。
-  CodeRabbit automatic review が無効化されている場合、その非参加を `0 findings` へ
-  変換しないことは Acquisition & Validity Contract（`policy/core.md`）どおりです。
-- CodeRabbit acquisition が quota / rate limit / unavailable、または structurally
-  invalid（intended target を review していない等）で completion evidence を得られ
-  ない場合、その run は Failure / retry（`policy/core.md`）に従い `unknown` または
-  `failure` として扱い、success や `0 findings` へ変換しません。この場合、alternate
-  reviewer として Codex の manual acquisition（明示的な `@codex review` 系 command）を
-  選択でき、Selection Contract を明示的に amend した上でその run を required/expected
-  member として扱えます。amend したことと根拠は他の Selection 記録と同様に残します。
-- Codex の automatic（PR-open）review を、current runtime preference の default /
-  baseline として前提にしません。Selection で明示的に Codex（automatic / manual の
-  いずれも）を選ぶこと自体は禁止しません。
-
-Codex Cloud Review の PR-open automatic review が有効かどうかは、多くの場合
-repository code だけでは完結しない operator/account 側の設定である observed
-evidence があります。この skill および Foundation は、review 対象 repository の
-operator がこの automatic review 設定を変更したことを、repository code から完了した
-ものとして偽装しません。この設定変更が必要な場合は、implementation agent の
-repository write scope とは別の operator action として扱います。
-
-上記はいずれも observed / current な runtime preference であり、provider の恒久仕様
-にも、required reviewer 数を常に固定数（例えば 2）へ固定する mandatory pairing にも
-昇格させません。Selection Contract の risk-based reviewer 数と capability validity は
-この節によって変更されません。
+record が、結果を durable な GitHub surface へ残す trigger 経路を宣言している場合は、
+その経路を preferred route として使います。宣言された経路が unavailable / unsuitable で、
+in-session / subagent review を formal acquisition として使う場合は、上記
+`collectOutputs()` の persist 手順に従います。この fallback は durable evidence
+requirement を免除しません。

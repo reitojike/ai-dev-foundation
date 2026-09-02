@@ -14,81 +14,70 @@ function containsText(haystack, needle) {
   return stripWhitespace(haystack).includes(stripWhitespace(needle));
 }
 
-// Issue #49: the #22 decision ("Claude selected as formal reviewer -> prefer
-// the GitHub-native `@claude` route by default") existed only as an
-// anonymized narrative aside in review-code.md, never as an execution-reachable
-// instruction naming Claude or the actual workflow file. These guards protect
-// the dedicated, explicitly-named routing section added to close that gap,
-// without loosening the pre-existing anonymization guard on the unrelated
-// "Observed example" narrative (see the adjacent review-protocol.test.mjs
-// assertions, which this file intentionally does not duplicate).
-test("review-code.md gives Claude formal-reviewer selection an execution-reachable GitHub-native preferred route", async () => {
+// Issue #49 originally closed a gap by writing an explicitly-named Claude
+// acquisition routing section into review-code.md. Issue #72 Phase 1 keeps the
+// same invariants but moves them out of prose and into the consumer-owned
+// reviewer capability record, so the knowledge is machine-readable and the
+// skill stays provider-neutral. These guards follow the invariants to their new
+// home rather than the section that used to hold them.
+test("the reviewer capability record, not the skill, carries provider-specific acquisition routing", async () => {
   const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const example = JSON.parse(await readFile(path.join(root, "templates", "reviewers.example.json"), "utf8"));
 
   assert.ok(
-    containsText(reviewCode, "### Claude formal acquisition routing"),
-    "review-code.md must have a dedicated, explicitly-named Claude acquisition routing section",
+    !containsText(reviewCode, "### Claude formal acquisition routing"),
+    "provider-specific routing must no longer live as a prose section in the skill",
   );
-
+  assert.ok(
+    !reviewCode.includes(".github/workflows/claude-review.yml"),
+    "the workflow file name is provider-specific knowledge and belongs in the record",
+  );
+  assert.ok(
+    containsText(reviewCode, "## reviewer capability record"),
+    "review-code.md must have a section pointing at the record as the owner of that knowledge",
+  );
   assert.ok(
     containsText(
       reviewCode,
-      "Claude が Selection Contract 上 reviewer / capability として selection された場合",
-    ) &&
-      containsText(reviewCode, ".github/workflows/claude-review.yml") &&
-      containsText(reviewCode, "preferred/default route として使います"),
-    "the Claude routing section must name Claude, the actual workflow file, and state it as the preferred/default route",
-  );
-
-  // Codex P2 (closure round 4): the section must not read as if
-  // .github/workflows/claude-review.yml (or an equivalent) is something
-  // Foundation distributes to every consumer. sync.mjs does not materialize
-  // .github/ into consumers, and the reference consumer fixture has none, so
-  // most consumer repositories will hit the "workflow does not exist" branch
-  // of unavailable and correctly fall back — but only if the text says so
-  // explicitly instead of implying universal availability.
-  assert.ok(
-    containsText(
-      reviewCode,
-      "この workflow は Foundation が consumer へ配布するものではなく、review 対象の repository が個別に用意している必要があります。",
+      "record に宣言されていない reviewer、および in-session / local review（`/code-review` 等）は formal acquisition になりません。",
     ),
-    "the Claude routing section must disclaim that the GitHub-native workflow is Foundation-distributed",
-  );
-  assert.ok(
-    containsText(
-      reviewCode,
-      "review 対象の repository にそもそも該当 workflow が存在しない",
-    ) && containsText(reviewCode, "多くの consumer repository はこれに該当します"),
-    "the unavailable branch must explicitly cover the common case of a consumer repository with no such workflow",
+    "the skill must close the path where an undeclared or local review is mistaken for formal acquisition",
   );
 
-  // The preferred route must not be promoted to a mandatory/automatic gate —
-  // that would violate the #22/#49 invariant against making Claude mandatory
-  // on every PR or an automatic required CI check.
+  const claude = example.reviewers.find((reviewer) => reviewer.id === "claude");
+  assert.ok(claude, "the example record must carry the Claude reviewer entry");
+  assert.equal(claude.trigger.kind, "comment_command");
+  assert.ok(claude.trigger.value.includes("@claude"), "the GitHub-native mention trigger must be the declared trigger");
+
+  // Codex P2 (PR #50 closure round 4), preserved: the GitHub-native workflow is
+  // NOT something Foundation distributes. sync.mjs does not materialize .github/
+  // into consumers and the reference consumer fixture has none, so most consumer
+  // repositories have no such workflow and must fall back — the record has to
+  // say so instead of implying universal availability.
   assert.ok(
-    containsText(reviewCode, "Claude を全 PR mandatory にするものでも、automatic required CI check にするものでもなく"),
-    "the Claude routing section must disclaim mandatory/automatic-CI status",
+    claude.notes.includes(".github/workflows/claude-review.yml") &&
+      claude.notes.includes("review 対象 repository が個別に用意する必要があり、Foundation は配布しない"),
+    "the record must disclaim that the GitHub-native workflow is Foundation-distributed",
+  );
+  assert.ok(
+    claude.notes.includes("workflow が無い repository ではこの trigger は unavailable"),
+    "the record must state the common unavailable case for a consumer repository with no such workflow",
   );
 
-  // Fallback to in-session/subagent acquisition must not silently drop the
-  // #22 durable evidence requirement.
+  // The preferred route must not become a mandatory/automatic gate — the
+  // #22/#49 invariant against making one provider mandatory on every PR. The
+  // record expresses this as a single required slot filled from a portfolio,
+  // not as every required-class reviewer blocking every PR.
+  assert.equal(example.required_selection.count, 1);
+  assert.equal(example.required_selection.prefer, "different-provider-family-from-implementer");
+  assert.ok(claude.fallback_order.length > 0, "an unavailable first choice must have a declared successor");
+
+  // Fallback to in-session/subagent acquisition must not silently drop the #22
+  // durable evidence requirement.
   assert.ok(
-    containsText(reviewCode, "in-session/subagent review を Claude の formal acquisition として使ってよく") &&
-      containsText(reviewCode, "durable evidence を") &&
+    containsText(reviewCode, "in-session / subagent review を formal acquisition として使う場合は") &&
       containsText(reviewCode, "この fallback は durable evidence requirement を免除しません"),
     "the fallback path must still require persisting #22 durable evidence",
-  );
-
-  // This is Claude-provider-specific operational guidance; it must not claim
-  // to add a rule to the provider-neutral Kernel, and must not touch other
-  // providers' acquisition policy.
-  assert.ok(
-    containsText(reviewCode, "`policy/core.md` Kernel には Claude 固有の rule を追加しません"),
-    "the Claude routing section must disclaim adding a Claude-specific Kernel rule",
-  );
-  assert.ok(
-    containsText(reviewCode, "他 provider の") && containsText(reviewCode, "acquisition policy"),
-    "the Claude routing section must disclaim changing other providers' acquisition policy",
   );
 });
 
@@ -162,24 +151,26 @@ test("review-doc.md also excludes local/preflight usage from formal required rev
   );
 });
 
-test("review-doc.md points Normative Claude formal review at the same GitHub-native acquisition routing", async () => {
-  // Codex P2 on PR #50 closure round 2: the Claude acquisition routing section
-  // only existed in review-code.md (Executable), so a Normative artifact
-  // review following review-doc.md had no reachable path to the preferred
-  // GitHub-native route, leaving Issue #49's routing gap open for that
-  // classification. Fixed by a pointer, not a duplicated section, per this
-  // repo's "skill does not restate normative rules it doesn't own" convention.
+test("review-doc.md points Normative formal review at the same record and acquisition routing", async () => {
+  // Codex P2 on PR #50 closure round 2: the acquisition routing only existed in
+  // review-code.md (Executable), so a Normative artifact review following
+  // review-doc.md had no reachable path to the preferred route, leaving Issue
+  // #49's routing gap open for that classification. Fixed by a pointer, not a
+  // duplicated section, per this repo's "skill does not restate normative rules
+  // it doesn't own" convention. Issue #72 Phase 1 keeps the pointer and
+  // retargets it at the record plus the sections that now own the routing.
   const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
 
   assert.ok(
+    containsText(reviewDoc, ".ai-dev-foundation/reviewers.json"),
+    "review-doc.md must name the reviewer capability record so Normative review reaches the same reviewer knowledge",
+  );
+  assert.ok(
     containsText(
       reviewDoc,
-      "Claude が formal reviewer として selection された場合の GitHub-native acquisition routing",
-    ) && containsText(
-      reviewDoc,
-      "`skills/review-code.md`（consumer には `.ai-dev-foundation/skills/review-code.md` として配布）の「Claude formal acquisition routing」節に従います。",
+      "`skills/review-code.md`（consumer には `.ai-dev-foundation/skills/review-code.md` として配布）の「reviewer capability record」節および「Adapter boundary」節に従います。",
     ),
-    "review-doc.md must point Claude formal reviewer selection at review-code.md's Claude acquisition routing section, in a form resolvable from consumer context too",
+    "review-doc.md must point at review-code.md's owning sections, in a form resolvable from consumer context too",
   );
 
   // Guard against the pointer regressing into a duplicated copy of the

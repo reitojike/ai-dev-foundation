@@ -28,58 +28,75 @@ test("root .coderabbit.yaml disables automatic review and every misleading progr
   assert.match(config, /commit_status:\s*false/);
 });
 
-test("review-code.md materializes CodeRabbit manual acquisition as a primary candidate without hardcoding a mandatory pairing", async () => {
-  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+// Issue #72 Phase 1 replaced the prose "Manual-on-demand review runtime
+// preference" section with the consumer-owned reviewer capability record plus a
+// provider-neutral procedure in the skill. The runtime-preference decisions the
+// #59 section encoded are still decisions — they just have a machine-readable
+// home now, and the PO makes them once when writing the record instead of the
+// agent re-deriving them per Task.
+test("the reviewer capability record materializes the reviewer portfolio without hardcoding a mandatory pairing", async () => {
+  const example = JSON.parse(await readFile(path.join(root, "templates", "reviewers.example.json"), "utf8"));
+  const byId = Object.fromEntries(example.reviewers.map((reviewer) => [reviewer.id, reviewer]));
 
-  assert.ok(reviewCode.includes("## Manual-on-demand review runtime preference"));
+  // CodeRabbit: manual acquisition, declared advisory (PO portfolio decision,
+  // 2026-09-02). Advisory means its completion is not a blocker — not that its
+  // findings can be skipped.
+  assert.equal(byId.coderabbitai.default_class, "advisory");
+  assert.equal(byId.coderabbitai.trigger.kind, "comment_command");
+  assert.ok(byId.coderabbitai.trigger.value.includes("@coderabbitai review"));
   assert.ok(
-    containsText(
-      reviewCode,
-      "CodeRabbitのmanual acquisition（明示的な`@coderabbitai review`系command）を、複数perspectiveが必要な場合のprimary candidateの一つとして扱ってよいです。",
-    ),
+    byId.coderabbitai.notes.includes("finding の triage / Resolution obligation は class に関係なく残る"),
+    "advisory must not read as permission to ignore the findings that did arrive",
   );
 
-  // CodeRabbit rate-limit/unavailable/invalid acquisition must stay
-  // unknown/failure, never converted to success or 0 findings.
-  assert.ok(
-    containsText(
-      reviewCode,
-      "CodeRabbit acquisitionがquota / rate limit / unavailable、またはstructurally invalid（intended targetをreviewしていない等）でcompletion evidenceを得られない場合、そのrunはFailure / retry（`policy/core.md`）に従い`unknown`または`failure`として扱い、successや`0findings`へ変換しません。",
-    ),
-  );
+  // Rate limit stays a first-class, detectable state that routes to a fallback
+  // instead of being converted to success or 0 findings.
+  assert.deepEqual(byId.coderabbitai.rate_limit_marker.any_of, ["Review rate limited", "0 remain"]);
 
-  // Codex manual is an explicit fallback that requires an explicit Selection
-  // amendment, not a silent substitution.
+  // Required slot: one slot, filled preferring a different provider family from
+  // the implementer, with an explicit successor when the first choice is
+  // unavailable. Never a fixed pairing of every required-class reviewer.
+  assert.equal(example.required_selection.count, 1);
+  assert.equal(example.required_selection.prefer, "different-provider-family-from-implementer");
+  assert.notEqual(byId.codex.provider_family, byId.claude.provider_family);
+  assert.deepEqual(byId.codex.fallback_order, ["claude"]);
+  assert.deepEqual(byId.claude.fallback_order, ["codex"]);
   assert.ok(
-    containsText(
-      reviewCode,
-      "alternate reviewerとしてCodexのmanual acquisition（明示的な`@codex review`系command）を選択でき、Selection Contractを明示的にamendした上でそのrunをrequired/expected memberとして扱えます。",
-    ),
+    example.required_selection.note.includes("Selection amendment で required slot を代替 reviewer の run へ移す"),
+    "fallback must be an explicit Selection amendment, not a silent substitution",
   );
-
-  // Codex automatic (PR-open) review is no longer assumed as the default
-  // baseline runtime preference, but Selection may still choose Codex.
   assert.ok(
-    containsText(
-      reviewCode,
-      "Codexのautomatic（PR-open）reviewを、current runtime preferenceのdefault / baselineとして前提にしません。Selectionで明示的にCodex（automatic / manualのいずれも）を選ぶこと自体は禁止しません。",
-    ),
+    example.required_selection.note.includes("Task 固有の Selection Contract の第二正本ではない"),
+    "the record must not be promoted to a second source of truth for the Selection Contract",
   );
 
   // Operator boundary: repo code must not claim to have completed an
   // account/UI-level automatic-review setting change.
   assert.ok(
-    containsText(
-      reviewCode,
-      "この skill および Foundation は、review 対象 repository の operator がこの automatic review 設定を変更したことを、repository code から完了したものとして偽装しません。",
+    byId.codex.notes.includes(
+      "operator/account 側の設定であり、その設定変更を repository code から完了したものとして扱わない",
     ),
   );
+});
 
-  // Must not upgrade this to a permanent Kernel mandate (e.g. fixed count 2).
+test("review-code.md keeps the rate-limit and advisory procedure provider-neutral", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+
+  assert.ok(!reviewCode.includes("## Manual-on-demand review runtime preference"));
+
+  // Symptom 2 (#72): waiting for a rate limit to clear instead of falling back.
   assert.ok(
     containsText(
       reviewCode,
-      "required reviewer数を常に固定数（例えば2）へ固定するmandatory pairingにも昇格させません。",
+      "rate-limit marker を観測したら復帰を待ちません。record の `fallback_order` で次の reviewer へ進み、Selection amendment を記録します。待つのは in-flight な run の終端だけです。",
+    ),
+  );
+
+  // Advisory semantics must be procedural, not only a policy definition.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "advisory member の completion は待たず、blocker にしません。ただし merge-ready 判定までに review surface へ到着した finding は、class に関係なく triage / Resolution の対象です。",
     ),
   );
 });

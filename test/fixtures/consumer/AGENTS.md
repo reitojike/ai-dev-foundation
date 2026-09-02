@@ -316,9 +316,12 @@ review 行為を行っても optional のままです（その finding は Resol
 です）。consumer が required と宣言した reviewer は、他の条件にかかわらず required です。
 
 consumer が reviewer を required / configured automatic / advisory のいずれとして宣言
-するかは、その consumer の product rules、または当該 Task の Selection 記録に置きます。
-Kernel はこの宣言の置き場所を要求しますが、宣言のための schema / field / template を
-規定しません。
+するかは、consumer-owned な **reviewer capability record** に置きます。Kernel はこの
+record が存在すること、および Selection がそれを参照することを要求します。record の
+schema / template と、その存在 / parse / 最小妥当性の check は Foundation tooling /
+profile 側が提供し、record の内容は consumer-owned のままです。record は portfolio 上の
+default を表すものであり、当該 Task の required / expected obligation の正本ではありません。
+それは従来どおり Selection Contract が確定します。
 
 2 の後者について、actor を expected member とする根拠は、その surface item 自体が
 **review participation として識別できる**ことです。review target 上に presence が
@@ -857,6 +860,10 @@ mandatory な Foundation change は、原則として次のいずれかで正当
 1. 既存の mandatory / manual step を置き換える
 2. material defect を deterministically 防止する
 3. demonstrated recurring / escaped failure へ対処する
+
+この 3 条件は、Foundation 自身の Normative artifact に対する review finding を accept
+して条項を足すかどうかの判定にも、そのまま適用します。文言の曖昧さや網羅性の不足を
+指摘する finding は、実運用で misjudgment が観測された場合に限り accept します。
 
 Change Proposal は、少なくとも次を表現できるものとします。
 
