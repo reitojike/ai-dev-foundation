@@ -33,16 +33,16 @@ review でも同じ意味で適用します。
    Selection へ進まず停止して escalate する。
 4. record の `required_selection` に従って required slot を埋め、expected review set を
    確定して Selection を記録する。
-5. 選んだ reviewer の `trigger.value` を PR へ comment として投稿する。
-   `trigger.target_argument` があれば `{target_sha}` を freeze した SHA へ置換し、同じ
-   comment に含める。
+5. record の `trigger.kind` に従って reviewer を起動する（分岐の詳細は手順 4）。
 6. 状態は会話内の記憶ではなく、fresh 取得で確認する。
 
    ```text
    node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json
    ```
 
-7. 取得した surface を record の marker と突き合わせて次を決める。
+7. 取得した surface を record の marker と突き合わせて次を決める。marker として採用できる
+   のは、record の `actors` に帰属し、かつ current run の anchor 以後に現れた evidence だけ
+   です（帰属と anchor の確定は手順 5）。
    - record の completion marker を、freeze した target への resolvable な参照とともに
      観測できた — finding を triage する（手順 6 以降）
    - rate-limit marker — 復帰を待たない。record の `fallback_order` の次の reviewer へ進み、
@@ -177,6 +177,15 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    この skill で行う実務は次です。completion 判定は record の completion marker を、
    comment ID を指定した fresh 取得で確認します。in-place 編集される surface では、
    新着 comment ではなく既存 comment の本文変化を見ます。
+   marker evidence として扱ってよいのは、record の `actors` に帰属する item だけです。
+   comment / review 型の surface で actor を確認できない item は、positive completion
+   evidence に使いません。
+   marker は、current run を識別する anchor 以後の evidence にのみ適用します。
+   `comment_command` では、実際に投稿した trigger comment を run anchor とします。
+   `automatic` / `operator_configured` では、Selection / Execution で記録した run
+   開始時点、またはその run に帰属すると確認できる participation evidence を anchor と
+   します。current run への帰属を確定できない marker は、その run の completion /
+   rate-limit / failure / 非参加 のいずれの判定にも使いません。
    どの surface item を positive completion evidence とし、どの field / surface を安定と
    判断して binding の根拠にしたかを記録します。安定性を必要な精度で確認できないまま
    binding が成立したものとして扱わないでください。

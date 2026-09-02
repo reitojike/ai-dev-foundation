@@ -119,8 +119,8 @@ test("validateReviewerRecord accepts a minimal record and names each missing req
 test("the record may not predict which surface a reviewer posts to", () => {
   // `result_surfaces` and a marker's `surfaces` are negative claims ("it does
   // not post anywhere else"), and `target_field` is a property of the surface
-  // rather than of the reviewer — all three are the evaluator's job, not the
-  // record's.
+  // rather than of the reviewer — all three are decided when the surfaces are
+  // read, not declared per reviewer.
   const errors = validateReviewerRecord(
     baseRecord({
       reviewers: [
@@ -141,13 +141,16 @@ test("the record may not predict which surface a reviewer posts to", () => {
   assert.match(errors, /completion_marker\.target_field: not supported/);
 });
 
-test("every marker is optional, because structural evidence needs none", () => {
-  // A reviewer that submits GitHub reviews is fully readable without any
-  // declared text at all.
-  assert.deepEqual(
-    validateReviewerRecord(baseRecord({ reviewers: [baseReviewer({ completion_marker: undefined })] })),
-    [],
+test("the completion marker is required, the rest are optional", () => {
+  // Completion is what the review procedure has to decide, and the marker is
+  // the only thing that distinguishes a finished review from a progress note.
+  assert.match(
+    validateReviewerRecord(baseRecord({ reviewers: [baseReviewer({ completion_marker: undefined })] })).join("\n"),
+    /completion_marker: is required so completion can be told from progress/,
   );
+
+  // A reviewer that never declines, rate-limits or fails omits those markers.
+  assert.deepEqual(validateReviewerRecord(baseRecord()), []);
 });
 
 test("a target_pattern must compile and actually capture something", () => {
@@ -300,6 +303,46 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
   for (const kind of ["comment_command", "automatic", "operator_configured"]) {
     assert.ok(containsText(skill, `- \`${kind}\`:`), `Execution must define a route for trigger.kind ${kind}`);
   }
+
+  // Marker evidence has to be attributable to the reviewer it is claimed for.
+  // Without this, any comment carrying a generic "Reviewed commit: <target>" —
+  // including the agent's own trigger comment, which contains exactly that —
+  // would satisfy a required reviewer's completion.
+  assert.ok(
+    containsText(skill, "marker evidence として扱ってよいのは、record の `actors` に帰属する item だけです"),
+    "marker evidence must be attributable to the record's declared actors",
+  );
+  assert.ok(
+    containsText(
+      skill,
+      "comment / review 型の surface で actor を確認できない item は、positive completion evidence に使いません",
+    ),
+    "an item whose author cannot be confirmed must not carry a completion claim",
+  );
+
+  // A marker left by an earlier run on the same PR must not decide this one.
+  // The anchor is defined per trigger kind, so it exists for every kind rather
+  // than only for the one that posts a trigger comment.
+  assert.ok(containsText(skill, "marker は、current run を識別する anchor 以後の evidence にのみ適用します"));
+  assert.ok(containsText(skill, "`comment_command` では、実際に投稿した trigger comment を run anchor とします"));
+  assert.ok(
+    containsText(
+      skill,
+      "`automatic` / `operator_configured` では、Selection / Execution で記録した run 開始時点、またはその run に帰属すると確認できる participation evidence を anchor とします",
+    ),
+  );
+  assert.ok(
+    containsText(
+      skill,
+      "current run への帰属を確定できない marker は、その run の completion / rate-limit / failure / 非参加 のいずれの判定にも使いません",
+    ),
+    "a marker that cannot be tied to this run must decide nothing about it",
+  );
+
+  // The happy path defers the trigger branching to the procedure instead of
+  // restating it — a second copy would drift, and the copy it had told an
+  // automatic reviewer to post a command it does not have.
+  assert.ok(containsText(skill, "5. record の `trigger.kind` に従って reviewer を起動する（分岐の詳細は手順 4）。"));
 
   // Symptom 3 (#72): waiting for a result that already arrived.
   assert.ok(

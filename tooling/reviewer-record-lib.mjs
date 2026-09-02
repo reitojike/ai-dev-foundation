@@ -4,13 +4,12 @@
 // that schema. Provider names live only inside a consumer's record file, never
 // here and never in policy/core.md.
 //
-// The record describes WHO a reviewer is and HOW to start it. It deliberately
-// does NOT describe where that reviewer's output shows up: predicting the
-// surface is a negative claim ("this provider does not post there") that the
-// Kernel forbids and that breaks the first time a provider posts elsewhere.
-// review-evidence-lib.mjs already fetches every durable surface, and it derives
-// the reviewed target from each surface's own fields. A declared marker is only
-// the fallback for surfaces GitHub gives no review semantics to.
+// The record describes WHO a reviewer is, HOW to start it, and WHAT text marks
+// its result. It deliberately does NOT describe where that output shows up:
+// predicting the surface is a negative claim ("this provider does not post
+// there") that the Kernel forbids and that breaks the first time a provider
+// posts elsewhere. The acquisition helper already fetches every durable
+// surface, and the review procedure reads the marker against all of them.
 //
 // This module decides nothing semantic: it does not choose reviewers, does not
 // judge completion, and does not rank fallbacks. It only answers "is this file
@@ -72,9 +71,9 @@ function captureGroupCount(source) {
   return new RegExp(`${source}|`).exec("").length - 1;
 }
 
-// A marker is the text that makes an otherwise semantics-free surface item
-// readable ("this comment is the finished review", "this one is a rate limit").
-// It names no surface: the evaluator matches it against everything it fetched.
+// A marker is the text that makes a surface item readable ("this comment is the
+// finished review", "this one is a rate limit"). It names no surface: the review
+// procedure matches it against every surface the acquisition helper returned.
 function validateMarker(marker, { reviewerLabel, kind }) {
   const errors = [];
   const label = `${reviewerLabel}.${kind}`;
@@ -82,12 +81,12 @@ function validateMarker(marker, { reviewerLabel, kind }) {
 
   if ("surfaces" in marker) {
     errors.push(
-      `${label}.surfaces: not supported — a marker must not predict which surface the reviewer posts to; the evaluator searches every fetched surface`,
+      `${label}.surfaces: not supported — a marker must not predict which surface the reviewer posts to; every fetched surface is searched`,
     );
   }
   if ("target_field" in marker) {
     errors.push(
-      `${label}.target_field: not supported — the reviewed target is taken from the surface's own commit field, which the evaluator resolves`,
+      `${label}.target_field: not supported — the reviewed target comes from the surface's own commit field; use target_pattern where a surface carries none`,
     );
   }
 
@@ -136,7 +135,7 @@ function validateReviewer(reviewer, index, knownIds) {
 
   if ("result_surfaces" in reviewer) {
     errors.push(
-      `${label}.result_surfaces: not supported — the evaluator reads every durable surface, so a reviewer must not declare where its output appears`,
+      `${label}.result_surfaces: not supported — every durable surface is read, so a reviewer must not declare where its output appears`,
     );
   }
 
@@ -162,9 +161,13 @@ function validateReviewer(reviewer, index, knownIds) {
     errors.push(`${label}.provider_family: must be a non-empty string when present`);
   }
 
-  // Every marker is optional. A reviewer that posts its result as a GitHub
-  // review submission needs none: the submission is already a review act bound
-  // to a commit, which is structural evidence rather than a text format.
+  // The completion marker is required: the review procedure reads it to tell a
+  // finished review from a progress note, and has no other way to do so. The
+  // remaining markers are optional — a reviewer that never declines, never
+  // rate-limits and never reports failure simply omits them.
+  if (reviewer.completion_marker === undefined || reviewer.completion_marker === null) {
+    errors.push(`${label}.completion_marker: is required so completion can be told from progress`);
+  }
   for (const kind of MARKER_KINDS) {
     const marker = reviewer[kind];
     if (marker === undefined || marker === null) continue;
