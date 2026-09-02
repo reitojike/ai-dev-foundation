@@ -1,6 +1,6 @@
 {
   "schema": "ai-dev-foundation/reviewer-capability-record@1",
-  "notes": "この repository の reviewer capability record。誰が reviewer で（actors）、どう起動し（trigger）、portfolio 上どの位置づけか（default_class / fallback_order）を機械可読に持つ。結果がどの surface に出るかは宣言しない。helper が durable surface をすべて取得し、review submission という構造的な review 行為を主経路として completion を判定する。marker は、GitHub が review の意味を与えていない surface（通常の comment、status の description、check の name）に落ちた場合の fallback にのみ使う。marker は observed evidence であり恒久仕様ではない（policy/core.md の Observed evidence is not a permanent provider rule）。",
+  "notes": "この repository の reviewer capability record。field の意味と completion 判定の順序は README の Reviewer capability record を参照。marker は observed evidence であり恒久仕様ではない（policy/core.md の Observed evidence is not a permanent provider rule）。実挙動と食い違った場合は待たず、marker と observed_at を更新する。",
   "durable_record": {
     "posting": "new-comment-per-stage",
     "note": "Selection / run / fence record は stage ごとに新規 comment を投稿し、最新を正とする。1 comment の in-place 編集は、到着済みの結果を後続 session から見えなくするため採用しない。"
@@ -8,7 +8,7 @@
   "required_selection": {
     "count": 1,
     "prefer": "different-provider-family-from-implementer",
-    "note": "required slot は default_class が required の reviewer から埋める。実装した agent と異なる provider_family の reviewer を第一候補にする（AI-only review での独立性を上げる目的）。第一候補が使えない場合は fallback_order に従い、Selection amendment で required slot を代替 reviewer の run へ移す。この record は Task 固有の Selection Contract の第二正本ではない。"
+    "note": "required slot は default_class が required の reviewer から埋め、実装した agent と異なる provider_family を第一候補にする（AI-only review での独立性を上げるため）。第一候補が使えない場合は fallback_order に従い、Selection amendment で required slot を代替 reviewer の run へ移す。この record は Task 固有の Selection Contract の第二正本ではない。"
   },
   "reviewers": [
     {
@@ -32,7 +32,7 @@
       "in_flight_marker": null,
       "fallback_order": ["claude"],
       "observed_at": "2026-09-02",
-      "notes": "2026-09-02 に PR #73 で 3 round 実測。finding がある round では review submission（state=COMMENTED）+ inline comment を投稿し、submission の commit_id が structural な完了根拠になるため marker は不要。finding が無い round では submission を作らず conversation comment だけを残したため、その場合のみ completion_marker が必要になる。どちらの surface でも本文に `**Reviewed commit:** <短縮 SHA>` を含むため、同じ marker が両方で機能する。本結果の前に環境案内 comment を複数投稿することがあるため、最初の comment の到着を completion と誤認しない。PR-open automatic review が有効かどうかは repository code では完結しない operator/account 側の設定であり、その設定変更を repository code から完了したものとして扱わない。"
+      "notes": "finding がある run では GitHub review submission（state=COMMENTED）と inline comment を投稿し、submission の commit_id が reviewed target を表す。finding が無い run では submission を作らず conversation comment のみを残すため、その場合は completion_marker が唯一の完了根拠になる。どちらの本文にも `**Reviewed commit:** <短縮 SHA>` を含む。本結果の前に環境案内 comment を複数投稿することがあるため、最初の comment の到着を completion と誤認しない。PR-open automatic review の有効・無効は repository code では完結しない operator/account 側の設定であり、その変更を repository code から完了したものとして扱わない。"
     },
     {
       "id": "claude",
@@ -60,11 +60,11 @@
       },
       "fallback_order": ["codex"],
       "observed_at": "2026-09-02",
-      "notes": "この entry の actors / marker は未実測であり、Issue #72 に記録された過去の観測に基づく暫定値。次に実際に selection した時点で実測し observed_at を更新すること。GitHub Actions 経由のこの route は review submission を作らず、単一の conversation comment を in-place 編集して `**Claude finished ...**` で完成すると観測されている。そのため structural evidence が存在せず、completion_marker への依存が続く。comment 自体は reviewed SHA を持たないため、trigger.target_argument で結果へ `Reviewed commit:` 行を要求し、それを binding に使う。その行が無ければ helper は unknown / completion_marker_target_unresolved を返す（`0 findings` へ変換しない）。GitHub-native な mention trigger workflow（例: .github/workflows/claude-review.yml）は review 対象 repository が個別に用意する必要があり、Foundation は配布しない。workflow が無い repository ではこの trigger は unavailable。",
+      "notes": "この entry の actors と marker は未実測。次に selection した時点で実測し observed_at を更新する。GitHub Actions 経由のこの route は review submission を作らず、単一の conversation comment を in-place 編集して `**Claude finished ...**` で完成するため、構造的 evidence が無く completion_marker に依存する。comment 自体は reviewed SHA を持たないため、trigger.target_argument で結果へ `Reviewed commit:` 行を要求し binding に使う。その行が無ければ state は unknown になる。mention trigger workflow（例: .github/workflows/claude-review.yml）は review 対象 repository が個別に用意する必要があり、Foundation は配布しない。workflow が無い repository ではこの trigger は unavailable。",
       "run_budget": {
         "kind": "monthly-agent-sdk-credit",
         "observed_at": "2026-09-02",
-        "note": "2026-06-15 以降、GitHub Actions を含む Agent SDK 経由の利用は interactive usage とは別の月次 Agent SDK credit から消費される（一度の opt-in が必要）。interactive 枠とは競合しないが月内で枯渇して unavailable になり得る bounded budget。恒久前提にせず observed evidence として扱う。"
+        "note": "2026-06-15 以降、GitHub Actions を含む Agent SDK 経由の利用は interactive usage とは別の月次 Agent SDK credit から消費される（opt-in が必要）。interactive 枠とは競合しないが、月内で枯渇して unavailable になり得る bounded budget。"
       }
     },
     {
@@ -88,7 +88,7 @@
       "in_flight_marker": null,
       "fallback_order": [],
       "observed_at": "2026-09-02",
-      "notes": "2026-09-02 に PR #73 で実測。結果は review submission（state=COMMENTED、本文冒頭が `Actionable comments posted: N`）として投稿されるため、structural evidence で完了を判定できる。completion_marker は submission を作らない round があった場合の fallback として残す。trigger への `Action performed` 返信（in-place 編集される comment）と walkthrough comment も投稿されるが、completion の判定には使わない。advisory member であり completion を待たず未参加・rate limit でも blocker にしないが、merge までに到着した finding の triage / Resolution obligation は class に関係なく残る。rate limit の観測（無料枠 1 件/時）は fallback ではなく advisory 継続の根拠として扱い、復帰を待たない。過去の観測では、この reviewer は `success` の commit status を出しながらその description が automatic review 無効化による review スキップを表す（green な status が review 完了ではなく review 未実施を意味する）ことがあった。この repository では `.coderabbit.yaml` の `commit_status: false` でその surface 自体を無効化している。status の state だけを completion へ変換しないことは class に関係なく維持する。"
+      "notes": "結果は review submission（state=COMMENTED、本文冒頭が `Actionable comments posted: N`）として投稿される。trigger への `Action performed` 返信と walkthrough comment も投稿されるが、いずれも完了根拠にしない。advisory member のため completion を待たず、未参加・rate limit でも blocker にしない。ただし到着した finding の triage / Resolution obligation は class に関係なく残る。無料枠は 1 件/時のため rate limit は fallback ではなく advisory 継続の根拠として扱い、復帰を待たない。`success` の commit status が automatic review 無効化による review スキップを表すことがあり、green な status が review 完了ではなく review 未実施を意味する。status の state だけを completion へ変換しない。"
     }
   ]
 }

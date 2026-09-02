@@ -74,7 +74,7 @@ test("the reviewer capability record materializes the reviewer portfolio without
   // account/UI-level automatic-review setting change.
   assert.ok(
     byId.codex.notes.includes(
-      "operator/account 側の設定であり、その設定変更を repository code から完了したものとして扱わない",
+      "operator/account 側の設定であり、その変更を repository code から完了したものとして扱わない",
     ),
   );
 });
