@@ -58,7 +58,7 @@ test("a repository with no supabase/migrations directory yet is green, not an er
 });
 
 test("a migration file that exists only as a symlink is still scanned, not silently skipped", async (t) => {
-  // Regression for a Claude review finding on PR #46: supabase/cli's own
+  // Regression: supabase/cli's own
   // ListLocalMigrations only excludes directory entries (`if
   // migration.IsDir() { continue }`), so a migration file that is a symlink
   // is still picked up by the real Supabase CLI. An earlier implementation

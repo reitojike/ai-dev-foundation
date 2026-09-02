@@ -16,10 +16,12 @@ consumer repository が必要とする provider 向けの小さなファイル�
 
 ## Consumer contract
 
-consumer は product-specific rule を次のパスに置きます。
+consumer は product-specific rule と reviewer capability record を次のパスに置きます。
+どちらも consumer-owned であり、Foundation は生成・上書きしません。
 
 ```text
 .ai-dev-foundation/product-rules.md
+.ai-dev-foundation/reviewers.json
 ```
 
 adapter を生成するには、次を実行します。
@@ -57,7 +59,58 @@ non-zero で終了し、`node tooling/bootstrap-next-supabase.mjs --consumer <pa
 による再展開を促します。Foundation を repin しても quality profile の再展開を
 忘れると、この quality profile の drift 検知だけが non-zero になります。
 
+`check` は最後に、`policy/core.md`・`skills/*.md`・生成した `AGENTS.md` の byte 数を
+advisory として標準出力へ出します。threshold は持たず、exit code にも影響しません。
+
 同梱の reference consumer は `npm test` で検証できます。
+
+## Reviewer capability record
+
+`.ai-dev-foundation/reviewers.json` は、その repository で利用できる reviewer に関する
+運用知識を機械可読にした consumer-owned な record です。Kernel（`policy/core.md` の
+Selection Contract）は record の存在と Selection 時の参照を要求し、schema と check は
+Foundation tooling（`tooling/reviewer-record-lib.mjs`、`tooling/check.mjs`）が持ちます。
+provider 名は record の中にのみ現れます。
+
+example を写して編集してください。この file は `sync` / `bootstrap` で自動配布されません。
+
+```text
+cp templates/reviewers.example.json <consumer>/.ai-dev-foundation/reviewers.json
+```
+
+reviewer ごとに表現するもの:
+
+| field                                                                                    | 用途                                                                                                            |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `id` / `display_name` / `provider_family`                                                | 識別と、implementer と異なる family を選ぶための比較軸                                                          |
+| `default_class`                                                                          | `required` / `expected` / `advisory`。portfolio 上の default であり Task 固有の obligation ではない             |
+| `actors`                                                                                 | この reviewer が投稿する login。surface item の帰属に使う                                                       |
+| `trigger`                                                                                | `kind` と、`comment_command` なら投稿する literal command。`target_argument` は `{target_sha}` を結果へ持ち込む |
+| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence の文字列（**必須**）                                        |
+| `non_participation_marker` / `rate_limit_marker` / `failure_marker` / `in_flight_marker` | `declined` / rate limit / `failed` / in-flight の evidence（いずれも省略可）                                    |
+| `fallback_order`                                                                         | この reviewer が使えない場合に次に選ぶ reviewer の id                                                           |
+| `observed_at`                                                                            | marker を最後に実測した日付。marker は observed evidence であり恒久仕様ではない                                 |
+
+top-level には `required_selection`（required slot の数と埋め方、必須）と
+`durable_record`（Selection / run / fence record の投稿形式）を置きます。後者は schema が
+`new-comment-per-stage`（stage ごとに新規 comment を投稿し、最新を正とする）だけを
+supported value としており、1 comment の in-place 編集は採用しません。
+
+**record は「結果がどの surface に出るか」を宣言しません。** それは provider の応答形式の
+決め打ちであり、`policy/core.md` の Review Adapter boundary が禁じる negative claim
+（「この provider はこの surface に出ない」）そのものです。したがって `result_surfaces`、
+marker の `surfaces`、marker の `target_field` はいずれも schema が reject します。
+
+marker は agent が読みます。GitHub 上の surface を fresh 取得し、record が宣言した
+marker と突き合わせて、その reviewer が freeze した target について完了しているかを
+判定するのは agent の作業です。この判定を helper で機械化することは Phase 1 の範囲外
+です（Issue #72 Phase 1b）。REST と GraphQL が同じ GitHub object を別表現で返すため、
+機械化には surface を跨いだ canonical identity model が必要であり、Phase 1 はそれを
+定義しません。
+
+`check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
+non-zero で終了します。record の内容（どの reviewer を required にするか等）は
+consumer-owned のままです。
 
 consumer fixture自身の一括verifyは次で実行できます。
 実行にはNode.js 22.6.0以上が必要です。

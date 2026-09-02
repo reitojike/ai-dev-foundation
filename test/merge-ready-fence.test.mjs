@@ -32,8 +32,7 @@ function containsText(haystack, needle) {
 //      member's target completion state is `unknown` — never `0 findings`.
 //   R3 two axes. A run whose reviewed target != final target is unusable as
 //      clean/discovery evidence (evidence axis) but its findings survive
-//      (finding axis).
-//   R4 merge-ready = EVERY member of the expected review set — including
+//      (finding axis).   R4 merge-ready = EVERY member of the expected review set — including
 //      optional/advisory — has its review obligation satisfied, where the
 //      obligation is the one policy/core.md defines per class. This does not
 //      demand a fresh full re-review at every accepted fix; the narrow
@@ -338,7 +337,7 @@ test("the post-fix exception requires every one of its preconditions", () => {
   // Both routes into the `expected` class are exercised. Keying only on
   // observed participation left per-precondition mutations scoped to
   // `declaredAutomatic` members alive — and a declared automatic reviewer is
-  // exactly the actor shape of the PR #51 incident.
+  // exactly the actor shape that lets a late-arriving review escape the fence.
   for (const route of [{ participation: "review" }, { declaredAutomatic: true }]) {
     const label = JSON.stringify(route);
     const priorCompletion = {
@@ -376,7 +375,7 @@ test("the post-fix exception requires every one of its preconditions", () => {
     );
 
     // (b) a run is in flight at the current target => must await it. Exempting
-    // here is exactly the PR #51 late-arrival failure mode.
+    // here is exactly the late-arrival failure mode.
     const inFlight = structuredClone(base);
     inFlight.actors[0].runInFlightAtCurrentTarget = true;
     assert.deepEqual(
@@ -473,7 +472,7 @@ test("an optional member's unresolved finding blocks merge-ready via step 7", ()
 test("expected membership survives a target move (ancestor-only participation)", () => {
   // Closure round: keying membership off the *current* target would drop a
   // reviewer that only ever participated on an ancestor, and its ancestor
-  // findings would escape collection — reopening the PR #42 failure mode.
+  // findings would escape collection.
   const ancestorOnly = {
     name: "auto-reviewer",
     participation: "review",
@@ -601,7 +600,7 @@ test("regression 6: a required member is not exempted by declaring non-participa
 test("declining non-participation never discharges a finding already produced", () => {
   // The exemption covers the completion obligation only. A reviewer that filed
   // a finding on an ancestor target and then declined at the new target still
-  // owes that finding's Resolution — otherwise the PR #42 failure mode reopens
+  // owes that finding's Resolution — otherwise an ancestor finding escapes
   // through the decline path.
   const scenario = {
     finalTarget: "6800b796",
@@ -716,8 +715,18 @@ test("core policy states the expected review set closure rule", async () => {
   assert.ok(containsText(core, "consumer が advisory と宣言した reviewer は、実際に review 行為を行っても optional のまま"));
 
   // The declaration must have a stated home, so agents do not diverge on where
-  // to look for it.
-  assert.ok(containsText(core, "その consumer の product rules、または当該 Task の Selection 記録に置きます"));
+  // to look for it. Issue #72 Phase 1 made that home a single named artifact
+  // (the consumer-owned reviewer capability record) instead of a choice between
+  // two places, and gave Selection an obligation to consult it — the Kernel
+  // still owns neither the schema nor the record's contents.
+  assert.ok(containsText(core, "consumer-owned な **reviewer capability record** に置きます"));
+  assert.ok(containsText(core, "Kernel はこの record が存在すること、および Selection がそれを参照することを要求します"));
+  assert.ok(containsText(core, "schema / template と、その存在 / parse / 最小妥当性の check は Foundation tooling"));
+  assert.ok(containsText(core, "record の内容は consumer-owned のままです"));
+  assert.ok(
+    containsText(core, "当該 Task の required / expected obligation の正本ではありません"),
+    "the record must not become a second source of truth for the Selection Contract",
+  );
 
   // Provider-neutrality: identification is the adapter's job, not the Kernel's.
   assert.ok(containsText(core, "どの surface item が review participation を構成するかの識別は Review Adapter"));
@@ -998,10 +1007,26 @@ test("review-code skill carries the procedural detail for the fence", async () =
   assert.ok(containsText(skill, "会話内で既に見た snapshot をこの判定の根拠にしません"));
   assert.ok(containsText(skill, "triage されていない finding が review surface 上に残っていないことを確認します"));
 
-  // Provider observations stay observations.
-  assert.ok(containsText(skill, "check/status surface を一切生成しませんでした"));
-  assert.ok(containsText(skill, "green な status が review 完了ではなく **review 未実施**を意味する"));
-  assert.ok(containsText(skill, "capability/profile 側で再検証可能な observed evidence として扱います"));
+  // Provider observations stay observations — and, since Issue #72 Phase 1,
+  // they live in the reviewer capability record rather than in the skill, with
+  // an observed_at date that makes their staleness visible. The specific
+  // observation guarded here is the one that is easiest to get wrong: a green
+  // status that means review was SKIPPED, not review completed.
+  // Read the owning reviewer's own entry, not the whole serialized record: a
+  // whole-record substring search stays green even if the observation drifts to
+  // unrelated metadata or to a reviewer that never produced that status.
+  const example = JSON.parse(await readFile(path.join(root, "templates", "reviewers.example.json"), "utf8"));
+  const owner = example.reviewers.find((reviewer) => reviewer.id === "coderabbitai");
+  assert.ok(owner, "the reviewer that owns the skipped-status observation must exist in the record");
+  assert.ok(owner.notes.includes("green な status が review 完了ではなく review 未実施を意味する"));
+  assert.ok(
+    owner.notes.includes("status の state だけを completion へ変換しない"),
+    "the observation must state the rule it exists to protect, not only the anecdote",
+  );
+  assert.ok(
+    example.reviewers.every((reviewer) => /^\d{4}-\d{2}-\d{2}$/.test(reviewer.observed_at)),
+    "every reviewer's markers must carry the date they were last observed",
+  );
 });
 
 test("both skills reference the Kernel rules rather than restating them", async () => {

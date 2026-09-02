@@ -54,8 +54,7 @@ test("a next.config.mts that never sets agentRules is deterministically red on a
 });
 
 test("a single-quoted 'agentRules': false key in next.config.mjs is also green", () => {
-  // Codex + Claude review finding on this PR (2nd closure round): this
-  // fixture previously had a *bare* `agentRules` key despite its name and
+  // This fixture previously had a *bare* `agentRules` key despite its name and
   // this test's description, so it never actually exercised quoted-key
   // matching — a regression that broke every quoted key (lookaround
   // verifies but doesn't consume the quote, so the required `:` right
@@ -94,7 +93,7 @@ test("agentRules: false mentioned only inside a comment does not count as disabl
 });
 
 test("agentRules: false nested inside an unrelated object does not count as the top-level opt-out", () => {
-  // Codex P2 finding on this PR: a bare comment-stripped text match would
+  // A bare comment-stripped text match would
   // still treat a coincidentally named property nested inside some other
   // object (e.g. `experimental.agentRules`) as if it were the top-level
   // NextConfig `agentRules` the actual opt-out requires, false-passing a
@@ -105,7 +104,7 @@ test("agentRules: false nested inside an unrelated object does not count as the 
 });
 
 test("agentRules: false in an unrelated top-level object does not shadow the actually exported config", () => {
-  // Codex P2 finding on this PR (closure round): the earlier depth-1 fix
+  // The earlier depth-1 fix
   // still matched agentRules: false in ANY top-level object, not only the
   // one `module.exports`/`export default` actually points at. A file that
   // shadows the exported nextConfig's agentRules: true with an unrelated
@@ -122,8 +121,7 @@ test("a directly inlined `export default { agentRules: false }` is green", () =>
 });
 
 test("a `$`-prefixed export identifier (e.g. $config) is not corrupted as regex syntax", () => {
-  // Codex P2 finding on this PR (2nd closure round): embedding the
-  // identifier unescaped in `new RegExp(...)` let a literal `$` in a valid
+  // Embedding the identifier unescaped in `new RegExp(...)` let a literal `$` in a valid
   // JS identifier be read as a regex end-anchor, making the checker fail to
   // find an actually-disabled config.
   const result = runChecker(path.join(fixturesRoot, "dollar-identifier"));
@@ -131,8 +129,7 @@ test("a `$`-prefixed export identifier (e.g. $config) is not corrupted as regex 
 });
 
 test("a same-named binding shadowed inside a nested function body does not shadow the real top-level export", () => {
-  // Codex P2 finding on this PR (2nd closure round): anchoring the
-  // declaration search to the start of a line excludes an indented,
+  // Anchoring the declaration search to the start of a line excludes an indented,
   // function-scoped shadow, so the top-level (unindented) declaration that
   // module.exports actually points at is the one selected.
   const result = runChecker(path.join(fixturesRoot, "shadowed-by-nested-scope"));
@@ -141,7 +138,7 @@ test("a same-named binding shadowed inside a nested function body does not shado
 });
 
 test("a `$`-suffixed export identifier (e.g. config$) is matched in full, not truncated at the $", () => {
-  // Codex P2 finding on this PR (4th closure round): `\b` right after an
+  // `\b` right after an
   // identifier ending in `$` never asserts a boundary there (both sides are
   // non-word characters), so the capture silently backtracked to the
   // identifier without its trailing `$` — resolving to an unrelated
@@ -152,7 +149,7 @@ test("a `$`-suffixed export identifier (e.g. config$) is matched in full, not tr
 });
 
 test("agentRules: false as a prefix of a larger expression (false || true) does not count as disabling it", () => {
-  // Codex P2 finding on this PR (5th closure round): `false` must be the
+  // `false` must be the
   // complete property value. `agentRules: false || true` evaluates to
   // `true` at runtime, so next dev still mutates AGENTS.md even though the
   // literal text "false" appears right after "agentRules:".
@@ -184,14 +181,13 @@ test("a spread before agentRules: false does not block the check — the explici
 });
 
 test("a duplicate agentRules key that overrides false back to true is deterministically red", () => {
-  // Codex and Claude independently found this in the same review round:
-  // the same root cause as the spread-override fix — a later assignment to
+  // The same root cause as the spread-override fix — a later assignment to
   // the same key overrides an earlier one, per legal JS object literal
   // semantics — but via a plain duplicate key instead of a spread.
   // `{ agentRules: false, agentRules: true }` effectively sets true.
   const result = runChecker(path.join(fixturesRoot, "duplicate-key-overrides-to-enabled"));
   assert.notEqual(result.status, 0);
-  // Claude review nit on this PR: the error message should distinguish
+  // The error message should distinguish
   // "never set" from "set false, then overridden" so a developer who wrote
   // agentRules: false but left a stale duplicate key can tell what's wrong.
   assert.match(result.stderr, /sets `agentRules: false` earlier, but a later duplicate/);
@@ -206,8 +202,7 @@ test("a duplicate agentRules key where the later occurrence is still false stays
 });
 
 test("a differently named property whose name merely ends in agentRules does not count as the real key", () => {
-  // Codex finding on this PR (fresh discovery round, target 10194e5):
-  // without a key-start boundary, `{ notAgentRules: false }` was read as if
+  // Without a key-start boundary, `{ notAgentRules: false }` was read as if
   // it were the real `agentRules` key, false-passing a config where the
   // real agentRules option is unset — the dangerous direction (next dev
   // still mutates AGENTS.md, but the checker said green).
@@ -217,7 +212,7 @@ test("a differently named property whose name merely ends in agentRules does not
 });
 
 test("a quoted property name that merely ends in agentRules (e.g. 'not-agentRules') does not count as the real key", () => {
-  // Codex finding on this PR (closure round): an optional quote on each
+  // An optional quote on each
   // side (`["']?agentRules["']?`) let `{ 'not-agentRules': false }` match
   // by simply not consuming the leading quote and starting mid-string —
   // the `-` before `agentRules` isn't a `\w`/`$` character, so the old
@@ -230,7 +225,6 @@ test("a quoted property name that merely ends in agentRules (e.g. 'not-agentRule
 });
 
 test("an unrelated array property's spread does not block the check", () => {
-  // Claude finding on this PR (fresh discovery round, target 10194e5):
   // keepOnlyDirectProperties() only tracked `{`/`}` depth, so an array
   // literal property value like `pageExtensions: [...defaultExtensions,
   // 'mdx']` (an ordinary Next.js config idiom) stayed visible at depth 1,
@@ -241,8 +235,7 @@ test("an unrelated array property's spread does not block the check", () => {
 });
 
 test("when multiple config files coexist, the checker inspects the one Next.js actually loads (.js), not .ts", () => {
-  // Codex finding on this PR (fresh discovery round, target 65f11c6):
-  // verified against Next.js 16.3.2's actual CONFIG_FILES precedence
+  // Verified against Next.js 16.3.2's actual CONFIG_FILES precedence
   // (node_modules/next/dist/shared/lib/constants.js: .js, then .mjs, then
   // .ts) — an earlier version of CANDIDATE_CONFIG_FILENAMES checked .ts
   // first. A stale next.config.ts left over from a migration, sitting next

@@ -108,8 +108,7 @@ test("core policy separates merge-readiness from merge execution authority", asy
     ),
   );
 
-  // Regression proof (converged CodeRabbit + independent Claude Discovery finding
-  // on this PR): Step 13 must not contain an unqualified "...時点で merge します"
+  // Regression proof: Step 13 must not contain an unqualified "...時点で merge します"
   // completion sentence a skimming reader/agent could act on as an unconditional
   // merge instruction. Both completion branches must read as a merge-ready
   // determination instead.
@@ -171,7 +170,7 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   }
   assert.ok(containsText(core, "症状の重大度ではなく root cause / ownership を軸に"));
 
-  // PO audit correction on PR #21: `Foundation candidate` is not exclusive
+  // `Foundation candidate` is not exclusive
   // to unconfirmed ownership — a Foundation-owned shared improvement
   // candidate that is not a confirmed defect belongs here too.
   // `canonical defect candidate` is limited strictly to confirmed defective
@@ -198,9 +197,9 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   assert.ok(containsText(core, "Observation は work item ではありません。"));
 
   // Recording is a mandatory obligation (not merely a recordable capability)
-  // when the future-reuse-value condition is met — CodeRabbit/Codex Discovery
-  // finding on PR #21: "記録できることを要求します" read as capability-only and
-  // let required evidence be omitted at Task closure.
+  // when the future-reuse-value condition is met: "記録できることを要求します"
+  // reads as capability-only and lets required evidence be omitted at Task
+  // closure.
   assert.ok(
     containsText(
       core,
@@ -226,8 +225,7 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
       "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
     ),
   );
-  // Codex Discovery findings across multiple rounds on PR #21: an exact
-  // directory-equality check, a filename-token pattern, and a dynamic
+  // An exact directory-equality check, a filename-token pattern, and a dynamic
   // merge-base diff were each tried and each had a real failure mode (fails
   // on unrelated future tooling additions; false-positives/negatives on
   // filenames; or, for the merge-base diff, silently becomes a *permanent*
@@ -244,8 +242,8 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
 
   // Task closure collects only triggers that already fired; it is not a new
   // improvement-discovery step. It also does not force recording of
-  // observations the recording contract exempts (Codex Discovery finding on
-  // PR #21: the closure gate must not conflict with the recording exemption).
+  // observations the recording contract exempts: the closure gate must not
+  // conflict with the recording exemption.
   assert.ok(
     containsText(
       core,
@@ -259,7 +257,7 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     ),
   );
 
-  // Closure-round Codex finding: the recording exemption must scope only to
+  // The recording exemption must scope only to
   // the recording step, not to classification itself — otherwise an agent
   // could rationalize a still-unclassified trigger as "lightweight" and skip
   // classifying it entirely, contradicting the unconditional classification
@@ -289,9 +287,8 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     assert.ok(core.includes(signal), `missing Observation promotion signal: ${signal}`);
   }
 
-  // Claude Discovery finding on PR #21: the pre-existing justification
-  // conditions and Change Proposal fields are general Foundation Change
-  // Protocol content, not Task-closure-specific, and must not nest under the
+  // The pre-existing justification conditions and Change Proposal fields are general Foundation
+  // Change Protocol content, not Task-closure-specific, and must not nest under the
   // "### Task closure と Observation" heading (which "### Observation から
   // Change Proposal への昇格" still refers back to as "本節の 3 つの...
   // 正当化条件").

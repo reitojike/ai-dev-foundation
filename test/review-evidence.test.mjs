@@ -495,11 +495,10 @@ test("a mid-pagination failure on the combined commit status is reported as part
   assert.equal(result.fetch_failures, 1);
 });
 
-// Codex review on this PR (Issue #62): a status's `description` is the field
-// that carries a reviewer's positive non-participation declaration (e.g.
-// CodeRabbit's "Review skipped: automatic reviews are disabled" — the exact
-// case documented in skills/review-code.md). Dropping it made a declined
-// reviewer indistinguishable from an ordinary green status.
+// Issue #62: a status's `description` is the field that carries a reviewer's
+// positive non-participation declaration (e.g. a "Review skipped: automatic
+// reviews are disabled" status). Dropping it made a declined reviewer
+// indistinguishable from an ordinary green status.
 test("a status's description (e.g. a declined-reviewer signal) is preserved, not dropped", async () => {
   const routes = baseRoutes();
   routes[5] = {
@@ -517,8 +516,8 @@ test("a status's description (e.g. a declined-reviewer signal) is preserved, not
   assert.equal(result.surfaces.commit_status.status.statuses[0].description, "Review skipped: automatic reviews are disabled");
 });
 
-// Codex review on this PR (Issue #62): without the raw body, an agent using
-// only this tool's --json output cannot see what a reviewer actually said
+// Issue #62: without the raw body, an agent using only this tool's --json
+// output cannot see what a reviewer actually said
 // (completion markers, finding text) and would have to re-fetch every
 // comment individually — defeating the point of a single fresh snapshot.
 test("comment/review body text is preserved across every comment-shaped surface, not discarded", async () => {

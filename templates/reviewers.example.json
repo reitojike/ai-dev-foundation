@@ -1,0 +1,89 @@
+{
+  "schema": "ai-dev-foundation/reviewer-capability-record@1",
+  "notes": "この repository の reviewer capability record。field の意味と completion 判定の順序は README の Reviewer capability record を参照。marker は observed evidence であり恒久仕様ではない（policy/core.md の Observed evidence is not a permanent provider rule）。実挙動と食い違った場合は待たず、marker と observed_at を更新する。",
+  "durable_record": {
+    "posting": "new-comment-per-stage",
+    "note": "Selection / run / fence record は stage ごとに新規 comment を投稿し、最新を正とする。1 comment の in-place 編集は、到着済みの結果を後続 session から見えなくするため採用しない。"
+  },
+  "required_selection": {
+    "count": 1,
+    "prefer": "different-provider-family-from-implementer",
+    "note": "required slot は default_class が required の reviewer から埋め、実装した agent と異なる provider_family を第一候補にする（AI-only review での独立性を上げるため）。第一候補が使えない場合は fallback_order に従い、Selection amendment で required slot を代替 reviewer の run へ移す。この record は Task 固有の Selection Contract の第二正本ではない。"
+  },
+  "reviewers": [
+    {
+      "id": "codex",
+      "display_name": "Codex Cloud Review",
+      "default_class": "required",
+      "provider_family": "openai",
+      "actors": ["chatgpt-codex-connector[bot]"],
+      "trigger": {
+        "kind": "comment_command",
+        "value": "@codex review",
+        "target_argument": "レビュー対象の commit は {target_sha} です。結果に `Reviewed commit: {target_sha}` を含めてください。"
+      },
+      "completion_marker": {
+        "any_of": ["Reviewed commit:"],
+        "target_pattern": "Reviewed commit:[^0-9a-fA-F]*([0-9a-fA-F]{7,40})"
+      },
+      "non_participation_marker": null,
+      "rate_limit_marker": null,
+      "failure_marker": null,
+      "in_flight_marker": null,
+      "fallback_order": ["claude"],
+      "observed_at": "2026-09-02",
+      "notes": "finding がある run では GitHub review submission（state=COMMENTED）と inline comment を投稿し、submission の commit_id が reviewed target を表す。finding が無い run では submission を作らず conversation comment のみを残すため、その場合は completion_marker が唯一の完了根拠になる。どちらの本文にも `**Reviewed commit:** <短縮 SHA>` を含む。本結果の前に環境案内 comment を複数投稿することがあるため、最初の comment の到着を completion と誤認しない。PR-open automatic review の有効・無効は repository code では完結しない operator/account 側の設定であり、その変更を repository code から完了したものとして扱わない。"
+    },
+    {
+      "id": "claude",
+      "display_name": "Claude Code Review (GitHub Actions)",
+      "default_class": "required",
+      "provider_family": "anthropic",
+      "actors": ["claude", "claude[bot]", "github-actions[bot]"],
+      "trigger": {
+        "kind": "comment_command",
+        "value": "@claude review",
+        "target_argument": "レビュー対象の commit は {target_sha} です。review 結果の末尾に `Reviewed commit: {target_sha}` の行を必ず含めてください。"
+      },
+      "completion_marker": {
+        "any_of": ["**Claude finished"],
+        "all_of": ["Reviewed commit:"],
+        "target_pattern": "Reviewed commit:[^0-9a-fA-F]*([0-9a-fA-F]{7,40})"
+      },
+      "non_participation_marker": null,
+      "rate_limit_marker": null,
+      "failure_marker": {
+        "any_of": ["max-turns", "Claude encountered an error"]
+      },
+      "in_flight_marker": {
+        "any_of": ["Claude Code is working"]
+      },
+      "fallback_order": ["codex"],
+      "observed_at": "2026-09-02",
+      "notes": "この entry の actors と marker は未実測。次に selection した時点で実測し observed_at を更新する。GitHub Actions 経由のこの route は review submission を作らず、単一の conversation comment を in-place 編集して `**Claude finished ...**` で完成するため、構造的 evidence が無く completion_marker に依存する。comment 自体は reviewed SHA を持たないため、trigger.target_argument で結果へ `Reviewed commit:` 行を要求し binding に使う。その行が無ければ state は unknown になる。mention trigger workflow（例: .github/workflows/claude-review.yml）は review 対象 repository が個別に用意する必要があり、Foundation は配布しない。workflow が無い repository ではこの trigger は unavailable。"
+    },
+    {
+      "id": "coderabbitai",
+      "display_name": "CodeRabbit",
+      "default_class": "advisory",
+      "provider_family": "coderabbit",
+      "actors": ["coderabbitai[bot]"],
+      "trigger": {
+        "kind": "comment_command",
+        "value": "@coderabbitai review"
+      },
+      "completion_marker": {
+        "any_of": ["Actionable comments posted:"]
+      },
+      "non_participation_marker": null,
+      "rate_limit_marker": {
+        "any_of": ["Review rate limited", "0 remain"]
+      },
+      "failure_marker": null,
+      "in_flight_marker": null,
+      "fallback_order": [],
+      "observed_at": "2026-09-02",
+      "notes": "結果は review submission（state=COMMENTED、本文冒頭が `Actionable comments posted: N`）として投稿される。trigger への `Action performed` 返信と walkthrough comment も投稿されるが、いずれも完了根拠にしない。advisory member のため completion を待たず、未参加・rate limit でも blocker にしない。ただし到着した finding の triage / Resolution obligation は class に関係なく残る。無料枠は 1 件/時のため rate limit は fallback ではなく advisory 継続の根拠として扱い、復帰を待たない。`success` の commit status が automatic review 無効化による review スキップを表すことがあり、green な status が review 完了ではなく review 未実施を意味する。status の state だけを completion へ変換しない。"
+    }
+  ]
+}

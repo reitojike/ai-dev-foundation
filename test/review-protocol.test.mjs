@@ -76,7 +76,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
-  // Codex P1 (resolve discovery findings before merge): the discovery
+  // Resolve discovery findings before merge: the discovery
   // Resolution gate is stage-independent — accepted-fix paths don't drop it,
   // multiple discovery stages (e.g. 2nd full discovery) each need their own
   // Resolution complete, and completion order vs. closure isn't mandated.
@@ -109,7 +109,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     "this fix is a merge/completion gate, not a new precondition for starting closure",
   );
 
-  // Codex P2 (pass the selected commit range to Execution): Execution Contract's
+  // Pass the selected commit range to Execution: Execution Contract's
   // target field is bound to Selection's expected target (SHA or commit range),
   // not reduced to a bare "target SHA" that Selection's range would silently
   // narrow down to. Since Step 9 (2nd discovery) and Step 10 (targeted closure)
@@ -124,7 +124,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     "Execution Contract must not regress to a bare, Selection-unbound 'target SHA' field",
   );
 
-  // Codex P1 (invalidate discovery on artifact-set-only target changes): the
+  // Invalidate discovery on artifact-set-only target changes: the
   // review target is explicitly defined as the (SHA/range, artifact set)
   // pair, and the Execution Contract propagates the confirmed artifact set
   // to the trigger just like the confirmed SHA/range, instead of silently
@@ -198,12 +198,12 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "acquisition の record は、後続 session から独立に recoverable な場所へpersist されて初めて durable evidence です。",
     ),
   );
-  // Closure round (Codex P2 on PR #24): an existing provider surface that
+  // An existing provider surface that
   // already carries enough information in a later-session-recoverable form
   // counts as the record itself — this must not be read as requiring every
   // already-durable run to additionally post a normalized record.
   //
-  // 3rd closure round (root-cause fix, Codex P2 x2 + Claude): the first two
+  // Root-cause fix: the first two
   // closure attempts hand-enumerated which elements the surface must carry
   // (target, then +artifact set), and each round a reviewer found one more
   // Validity/Completion element missing from the hand-kept list (required
@@ -223,7 +223,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "reviewer mechanism が外部から確認可能な surface へ残す結果に、その判定に必要な情報が既に含まれていれば、その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
     ),
   );
-  // 4th closure round (root-cause fix #2, Codex P2): the first root-cause fix
+  // Root-cause fix #2: the first root-cause fix
   // still let the no-surface fallback path point at the bare record schema,
   // whose `validity` field is only a self-asserted conclusion — so a later
   // session had no way to independently re-derive it, unlike the surface
@@ -376,7 +376,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
-  // Codex P1 (resolve discovery findings before merge): triage alone is not
+  // Resolve discovery findings before merge: triage alone is not
   // Resolution completion — an unresolved needs-verification / technical-dispute
   // / intent-question finding blocks that stage's Resolution, no new state enum.
   assert.ok(
@@ -396,8 +396,8 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
-  // Codex P2 (bind precondition evidence to selected artifact set, not just
-  // SHA/range): a SHA-only match is not enough — the selected target artifact
+  // Bind precondition evidence to selected artifact set, not just
+  // SHA/range: a SHA-only match is not enough — the selected target artifact
   // set must also be within the precondition check's covered scope, checked
   // after Selection when the check ran before it, with a rerun required
   // whenever coverage can't be positively confirmed.
@@ -420,7 +420,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
-  // Range-only target change (Codex P1, commit range for Executable): a commit
+  // Range-only target change: a commit
   // range's endpoint moving counts as a target change even if head SHA is
   // unchanged, so old evidence isn't carried over just because the SHA looks the
   // same. The canonical review target definition the merge-ready fence and both
@@ -454,7 +454,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     "policy/core.md must not introduce a new round-counter schema or a Second Discovery Contract",
   );
 
-  // Codex P2 (stage-independent closure-cycle stopping semantics): a repeating
+  // Stage-independent closure-cycle stopping semantics: a repeating
   // closure Resolution -> accepted fix -> closure review cycle (either
   // artifact) is escalated as upstream/policy instability, distinct from
   // Failure/retry's retry count — stated once in canonical policy rather than
@@ -527,7 +527,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(reviewCode.includes("closure target の Selection / Execution"));
   assert.ok(reviewCode.includes("-> targeted closure"));
 
-  // Codex P2 (route a material fix through a full 2nd discovery): an optional 2nd
+  // Route a material fix through a full 2nd discovery: an optional 2nd
   // full discovery sits between the post-fix deterministic verify and closure
   // target Selection/Execution — reusing the same discovery Contracts, not a new
   // Second Discovery Contract or round-counter schema. #51 Phase 1: the branch
@@ -559,8 +559,8 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
     ),
   );
 
-  // Codex P2 (unify closure-entry predicates with the canonical review target
-  // definition): the Code review diagram's accepted-fix branch condition is
+  // Unify closure-entry predicates with the canonical review target
+  // definition: the Code review diagram's accepted-fix branch condition is
   // "review target changed", not a stage-local "candidate SHA changed" that
   // drifts from the review target definition the Kernel still owns.
   assert.ok(
@@ -580,7 +580,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
     ),
   );
 
-  // Codex P1 (resolve discovery findings before merge, Code flow): the
+  // Resolve discovery findings before merge, Code flow: the
   // accepted-fix diagram branch requires required discovery stage(s)'
   // Resolution to complete, not just closure Resolution, before merge.
   assert.ok(reviewCode.includes("required discovery stage(s) の Resolution 完了"));
@@ -588,7 +588,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
     containsText(reviewCode, "closure finding の Resolution -> accepted closure finding があれば:"),
   );
 
-  // Codex P1 (re-evaluate materiality of closure fixes): an accepted closure
+  // Re-evaluate materiality of closure fixes: an accepted closure
   // finding's fix re-enters Review stopping rules — routing to an unused 2nd
   // discovery if needed, to escalation (no 3rd discovery, no merge) if 2nd was
   // already used and still insufficient, or back to targeted closure if the
@@ -655,7 +655,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
     "the merge-without-closure branch must key on review target (SHA-and-range), not head SHA alone, or an independent range move could read as unchanged",
   );
 
-  // Codex P1 (stop merge after a materially-changing 2nd discovery fix): the
+  // Stop merge after a materially-changing 2nd discovery fix: the
   // canonical Code review diagram re-evaluates the need for more discovery after
   // the 2nd discovery's own accepted-finding fix, not just before entering 2nd
   // discovery — a further material change stops at escalation, not merge.
@@ -677,7 +677,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
       "closure verification の finding も Resolution Contract の対象とし、Resolution が完了するまで review を完了しません。",
     ),
   );
-  // Codex P1 (resolve discovery findings before merge, Normative flow): same
+  // Resolve discovery findings before merge, Normative flow: same
   // gate for semantic discovery Resolution before review completion.
   assert.ok(
     containsText(
@@ -713,8 +713,8 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
     ),
   );
 
-  // Codex P2 (unify closure-entry predicates with the canonical review target
-  // definition, Normative sibling): both diagram branches key on "review
+  // Unify closure-entry predicates with the canonical review target
+  // definition, Normative sibling: both diagram branches key on "review
   // target", matching the Code review diagram and the Kernel's review target
   // definition, not a stage-local "target SHA / range" partial predicate.
   assert.ok(containsText(reviewDoc, "-> accepted finding の fix で review target が変更された場合:"));
@@ -995,11 +995,23 @@ test("review skills document procedure without duplicating normative rules", asy
     "Closure Resolution",
     "Merge",
     "Adapter boundary",
-    "Manual review pilot",
+    "Happy path",
+    "reviewer capability record",
   ]) {
     assert.ok(reviewCode.includes(phrase), `review-code.md missing: ${phrase}`);
   }
-  assert.ok(containsText(reviewCode, "Claude / Codex / CodeRabbit"));
+
+  // Issue #72 Phase 1: reviewer-provider knowledge (which reviewers exist, how
+  // they are triggered, which markers mean completion / rate limit) moved out
+  // of this skill into the consumer-owned reviewer capability record. The skill
+  // still names Claude Code where it draws the preflight/local boundary around
+  // the *implementing* agent's own tooling, but no longer names any reviewer
+  // provider, so the two can no longer drift apart.
+  assert.doesNotMatch(
+    reviewCode,
+    /Codex|CodeRabbit/,
+    "reviewer provider names belong in the reviewer capability record, not in review-code.md",
+  );
 
   // Issue #22: collectOutputs() must cover mechanisms with no external
   // surface of their own (e.g. in-session/subagent review) by persisting the
@@ -1012,20 +1024,22 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
   assert.ok(
-    containsText(reviewCode, "GitHub-native trigger 経路を持つならそれを優先する方が"),
-    "review-code.md must document the observed GitHub-native-trigger preference without hardcoding a permanent provider rule",
+    containsText(
+      reviewCode,
+      "record が、結果を durable な GitHub surface へ残す trigger 経路を宣言している場合は、その経路を preferred route として使います。",
+    ),
+    "review-code.md must keep the durable-surface trigger route preference, expressed against the record rather than a named provider",
   );
-  assert.doesNotMatch(
-    reviewCode,
-    /GitHub-native trigger[^\n]*(Claude|Codex|CodeRabbit)/,
-    "the GitHub-native-trigger preference must stay an anonymized observed example, not a provider-specific permanent rule",
+  assert.ok(
+    containsText(reviewCode, "この fallback は durable evidence requirement を免除しません"),
+    "falling back to in-session/subagent acquisition must not drop the durable evidence requirement",
   );
 
-  // Closure round (Codex P2 on PR #24): collectOutputs() must state that a
+  // CollectOutputs() must state that a
   // sufficiently informative existing surface counts as the recoverable
   // record itself, not just describe the no-surface persistence fallback.
   //
-  // 3rd closure round (root-cause fix): defer to policy's own Completion /
+  // Root-cause fix: defer to policy's own Completion /
   // Validity requirements by reference instead of re-enumerating them here
   // too — the skill already says "skill は policy を使った作業方法を説明し、
   // 規範的なルールを複製しません", and a second hand-kept list here would
@@ -1042,7 +1056,7 @@ test("review skills document procedure without duplicating normative rules", asy
       "それらの要求事項のいずれかを surface から判定できない場合は",
     ),
   );
-  // 4th closure round (root-cause fix #2, Codex P2): the no-surface fallback
+  // Root-cause fix #2: the no-surface fallback
   // here must also require evidence for Completion/Validity, not just
   // conformance to the bare record schema (whose `validity` field is only a
   // self-asserted conclusion a later session can't independently re-derive).
@@ -1053,7 +1067,7 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Commit range as review target (Codex P1): review target is SHA and,
+  // Commit range as review target: review target is SHA and,
   // applicable, commit range, per Selection Contract's own field name — not
   // reduced to head SHA alone, so a range-only mutation (e.g. base moving) is
   // covered by the same target mutation semantics as a SHA change.
@@ -1076,7 +1090,7 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P2 (pass the selected commit range to Execution): Step 4 must send the
+  // Pass the selected commit range to Execution: Step 4 must send the
   // Selection-confirmed target to the reviewer trigger, not just record a bare
   // target SHA after the fact — recording alone would still let the range
   // silently narrow to head SHA.
@@ -1092,7 +1106,7 @@ test("review skills document procedure without duplicating normative rules", asy
     "Step 4 must pass the Selection-confirmed target to the trigger, not just record target SHA after invocation",
   );
 
-  // Codex P1 (invalidate discovery on artifact-set-only target changes): Step 3
+  // Invalidate discovery on artifact-set-only target changes: Step 3
   // freezes the artifact set as part of the review target from the moment
   // Selection confirms it, and Step 4 records what artifact set was actually
   // sent to the trigger, not just the SHA/range.
@@ -1106,8 +1120,8 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewCode, "実際に渡した target と artifact set、required context を記録します。"),
   );
 
-  // Codex P2 (bind precondition evidence to selected artifact set, not just
-  // SHA/range): Step 1 records what scope the deterministic verify actually
+  // Bind precondition evidence to selected artifact set, not just
+  // SHA/range: Step 1 records what scope the deterministic verify actually
   // covered, and Step 3 checks that scope against the confirmed target
   // artifact set once Selection has run, re-verifying when coverage can't be
   // confirmed. Artifact set ownership stays with Selection — Step 1/2 only
@@ -1167,7 +1181,7 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P1 (resolve discovery findings before merge): the discovery Resolution
+  // Resolve discovery findings before merge: the discovery Resolution
   // gate isn't dropped when the accepted-fix path is taken — merge requires both
   // discovery and closure Resolution, in either order, not closure alone.
   assert.ok(
@@ -1326,7 +1340,7 @@ test("review skills document procedure without duplicating normative rules", asy
   );
   assert.ok(containsText(reviewCode, "確認できなければ merge せず、その後の扱いは Failure / retry"));
 
-  // Finding 1 (Codex P1): only a Step 7 batch-fix-driven SHA change may take the
+  // Only a Step 7 batch-fix-driven SHA change may take the
   // targeted-closure-only path; any other SHA change (parallel work, scope
   // addition, unrelated commits) routes back through Step 2's invalidate/re-freeze/
   // re-discovery handling instead of a separate SHA-change rule.
@@ -1361,8 +1375,8 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P2 (bind precondition evidence to selected artifact set, not just
-  // SHA/range): targeted closure's artifact-set coverage check re-runs
+  // Bind precondition evidence to selected artifact set, not just
+  // SHA/range: targeted closure's artifact-set coverage check re-runs
   // deterministic verify against the confirmed closure target when coverage
   // can't be confirmed, before Execution starts the closure run.
   assert.ok(
@@ -1388,7 +1402,7 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P2 (route a material fix through a full 2nd discovery): Step 9 is an
+  // Route a material fix through a full 2nd discovery: Step 9 is an
   // optional, policy-gated 2nd full discovery inserted before targeted closure,
   // reusing the same Selection / Execution / Acquisition & Validity / Resolution
   // Contracts and the required-review-count gate as the first discovery — not a
@@ -1425,8 +1439,8 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P2 (bind precondition evidence to selected artifact set, not just
-  // SHA/range): second discovery's artifact-set coverage check re-runs
+  // Bind precondition evidence to selected artifact set, not just
+  // SHA/range: second discovery's artifact-set coverage check re-runs
   // deterministic verify against the confirmed second discovery target when
   // coverage can't be confirmed, before Execution starts full discovery.
   assert.ok(
@@ -1522,7 +1536,7 @@ test("review skills document procedure without duplicating normative rules", asy
   );
   assert.ok(containsText(reviewDoc, "accepted な closure finding があれば、手順 6〜7 と同じ procedure"));
 
-  // Codex P1 (resolve discovery findings before merge, Normative sibling):
+  // Resolve discovery findings before merge (Normative sibling):
   // closure Resolution completing doesn't drop the semantic discovery (Step 5)
   // Resolution gate — review procedure completion requires both, in either order.
   assert.ok(
@@ -1559,8 +1573,8 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P2 (bind precondition evidence to selected artifact set, not just
-  // SHA/range, Normative sibling): Step 1 records what scope the mechanical
+  // Bind precondition evidence to selected artifact set, not just
+  // SHA/range, Normative sibling: Step 1 records what scope the mechanical
   // check covered, and Step 2 checks that scope against the confirmed target
   // artifact set, re-checking when coverage can't be confirmed. Artifact set
   // ownership stays with Selection — Step 1 only records evidence metadata.
@@ -1600,8 +1614,8 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P1 (invalidate discovery on artifact-set-only target changes,
-  // Normative sibling): the pre-validity mutation clause must cover an
+  // Invalidate discovery on artifact-set-only target changes,
+  // Normative sibling: the pre-validity mutation clause must cover an
   // artifact-set-only change the same way it covers a SHA/range change, not
   // just the post-validity non-fix clause above.
   assert.ok(
@@ -1624,8 +1638,8 @@ test("review skills document procedure without duplicating normative rules", asy
   );
   assert.ok(containsText(reviewDoc, "target SHA / range、target artifact set、"));
 
-  // Codex P1 (invalidate discovery on artifact-set-only target changes,
-  // Normative sibling): Step 3 must pass the Selection-confirmed target SHA
+  // Invalidate discovery on artifact-set-only target changes,
+  // Normative sibling: Step 3 must pass the Selection-confirmed target SHA
   // / range AND target artifact set to the reviewer trigger, not just record
   // required context after the fact.
   assert.ok(
@@ -1656,7 +1670,7 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewDoc, "closure verification 自体の completion / acquisition / validity も"),
   );
 
-  // Finding 2 (Codex P1): a fix that changes target SHA / range re-freezes the
+  // A fix that changes target SHA / range re-freezes the
   // closure target and applies Selection / Execution Contract to the closure
   // review run, so closure validity is judged against the post-fix target instead
   // of the pre-fix expected target from Step 2's Selection.
@@ -1673,8 +1687,8 @@ test("review skills document procedure without duplicating normative rules", asy
     containsText(reviewDoc, "この closure target を expected target として Acquisition & Validity"),
   );
 
-  // Codex P2 (bind precondition evidence to selected artifact set, not just
-  // SHA/range): Normative closure's artifact-set coverage check re-runs
+  // Bind precondition evidence to selected artifact set, not just
+  // SHA/range: Normative closure's artifact-set coverage check re-runs
   // mechanical check against the confirmed closure target when coverage
   // can't be confirmed, before Execution starts the closure run.
   assert.ok(
@@ -1719,8 +1733,8 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Codex P2 (unify closure-entry predicates with the canonical review target
-  // definition, skills/review-doc.md sibling): the closure predicate covers an
+  // Unify closure-entry predicates with the canonical review target
+  // definition, skills/review-doc.md sibling: the closure predicate covers an
   // artifact-set-only change too, matching Step 2's mutation semantics and
   // policy/core.md's "review target" definition, not just target SHA / range.
   assert.doesNotMatch(

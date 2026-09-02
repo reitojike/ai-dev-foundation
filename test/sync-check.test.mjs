@@ -71,7 +71,7 @@ test("sync creates current adapters and check detects both input and output drif
 });
 
 test("materializeOwnedDirectory does not destroy the canonical source when destination resolves to the same directory", async (t) => {
-  // Regression test for a Codex P1 finding on PR #42: if a consumer path is
+  // Regression: if a consumer path is
   // laid out so that .ai-dev-foundation/<owned dir> resolves back onto the
   // Foundation checkout's own canonical source directory (e.g. the checkout
   // itself is named .ai-dev-foundation and its parent is passed as
