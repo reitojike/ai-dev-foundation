@@ -1019,11 +1019,10 @@ test("review-code skill carries the procedural detail for the fence", async () =
   const example = JSON.parse(await readFile(path.join(root, "templates", "reviewers.example.json"), "utf8"));
   const owner = example.reviewers.find((reviewer) => reviewer.id === "coderabbitai");
   assert.ok(owner, "the reviewer that owns the skipped-status observation must exist in the record");
-  assert.ok(owner.notes.includes("check/status surface を一切生成しない"));
   assert.ok(owner.notes.includes("green な status が review 完了ではなく review 未実施を意味する"));
   assert.ok(
-    !owner.result_surfaces.includes("commit_status"),
-    "the reviewer whose green status can mean review-not-run must not declare commit_status as a result surface",
+    owner.notes.includes("status の state だけを completion へ変換しない"),
+    "the observation must state the rule it exists to protect, not only the anecdote",
   );
   assert.ok(
     example.reviewers.every((reviewer) => /^\d{4}-\d{2}-\d{2}$/.test(reviewer.observed_at)),

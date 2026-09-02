@@ -2,13 +2,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import {
-  collectReviewEvidence,
-  evaluateReviewerStates,
-  formatHumanSummary,
-  formatReviewerStateSummary,
-  parseReviewEvidenceArgs,
-} from "./review-evidence-lib.mjs";
+import { collectReviewEvidence, formatHumanSummary, parseReviewEvidenceArgs } from "./review-evidence-lib.mjs";
+import { evaluateReviewerStates, formatReviewerStateSummary } from "./reviewer-state-lib.mjs";
 import { readReviewerRecordFile } from "./reviewer-record-lib.mjs";
 
 // Snapshot tool only (Issue #62): one fresh fetch per invocation, no

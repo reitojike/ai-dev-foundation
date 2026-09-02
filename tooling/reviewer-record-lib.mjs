@@ -4,10 +4,17 @@
 // that schema. Provider names live only inside a consumer's record file, never
 // here and never in policy/core.md.
 //
+// The record describes WHO a reviewer is and HOW to start it. It deliberately
+// does NOT describe where that reviewer's output shows up: predicting the
+// surface is a negative claim ("this provider does not post there") that the
+// Kernel forbids and that breaks the first time a provider posts elsewhere.
+// review-evidence-lib.mjs already fetches every durable surface, and it derives
+// the reviewed target from each surface's own fields. A declared marker is only
+// the fallback for surfaces GitHub gives no review semantics to.
+//
 // This module decides nothing semantic: it does not choose reviewers, does not
 // judge completion, and does not rank fallbacks. It only answers "is this file
-// present, parseable, and minimally well-formed", so an agent never has to read
-// prose to find out which reviewers exist or how to trigger them.
+// present, parseable, and minimally well-formed".
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -31,40 +38,10 @@ export const TRIGGER_KINDS = ["comment_command", "automatic", "operator_configur
 export const REQUIRED_SELECTION_PREFERENCES = ["different-provider-family-from-implementer", "record-order"];
 
 // A trigger may carry the frozen target into the reviewer's own output, so its
-// completion marker becomes bindable. The placeholder is substituted with the
-// Selection Contract's expected target at Execution time.
+// completion becomes bindable on surfaces that carry no commit of their own.
+// The placeholder is substituted with the Selection Contract's expected target
+// at Execution time.
 export const TARGET_SHA_PLACEHOLDER = "{target_sha}";
-
-// Surface keys mirror tooling/review-evidence-lib.mjs's `surfaces` object, so a
-// record can be evaluated directly against a review-evidence snapshot.
-export const EVIDENCE_SURFACES = [
-  "conversation_comments",
-  "review_submissions",
-  "inline_review_comments",
-  "review_threads",
-  "commit_status",
-  "check_runs",
-];
-
-// Fields observed to keep the target a run actually reviewed, even after the PR
-// head moves. Only these may be named as `target_field` (Acquisition & Validity
-// Contract: a field that follows the moving head cannot bind).
-export const STABLE_TARGET_FIELDS = {
-  review_submissions: ["reviewed_sha"],
-  inline_review_comments: ["original_commit_sha"],
-};
-
-// Fields observed to follow the current head instead of the reviewed target.
-// Named explicitly so the validator can reject them with a specific reason
-// rather than a generic "unknown field".
-export const UNSTABLE_TARGET_FIELDS = {
-  inline_review_comments: ["reviewed_sha"],
-  review_threads: ["reviewed_sha"],
-};
-
-// review-evidence fetches these per-commit surfaces for the snapshot head only,
-// so an item found there is bound to that head SHA and needs no target field.
-export const HEAD_BOUND_SURFACES = ["commit_status", "check_runs"];
 
 export const MARKER_KINDS = [
   "completion_marker",
@@ -95,19 +72,23 @@ function captureGroupCount(source) {
   return new RegExp(`${source}|`).exec("").length - 1;
 }
 
-function validateMarker(marker, { reviewerLabel, kind, requireTargetBinding }) {
+// A marker is the text that makes an otherwise semantics-free surface item
+// readable ("this comment is the finished review", "this one is a rate limit").
+// It names no surface: the evaluator matches it against everything it fetched.
+function validateMarker(marker, { reviewerLabel, kind }) {
   const errors = [];
   const label = `${reviewerLabel}.${kind}`;
   if (!isPlainObject(marker)) return [`${label}: must be an object`];
 
-  if (!isStringArray(marker.surfaces)) {
-    errors.push(`${label}.surfaces: must be a non-empty array of surface keys`);
-  } else {
-    for (const surface of marker.surfaces) {
-      if (!EVIDENCE_SURFACES.includes(surface)) {
-        errors.push(`${label}.surfaces: unknown surface "${surface}" (known: ${EVIDENCE_SURFACES.join(", ")})`);
-      }
-    }
+  if ("surfaces" in marker) {
+    errors.push(
+      `${label}.surfaces: not supported — a marker must not predict which surface the reviewer posts to; the evaluator searches every fetched surface`,
+    );
+  }
+  if ("target_field" in marker) {
+    errors.push(
+      `${label}.target_field: not supported — the reviewed target is taken from the surface's own commit field, which the evaluator resolves`,
+    );
   }
 
   if (!isStringArray(marker.any_of)) {
@@ -117,39 +98,9 @@ function validateMarker(marker, { reviewerLabel, kind, requireTargetBinding }) {
     errors.push(`${label}.all_of: must be a non-empty array of literal marker strings when present`);
   }
 
-  const surfaces = isStringArray(marker.surfaces) ? marker.surfaces : [];
-  const hasTargetField = marker.target_field !== undefined && marker.target_field !== null;
-  const hasTargetPattern = marker.target_pattern !== undefined && marker.target_pattern !== null;
-  const headBoundOnly = surfaces.length > 0 && surfaces.every((surface) => HEAD_BOUND_SURFACES.includes(surface));
-
-  if (hasTargetField && hasTargetPattern) {
-    errors.push(`${label}: specify at most one of target_field / target_pattern`);
-  }
-
-  if (hasTargetField) {
-    if (!isNonEmptyString(marker.target_field)) {
-      errors.push(`${label}.target_field: must be a non-empty string`);
-    } else {
-      for (const surface of surfaces) {
-        const stable = STABLE_TARGET_FIELDS[surface] ?? [];
-        const unstable = UNSTABLE_TARGET_FIELDS[surface] ?? [];
-        if (unstable.includes(marker.target_field)) {
-          errors.push(
-            `${label}.target_field: "${marker.target_field}" on surface "${surface}" follows the moving head and cannot bind a reviewed target`,
-          );
-        } else if (!stable.includes(marker.target_field)) {
-          const alternatives = stable.length > 0 ? ` other than ${stable.join(", ")}` : "";
-          errors.push(
-            `${label}.target_field: surface "${surface}" has no stable target field${alternatives}; use target_pattern instead`,
-          );
-        }
-      }
-    }
-  }
-
-  if (hasTargetPattern) {
+  if (marker.target_pattern !== undefined && marker.target_pattern !== null) {
     if (!isNonEmptyString(marker.target_pattern)) {
-      errors.push(`${label}.target_pattern: must be a non-empty string`);
+      errors.push(`${label}.target_pattern: must be a non-empty string when present`);
     } else {
       try {
         if (captureGroupCount(marker.target_pattern) < 1) {
@@ -159,12 +110,6 @@ function validateMarker(marker, { reviewerLabel, kind, requireTargetBinding }) {
         errors.push(`${label}.target_pattern: invalid regular expression (${error.message})`);
       }
     }
-  }
-
-  if (requireTargetBinding && !hasTargetField && !hasTargetPattern && !headBoundOnly) {
-    errors.push(
-      `${label}: needs target_field or target_pattern so completion can be bound to the reviewed target (the ${HEAD_BOUND_SURFACES.join(" / ")} surfaces are head-bound and exempt)`,
-    );
   }
 
   return errors;
@@ -183,8 +128,16 @@ function validateReviewer(reviewer, index, knownIds) {
     errors.push(`${label}.default_class: must be one of ${REVIEWER_CLASSES.join(" / ")}`);
   }
 
+  // Identity, not response shape: which login the reviewer posts as is what
+  // attributes a surface item to it, and it does not change with the output.
   if (!isStringArray(reviewer.actors)) {
     errors.push(`${label}.actors: must be a non-empty array of the login(s) this reviewer posts as`);
+  }
+
+  if ("result_surfaces" in reviewer) {
+    errors.push(
+      `${label}.result_surfaces: not supported — the evaluator reads every durable surface, so a reviewer must not declare where its output appears`,
+    );
   }
 
   if (!isPlainObject(reviewer.trigger)) {
@@ -209,29 +162,13 @@ function validateReviewer(reviewer, index, knownIds) {
     errors.push(`${label}.provider_family: must be a non-empty string when present`);
   }
 
-  if (!isStringArray(reviewer.result_surfaces)) {
-    errors.push(`${label}.result_surfaces: must be a non-empty array of surface keys`);
-  } else {
-    for (const surface of reviewer.result_surfaces) {
-      if (!EVIDENCE_SURFACES.includes(surface)) {
-        errors.push(`${label}.result_surfaces: unknown surface "${surface}" (known: ${EVIDENCE_SURFACES.join(", ")})`);
-      }
-    }
-  }
-
-  errors.push(
-    ...validateMarker(reviewer.completion_marker, {
-      reviewerLabel: label,
-      kind: "completion_marker",
-      requireTargetBinding: true,
-    }),
-  );
-
+  // Every marker is optional. A reviewer that posts its result as a GitHub
+  // review submission needs none: the submission is already a review act bound
+  // to a commit, which is structural evidence rather than a text format.
   for (const kind of MARKER_KINDS) {
-    if (kind === "completion_marker") continue;
     const marker = reviewer[kind];
     if (marker === undefined || marker === null) continue;
-    errors.push(...validateMarker(marker, { reviewerLabel: label, kind, requireTargetBinding: false }));
+    errors.push(...validateMarker(marker, { reviewerLabel: label, kind }));
   }
 
   if (!isStringArray(reviewer.fallback_order, { allowEmpty: true })) {
@@ -319,7 +256,9 @@ export function validateReviewerRecord(value) {
 
   errors.push(...validateRequiredSelection(value));
 
-  const knownIds = new Set(value.reviewers.filter((reviewer) => isNonEmptyString(reviewer?.id)).map((reviewer) => reviewer.id));
+  const knownIds = new Set(
+    value.reviewers.filter((reviewer) => isNonEmptyString(reviewer?.id)).map((reviewer) => reviewer.id),
+  );
   const seenIds = new Set();
   value.reviewers.forEach((reviewer, index) => {
     if (isPlainObject(reviewer) && isNonEmptyString(reviewer.id)) {

@@ -86,9 +86,8 @@ reviewer ごとに表現するもの:
 | `default_class`                                                                          | `required` / `expected` / `advisory`。portfolio 上の default であり Task 固有の obligation ではない             |
 | `actors`                                                                                 | この reviewer が投稿する login。surface item の帰属に使う                                                       |
 | `trigger`                                                                                | `kind` と、`comment_command` なら投稿する literal command。`target_argument` は `{target_sha}` を結果へ持ち込む |
-| `result_surfaces`                                                                        | 結果が現れる surface（`review-evidence.mjs` の surface key と同じ語彙）                                         |
-| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence と、reviewed target を安定に表す binding                    |
-| `non_participation_marker` / `rate_limit_marker` / `failure_marker` / `in_flight_marker` | `declined` / rate limit / `failed` / in-flight の evidence                                                      |
+| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence の文字列（省略可）                                          |
+| `non_participation_marker` / `rate_limit_marker` / `failure_marker` / `in_flight_marker` | `declined` / rate limit / `failed` / in-flight の evidence（いずれも省略可）                                    |
 | `fallback_order`                                                                         | この reviewer が使えない場合に次に選ぶ reviewer の id                                                           |
 | `observed_at`                                                                            | marker を最後に実測した日付。marker は observed evidence であり恒久仕様ではない                                 |
 
@@ -97,11 +96,27 @@ top-level には `required_selection`（required slot の数と埋め方、必�
 `new-comment-per-stage`（stage ごとに新規 comment を投稿し、最新を正とする）だけを
 supported value としており、1 comment の in-place 編集は採用しません。
 
-`completion_marker` の `target_field` には、review target が移動しても値が変わらない
-field だけを指定できます。head へ追随する field（inline review comment の `reviewed_sha`
-等）は、ancestor target の review を current target の completion と誤認させるため、
-schema 側で reject されます。SHA を持たない surface では `target_pattern` で本文から
-capture します。
+**record は「結果がどの surface に出るか」を宣言しません。** それは provider の応答形式の
+決め打ちであり、`policy/core.md` の Review Adapter boundary が禁じる negative claim
+（「この provider はこの surface に出ない」）そのものです。helper は取得済みの全 surface を
+対象に判定します。したがって `result_surfaces`、marker の `surfaces`、marker の
+`target_field` はいずれも schema が reject します。
+
+completion の判定は 2 段です。
+
+1. **構造的 evidence（主経路、宣言不要）** — 宣言された actor による GitHub の review
+   submission。GitHub の schema 自身が「actor が `commit_id` に対して review を提出した」
+   ことを表すため、marker も surface の知識も要りません。未提出の draft（`PENDING`）は
+   review 行為として扱いません
+2. **宣言された marker（fallback）** — GitHub が review の意味を与えていない surface
+   （通常の comment、status の description、check の name）に結果が落ちた場合のみ使います。
+   marker は surface を指定せず、helper が全 surface を検索します
+
+reviewed target への binding も surface の性質から helper が決めます。その surface が
+target 移動に追随しない commit field を持つならそれを使い（review submission の
+`commit_id`、inline review comment の `original_commit_id`）、無ければ record の
+`target_pattern` で本文から capture し、per-commit surface なら snapshot head に束縛します。
+どれも成立しなければ unbound として `unknown` を返します。
 
 `check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
 non-zero で終了します。record の内容（どの reviewer を required にするか等）は
@@ -145,7 +160,9 @@ node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
 出力の `reviewer_states.reviewers[]` は次を持ちます。
 
 - `target_completion_state`: `completed@target` / `not-bound` / `declined` / `failed` /
-  `unknown`。`policy/core.md` の語彙と同じです。
+  `unknown`。`policy/core.md` の語彙と同じです。`reason` が
+  `structural_review_submission_at_target` なら構造的 evidence、
+  `completion_marker_bound_to_target` なら marker fallback で判定されたことを表します。
 - `operational_signal`: `rate-limited` / `in-flight` / `none`。これは新しい state ではなく
   `unknown` 側の refinement であり、次の一手（fallback へ進むか、走っている run の終端だけ
   待つか）を分けるためだけに独立した field にしています。

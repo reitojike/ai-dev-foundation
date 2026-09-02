@@ -6,17 +6,25 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { evaluateReviewerStates, parseReviewEvidenceArgs } from "../tooling/review-evidence-lib.mjs";
+import { parseReviewEvidenceArgs } from "../tooling/review-evidence-lib.mjs";
+import { evaluateReviewerStates } from "../tooling/reviewer-state-lib.mjs";
 import { REVIEWER_RECORD_SCHEMA_ID, readReviewerRecordFile, validateReviewerRecord } from "../tooling/reviewer-record-lib.mjs";
 
-// Issue #72 Phase 1: the reviewer capability record is the artifact that makes
-// "which reviewers exist, how are they triggered, what does completion look
-// like" machine-readable instead of prose an agent has to rediscover each
-// session. These tests cover the schema, the blocking check, the deterministic
-// target-completion-state output, and the skill's binding to all three.
+// Issue #72 Phase 1: the reviewer capability record makes "which reviewers
+// exist, how are they triggered, what counts as completion" machine-readable
+// instead of prose an agent rediscovers each session.
+//
+// The record deliberately does NOT say where a reviewer's output appears.
+// Predicting the surface is a negative claim the Kernel forbids, and PR #73
+// broke it twice in one day: the same reviewer posted its result as a review
+// submission when it had findings and as a plain comment when it did not.
+// Completion is therefore read structurally where GitHub gives it meaning (a
+// submitted review bound to a commit), and from a declared marker only on the
+// surfaces GitHub leaves semantics-free.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = path.join(root, "test", "fixtures", "consumer");
+const TARGET_PATTERN = "Reviewed commit:[^0-9a-fA-F]*([0-9a-fA-F]{7,40})";
 
 function containsText(haystack, needle) {
   return haystack.replace(/\s+/g, "").includes(needle.replace(/\s+/g, ""));
@@ -30,12 +38,7 @@ function baseReviewer(overrides = {}) {
     provider_family: "family-one",
     actors: ["r1-bot"],
     trigger: { kind: "comment_command", value: "@r1 review" },
-    result_surfaces: ["conversation_comments"],
-    completion_marker: {
-      surfaces: ["conversation_comments"],
-      any_of: ["Reviewed commit:"],
-      target_pattern: "Reviewed commit:[*\\s`]*([0-9a-fA-F]{7,40})",
-    },
+    completion_marker: { any_of: ["Reviewed commit:"], target_pattern: TARGET_PATTERN },
     fallback_order: [],
     observed_at: "2026-09-02",
     ...overrides,
@@ -95,8 +98,7 @@ test("validateReviewerRecord accepts a minimal record and names each missing req
           default_class: "blocking",
           actors: [],
           trigger: { kind: "comment_command" },
-          result_surfaces: ["nope"],
-          completion_marker: { surfaces: ["conversation_comments"], any_of: ["done"] },
+          completion_marker: { any_of: [] },
           fallback_order: ["ghost", "r1"],
           observed_at: "yesterday",
         },
@@ -108,77 +110,43 @@ test("validateReviewerRecord accepts a minimal record and names each missing req
   assert.match(joined, /default_class: must be one of required \/ expected \/ advisory/);
   assert.match(joined, /actors: must be a non-empty array/);
   assert.match(joined, /trigger\.value: comment_command needs the literal command/);
-  assert.match(joined, /result_surfaces: unknown surface "nope"/);
-  assert.match(joined, /completion_marker: needs target_field or target_pattern/);
+  assert.match(joined, /completion_marker\.any_of: must be a non-empty array/);
   assert.match(joined, /fallback_order: unknown reviewer id "ghost"/);
   assert.match(joined, /fallback_order: must not list the reviewer itself/);
   assert.match(joined, /observed_at: must be a YYYY-MM-DD date/);
 });
 
-test("a completion marker cannot bind through a field that follows the moving head", () => {
-  // Acquisition & Validity Contract: a field that tracks the current head
-  // re-points at the new target after a push, which is exactly how an
-  // ancestor-target review gets mistaken for completion at the current target.
-  const unstable = validateReviewerRecord(
+test("the record may not predict which surface a reviewer posts to", () => {
+  // The defect this rejects is the one PR #73 hit twice. `result_surfaces` and
+  // a marker's `surfaces` are negative claims ("it does not post anywhere
+  // else"), and `target_field` is a property of the surface rather than of the
+  // reviewer — all three are the evaluator's job, not the record's.
+  const errors = validateReviewerRecord(
     baseRecord({
       reviewers: [
         baseReviewer({
+          result_surfaces: ["conversation_comments"],
           completion_marker: {
-            surfaces: ["inline_review_comments"],
+            surfaces: ["review_submissions"],
             any_of: ["done"],
             target_field: "reviewed_sha",
           },
         }),
       ],
     }),
-  );
-  assert.match(unstable.join("\n"), /follows the moving head and cannot bind a reviewed target/);
+  ).join("\n");
 
-  const stable = validateReviewerRecord(
-    baseRecord({
-      reviewers: [
-        baseReviewer({
-          completion_marker: {
-            surfaces: ["inline_review_comments"],
-            any_of: ["done"],
-            target_field: "original_commit_sha",
-          },
-        }),
-      ],
-    }),
-  );
-  assert.deepEqual(stable, []);
+  assert.match(errors, /result_surfaces: not supported/);
+  assert.match(errors, /completion_marker\.surfaces: not supported/);
+  assert.match(errors, /completion_marker\.target_field: not supported/);
 });
 
-test("head-bound surfaces are exempt from the target binding requirement, others are not", () => {
+test("every marker is optional, because structural evidence needs none", () => {
+  // A reviewer that submits GitHub reviews is fully readable without any
+  // declared text at all.
   assert.deepEqual(
-    validateReviewerRecord(
-      baseRecord({
-        reviewers: [
-          baseReviewer({
-            result_surfaces: ["check_runs"],
-            completion_marker: { surfaces: ["check_runs"], any_of: ["review completed"] },
-          }),
-        ],
-      }),
-    ),
+    validateReviewerRecord(baseRecord({ reviewers: [baseReviewer({ completion_marker: undefined })] })),
     [],
-  );
-
-  assert.match(
-    validateReviewerRecord(
-      baseRecord({
-        reviewers: [
-          baseReviewer({
-            completion_marker: {
-              surfaces: ["conversation_comments", "check_runs"],
-              any_of: ["done"],
-            },
-          }),
-        ],
-      }),
-    ).join("\n"),
-    /completion_marker: needs target_field or target_pattern/,
   );
 });
 
@@ -186,15 +154,7 @@ test("a target_pattern must compile and actually capture something", () => {
   assert.match(
     validateReviewerRecord(
       baseRecord({
-        reviewers: [
-          baseReviewer({
-            completion_marker: {
-              surfaces: ["conversation_comments"],
-              any_of: ["done"],
-              target_pattern: "Reviewed commit: [0-9a-f]+",
-            },
-          }),
-        ],
+        reviewers: [baseReviewer({ completion_marker: { any_of: ["done"], target_pattern: "Reviewed commit: [0-9a-f]+" } })],
       }),
     ).join("\n"),
     /must contain at least one capture group/,
@@ -202,17 +162,7 @@ test("a target_pattern must compile and actually capture something", () => {
 
   assert.match(
     validateReviewerRecord(
-      baseRecord({
-        reviewers: [
-          baseReviewer({
-            completion_marker: {
-              surfaces: ["conversation_comments"],
-              any_of: ["done"],
-              target_pattern: "([",
-            },
-          }),
-        ],
-      }),
+      baseRecord({ reviewers: [baseReviewer({ completion_marker: { any_of: ["done"], target_pattern: "([" } })] }),
     ).join("\n"),
     /invalid regular expression/,
   );
@@ -221,9 +171,7 @@ test("a target_pattern must compile and actually capture something", () => {
 test("the portfolio decision is required and internally consistent", () => {
   assert.deepEqual(
     validateReviewerRecord(
-      baseRecord({
-        required_selection: { count: 1, prefer: "different-provider-family-from-implementer" },
-      }),
+      baseRecord({ required_selection: { count: 1, prefer: "different-provider-family-from-implementer" } }),
     ),
     [],
   );
@@ -348,7 +296,27 @@ function comment(body, { actor = "r1-bot", created = "2026-09-01T00:00:00Z", upd
   };
 }
 
-function snapshot({ conversation = [], headSha = HEAD, failedSurfaces = [] } = {}) {
+function submission({
+  actor = "r1-bot",
+  sha = HEAD,
+  state = "COMMENTED",
+  body = "",
+  at = "2026-09-01T00:00:00Z",
+  id = 1,
+} = {}) {
+  return {
+    id,
+    actor,
+    actor_type: "Bot",
+    state,
+    reviewed_sha: sha,
+    submitted_at: at,
+    locator: `https://github.com/octo/demo/pull/1#pullrequestreview-${id}`,
+    body,
+  };
+}
+
+function snapshot({ conversation = [], submissions = [], headSha = HEAD, failedSurfaces = [] } = {}) {
   const surface = (key, items) => ({
     fetch_status: failedSurfaces.includes(key) ? "failed" : "fetched",
     count: failedSurfaces.includes(key) ? null : items.length,
@@ -362,14 +330,10 @@ function snapshot({ conversation = [], headSha = HEAD, failedSurfaces = [] } = {
     pr_metadata: { fetch_status: "fetched", head_sha: headSha },
     surfaces: {
       conversation_comments: surface("conversation_comments", conversation),
-      review_submissions: surface("review_submissions", []),
+      review_submissions: surface("review_submissions", submissions),
       inline_review_comments: surface("inline_review_comments", []),
       review_threads: surface("review_threads", []),
-      commit_status: {
-        fetch_status: "fetched",
-        failure: null,
-        status: { state: "success", statuses: [] },
-      },
+      commit_status: { fetch_status: "fetched", failure: null, status: { state: "success", statuses: [] } },
       check_runs: surface("check_runs", []),
     },
     fetch_failures: 0,
@@ -377,10 +341,10 @@ function snapshot({ conversation = [], headSha = HEAD, failedSurfaces = [] } = {
 }
 
 const FULL_REVIEWER = baseReviewer({
-  non_participation_marker: { surfaces: ["conversation_comments"], any_of: ["review skipped"] },
-  rate_limit_marker: { surfaces: ["conversation_comments"], any_of: ["Review rate limited"] },
-  failure_marker: { surfaces: ["conversation_comments"], any_of: ["max-turns"] },
-  in_flight_marker: { surfaces: ["conversation_comments"], any_of: ["is working"] },
+  non_participation_marker: { any_of: ["review skipped"] },
+  rate_limit_marker: { any_of: ["Review rate limited"] },
+  failure_marker: { any_of: ["max-turns"] },
+  in_flight_marker: { any_of: ["is working"] },
   fallback_order: [],
 });
 
@@ -393,27 +357,63 @@ function stateFor(conversation, { targetSha = HEAD, reviewer = FULL_REVIEWER, si
   return evaluateReviewerStates(snapshot({ conversation, ...rest }), record, { targetSha, since }).reviewers[0];
 }
 
-test("a completion marker bound to the expected target reports completed@target with its locator", () => {
-  const state = stateFor([comment(`Done. **Reviewed commit:** \`${HEAD}\``, { id: 7 })]);
+test("a submitted review bound to the target completes without any declared marker", () => {
+  // GitHub's own schema says a review submission is a review act on commit_id.
+  // Nothing about the provider's output format is needed to read it.
+  const reviewer = baseReviewer({ completion_marker: undefined });
+  const state = stateFor([], { reviewer, submissions: [submission({ sha: HEAD, id: 9 })] });
+
+  assert.equal(state.target_completion_state, "completed@target");
+  assert.equal(state.reason, "structural_review_submission_at_target");
+  assert.equal(state.matched_evidence[0].marker_kind, "structural_review_submission");
+  assert.equal(state.matched_evidence[0].marker, null);
+  assert.equal(state.matched_evidence[0].locator, "https://github.com/octo/demo/pull/1#pullrequestreview-9");
+});
+
+test("a submitted review bound to an ancestor is not-bound, and a draft is not a review act", () => {
+  const ancestor = stateFor([], { submissions: [submission({ sha: ANCESTOR })] });
+  assert.equal(ancestor.target_completion_state, "not-bound");
+  assert.equal(ancestor.reason, "completion_evidence_bound_to_other_target");
+
+  const draft = stateFor([], { submissions: [submission({ sha: HEAD, state: "PENDING" })] });
+  assert.equal(draft.target_completion_state, "unknown");
+});
+
+test("a submission by a different actor never completes this reviewer's slot", () => {
+  const state = stateFor([], { submissions: [submission({ actor: "someone-else", sha: HEAD })] });
+  assert.equal(state.target_completion_state, "unknown");
+  assert.equal(state.reason, "no_completion_evidence");
+});
+
+test("the declared marker is the fallback when the reviewer left no submission", () => {
+  // PR #73 closure round 2: with no findings the reviewer posted only a plain
+  // comment. GitHub gives that no review semantics, so the marker is what makes
+  // it readable — and the record does not have to know it was a comment.
+  const state = stateFor([comment(`Review done. **Reviewed commit:** \`${HEAD}\``, { id: 7 })]);
 
   assert.equal(state.target_completion_state, "completed@target");
   assert.equal(state.reason, "completion_marker_bound_to_target");
-  assert.equal(state.operational_signal, "none");
-  assert.equal(state.evidence_complete, true);
   assert.equal(state.matched_evidence[0].marker, "Reviewed commit:");
-  assert.equal(state.matched_evidence[0].locator, "https://github.com/octo/demo/pull/1#issuecomment-7");
   assert.equal(state.matched_evidence[0].bound_target, HEAD);
+});
+
+test("a marker is searched on every fetched surface, not a declared one", () => {
+  // The same marker text is read wherever the reviewer put it. Switching
+  // surfaces cannot break the record.
+  const viaComment = stateFor([comment(`Reviewed commit: ${HEAD}`)]);
+  assert.equal(viaComment.target_completion_state, "completed@target");
+
+  // In a submission body the surface's own commit field wins over the text, and
+  // here it points elsewhere — so this is not-bound rather than a false pass.
+  const viaSubmissionBody = stateFor([], {
+    submissions: [submission({ sha: ANCESTOR, body: `Reviewed commit: ${HEAD}` })],
+  });
+  assert.equal(viaSubmissionBody.target_completion_state, "not-bound");
 });
 
 test("an abbreviated SHA binds, but a too-short prefix does not", () => {
   assert.equal(stateFor([comment("Reviewed commit: abc1234")]).target_completion_state, "completed@target");
   assert.equal(stateFor([comment("Reviewed commit: abc123")]).target_completion_state, "unknown");
-});
-
-test("a completion bound to an ancestor target is not-bound, never completed@target", () => {
-  const state = stateFor([comment(`**Reviewed commit:** ${ANCESTOR}`)]);
-  assert.equal(state.target_completion_state, "not-bound");
-  assert.equal(state.reason, "completion_marker_bound_to_other_target");
 });
 
 test("a completion marker whose target cannot be resolved stays unknown", () => {
@@ -442,7 +442,6 @@ test("a rate limit is an unknown state with a rate-limited signal and the declar
   assert.equal(state.target_completion_state, "unknown");
   assert.equal(state.operational_signal, "rate-limited");
   assert.deepEqual(state.fallback_order, ["r2"]);
-  assert.equal(state.matched_evidence[0].marker, "Review rate limited");
 });
 
 test("an in-flight run is signalled separately, so only that run's end is worth waiting for", () => {
@@ -466,23 +465,20 @@ test("completion at the target is not undone by a later rate limit or in-flight 
 test("markers only count when the item's actor is one of the reviewer's declared actors", () => {
   const state = stateFor([comment(`Reviewed commit: ${HEAD}`, { actor: "someone-else" })]);
   assert.equal(state.target_completion_state, "unknown");
-  assert.equal(state.reason, "no_matching_marker");
+  assert.equal(state.reason, "no_completion_evidence");
 });
 
 test("an in-place edited comment is judged on its current body, via updated_at", () => {
   // The single-comment-edited-in-place surface is exactly the one that makes an
   // arrived result look like it never came: the comment is old, its body is new.
   const state = stateFor([
-    comment(`Done. Reviewed commit: ${HEAD}`, {
-      created: "2026-09-01T00:00:00Z",
-      updated: "2026-09-02T10:00:00Z",
-    }),
+    comment(`Done. Reviewed commit: ${HEAD}`, { created: "2026-09-01T00:00:00Z", updated: "2026-09-02T10:00:00Z" }),
   ]);
   assert.equal(state.target_completion_state, "completed@target");
   assert.equal(state.matched_evidence[0].timestamp, "2026-09-02T10:00:00Z");
 });
 
-test("an incomplete fetch is reported as such and never becomes a no-marker conclusion", () => {
+test("an incomplete fetch is reported as such and never becomes a no-evidence conclusion", () => {
   const state = stateFor([], { failedSurfaces: ["conversation_comments"] });
   assert.equal(state.target_completion_state, "unknown");
   assert.equal(state.reason, "fetch_incomplete");
@@ -507,7 +503,7 @@ test("the expected target defaults to the snapshot head and says so", () => {
   assert.equal(explicit.reviewers[0].target_completion_state, "not-bound");
 });
 
-// --- regressions found by the PR #73 canary review ------------------------
+// --- regressions found by the PR #73 canary review --------------------------
 
 test("a stale non-completion marker from an earlier run does not decide the current target", () => {
   // Codex P1 / CodeRabbit: a `max-turns` or rate-limit comment posted for an
@@ -521,17 +517,18 @@ test("a stale non-completion marker from an earlier run does not decide the curr
 
   const state = stateFor(conversation);
   assert.equal(state.target_completion_state, "unknown");
-  assert.equal(state.reason, "no_matching_marker", "a pre-anchor failure marker must not report `failed`");
+  assert.equal(state.reason, "no_completion_evidence", "a pre-anchor failure marker must not report `failed`");
   assert.equal(state.operational_signal, "none", "a pre-anchor rate limit must not trigger a fallback");
   assert.equal(state.run_anchor, "2026-09-02T00:00:00Z");
 
-  // Still visible as evidence, with the reason it was not applied.
   const stale = state.matched_evidence.find((match) => match.marker_kind === "failure_marker");
   assert.equal(stale.applies, false);
   assert.equal(stale.scope, "before-run-anchor");
 
-  // The same marker posted after the anchor does decide the state.
-  const fresh = stateFor([...conversation, comment("stopped: max-turns reached", { created: "2026-09-02T00:01:00Z", id: 4 })]);
+  const fresh = stateFor([
+    ...conversation,
+    comment("stopped: max-turns reached", { created: "2026-09-02T00:01:00Z", id: 4 }),
+  ]);
   assert.equal(fresh.target_completion_state, "failed");
 });
 
@@ -558,18 +555,20 @@ test("run scoping compares instants, not timestamp strings", () => {
   const reviewer = { ...FULL_REVIEWER, trigger: { kind: "automatic" } };
   const conversation = [comment("Review rate limited", { created: "2026-09-02T03:30:00Z" })];
 
-  assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T12:00:00+09:00" }).operational_signal, "rate-limited");
+  assert.equal(
+    stateFor(conversation, { reviewer, since: "2026-09-02T12:00:00+09:00" }).operational_signal,
+    "rate-limited",
+  );
   assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T13:00:00+09:00" }).operational_signal, "none");
 });
 
 test("a comment whose author is unknown never stands in for the reviewer", () => {
   // Codex P2: `actor: null` (e.g. a deleted account) bypassed the actor check
   // entirely, so any comment carrying a generic marker could complete a
-  // required review. Only the head-bound per-commit surfaces legitimately have
-  // no author.
+  // required review.
   const state = stateFor([comment(`Reviewed commit: ${HEAD}`, { actor: null })]);
   assert.equal(state.target_completion_state, "unknown");
-  assert.equal(state.reason, "no_matching_marker");
+  assert.equal(state.reason, "no_completion_evidence");
 });
 
 test("the CLI rejects a flag with no value instead of silently ignoring it", () => {
@@ -584,39 +583,76 @@ test("the CLI rejects a flag with no value instead of silently ignoring it", () 
     () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--reviewers", "--json"]),
     /--reviewers must be followed by a value/,
   );
-  assert.throws(() => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--target-sha"]), /must be followed by a value/);
+  assert.throws(
+    () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--target-sha"]),
+    /must be followed by a value/,
+  );
   assert.throws(() => parseReviewEvidenceArgs(["--repo", "--pr", "1"]), /--repo must be followed by a value/);
 });
 
-test("the record's observed markers match what the reviewers actually posted on PR #73", () => {
-  // The canary result: completion lands on review_submissions, whose commit_id
-  // is a stable reviewed target, not on a conversation comment. The record was
-  // wrong about both the surface and Codex's actor login until this was
-  // measured against a real PR.
-  const example = JSON.parse(readFileSync(path.join(root, "templates", "reviewers.example.json"), "utf8"));
-  const byId = Object.fromEntries(example.reviewers.map((reviewer) => [reviewer.id, reviewer]));
-
-  for (const id of ["codex", "coderabbitai"]) {
-    assert.deepEqual(byId[id].completion_marker.surfaces, ["review_submissions"], `${id}: measured completion surface`);
-    assert.equal(byId[id].completion_marker.target_field, "reviewed_sha", `${id}: stable binding field`);
-    assert.ok(byId[id].result_surfaces.includes("review_submissions"));
-  }
-  assert.deepEqual(byId.codex.actors, ["chatgpt-codex-connector[bot]"]);
-  assert.ok(byId.coderabbitai.actors.includes("coderabbitai[bot]"));
-
-  // The untested entry has to say so rather than look equally measured.
-  assert.ok(byId.claude.notes.includes("未実測"));
-});
-
-test("the CLI accepts --reviewers and --target-sha and rejects a malformed SHA", () => {
+test("the CLI accepts --reviewers, --target-sha and --since, and rejects malformed values", () => {
   assert.deepEqual(
-    parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--reviewers", "r.json", "--target-sha", "abc1234"]),
-    { json: false, repo: "octo/demo", pr: "1", reviewers: "r.json", targetSha: "abc1234" },
+    parseReviewEvidenceArgs([
+      "--repo",
+      "octo/demo",
+      "--pr",
+      "1",
+      "--reviewers",
+      "r.json",
+      "--target-sha",
+      "abc1234",
+      "--since",
+      "2026-09-02T00:00:00Z",
+    ]),
+    {
+      json: false,
+      repo: "octo/demo",
+      pr: "1",
+      reviewers: "r.json",
+      targetSha: "abc1234",
+      since: "2026-09-02T00:00:00Z",
+    },
   );
   assert.throws(
     () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--target-sha", "nope"]),
     /--target-sha must be a commit SHA/,
   );
+  assert.throws(
+    () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--since", "yesterday"]),
+    /--since must be an ISO 8601 timestamp/,
+  );
+});
+
+test("the record carries identity and trigger, and only the observed fallback text", () => {
+  // What survived three review rounds on PR #73: the record says who posts and
+  // how to start them, plus the minimum text needed on surfaces GitHub leaves
+  // semantics-free. It says nothing about where the output lands.
+  const example = JSON.parse(readFileSync(path.join(root, "templates", "reviewers.example.json"), "utf8"));
+  const byId = Object.fromEntries(example.reviewers.map((reviewer) => [reviewer.id, reviewer]));
+
+  for (const reviewer of example.reviewers) {
+    assert.ok(!("result_surfaces" in reviewer), `${reviewer.id} must not declare result surfaces`);
+    for (const kind of [
+      "completion_marker",
+      "non_participation_marker",
+      "rate_limit_marker",
+      "failure_marker",
+      "in_flight_marker",
+    ]) {
+      const marker = reviewer[kind];
+      if (!marker) continue;
+      assert.ok(!("surfaces" in marker), `${reviewer.id}.${kind} must not declare surfaces`);
+      assert.ok(!("target_field" in marker), `${reviewer.id}.${kind} must not declare a target field`);
+    }
+  }
+
+  // Identity is measured, not guessed: the login carries the [bot] suffix the
+  // API actually returns.
+  assert.deepEqual(byId.codex.actors, ["chatgpt-codex-connector[bot]"]);
+  assert.ok(byId.coderabbitai.actors.includes("coderabbitai[bot]"));
+
+  // The untested entry has to say so rather than look equally measured.
+  assert.ok(byId.claude.notes.includes("未実測"));
 });
 
 // --- skill binding ----------------------------------------------------------
@@ -633,24 +669,18 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
     "Selection must start by reading the record and stop when it is absent",
   );
 
-  // Execution dispatches on the record's own trigger.kind, and the comment
-  // route carries the frozen target into the reviewer's output so completion
-  // becomes bindable. CodeRabbit on PR #73: a single "post trigger.value as a
-  // comment" instruction was wrong for the automatic / operator_configured
-  // kinds, which have no trigger.value to post.
+  // Execution dispatches on the record's own trigger.kind. CodeRabbit on PR
+  // #73: a single "post trigger.value as a comment" instruction was wrong for
+  // the automatic / operator_configured kinds, which have no value to post.
   assert.ok(containsText(skill, "起動方法は record の `trigger.kind` で分岐します"));
   for (const kind of ["comment_command", "automatic", "operator_configured"]) {
     assert.ok(containsText(skill, `- \`${kind}\`:`), `Execution must define a route for trigger.kind ${kind}`);
   }
-  assert.ok(
-    containsText(
-      skill,
-      "`trigger.target_argument` がある場合は `{target_sha}` を freeze した target へ置換して同じ comment に含め",
-    ),
-  );
 
   // Symptom 3 (#72): waiting for a result that already arrived.
-  assert.ok(containsText(skill, "in-place 編集される surface では、新着 comment ではなく既存 comment の本文変化を見ます。"));
+  assert.ok(
+    containsText(skill, "in-place 編集される surface では、新着 comment ではなく既存 comment の本文変化を見ます。"),
+  );
   assert.ok(containsText(skill, "node tooling/review-evidence.mjs --reviewers"));
 
   // The happy path has to be reachable before the exception handling. Compared
