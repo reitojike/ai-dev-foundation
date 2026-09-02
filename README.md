@@ -98,8 +98,8 @@ supported value としており、1 comment の in-place 編集は採用しま�
 
 **record は「結果がどの surface に出るか」を宣言しません。** それは provider の応答形式の
 決め打ちであり、`policy/core.md` の Review Adapter boundary が禁じる negative claim
-（「この provider はこの surface に出ない」）そのものです。helper は取得済みの全 surface を
-対象に判定します。したがって `result_surfaces`、marker の `surfaces`、marker の
+（「この provider はこの surface に出ない」）そのものです。どの surface をどう読むかは helper が
+GitHub 側の意味論から決めます。したがって `result_surfaces`、marker の `surfaces`、marker の
 `target_field` はいずれも schema が reject します。
 
 completion の判定は 2 段です。
@@ -110,13 +110,17 @@ completion の判定は 2 段です。
    review 行為として扱いません
 2. **宣言された marker（fallback）** — GitHub が review の意味を与えていない surface
    （通常の comment、status の description、check の name）に結果が落ちた場合のみ使います。
-   marker は surface を指定せず、helper が全 surface を検索します
+   marker は surface を指定せず、helper がこれらの surface を横断して検索します。逆に、
+   review の意味を持つ surface（review submission、inline review comment、review thread）
+   では marker を読みません。構造的経路が GitHub の規則で読んでおり、text でそれを上書き
+   できると、未提出 draft のように構造的経路が除外したものを surface の数だけ復活させる
+   経路ができるためです
 
-reviewed target への binding も surface の性質から helper が決めます。その surface が
-target 移動に追随しない commit field を持つならそれを使い（review submission の
-`commit_id`、inline review comment の `original_commit_id`）、無ければ record の
-`target_pattern` で本文から capture し、per-commit surface なら snapshot head に束縛します。
-どれも成立しなければ unbound として `unknown` を返します。
+reviewed target への binding も surface の性質から helper が決めます。review submission は
+target 移動に追随しない `commit_id` を持つためそれを使い、semantics-free な surface では
+record の `target_pattern` で本文から capture し、per-commit surface（commit status /
+check runs）なら snapshot head に束縛します。どれも成立しなければ unbound として
+`unknown` を返します。
 
 `check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
 non-zero で終了します。record の内容（どの reviewer を required にするか等）は

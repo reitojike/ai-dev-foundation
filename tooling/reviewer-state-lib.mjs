@@ -28,18 +28,30 @@ const SHA_MIN_PREFIX_LENGTH = 7;
 // here by a declared reviewer needs no marker to count as completion.
 const STRUCTURAL_COMPLETION_SURFACE = "review_submissions";
 
+// Surfaces GitHub gives no review semantics to. A marker is only read here,
+// because only here is the text the sole thing that distinguishes a finished
+// review from a progress note.
+//
+// The surfaces left out (review submissions, inline review comments, and the
+// review threads they belong to) already carry review meaning, and the
+// structural path reads them with GitHub's own rules — including which of them
+// are still unsubmitted drafts. Letting a marker match there too would re-admit
+// through text whatever the structural path deliberately excluded, once per
+// surface.
+const MARKER_SEARCH_SURFACES = ["conversation_comments", "commit_status", "check_runs"];
+
 // A submission that has not been submitted yet is a private draft, not a
 // completed review act.
 const DRAFT_SUBMISSION_STATE = "PENDING";
 
 // Per-surface commit fields that keep the target a run actually reviewed, even
 // after the PR head moves. This is a property of the surface, not of any
-// reviewer, so it lives here rather than in a consumer's record.
-// `inline_review_comments.reviewed_sha` and a review thread comment's commit
-// both follow the moving head and are deliberately absent.
+// reviewer, so it lives here rather than in a consumer's record. Only the
+// surfaces this evaluator reads for state appear: a submission's `commit_id`
+// is the reviewed target, while the semantics-free surfaces carry no commit at
+// all and fall back to the record's `target_pattern`.
 const SURFACE_TARGET_FIELD = {
   review_submissions: "reviewed_sha",
-  inline_review_comments: "original_commit_sha",
 };
 
 // The acquisition helper fetches these per-commit surfaces for the snapshot
@@ -244,13 +256,9 @@ function collectMatches(reviewer, evidence, kind, headSha, expectedTarget, ancho
   const marker = reviewer[kind];
   if (!marker) return [];
   const matches = [];
-  for (const surfaceKey of allSurfaceKeys(evidence)) {
+  for (const surfaceKey of MARKER_SEARCH_SURFACES) {
     for (const item of surfaceItems(evidence, surfaceKey)) {
       if (!isDeclaredActor(item, actors)) continue;
-      // A draft review is excluded from the structural path because it is not a
-      // review act yet. It has to be excluded here too, or the same draft could
-      // be promoted to completion through text in its body.
-      if (item.surface === STRUCTURAL_COMPLETION_SURFACE && item.state === DRAFT_SUBMISSION_STATE) continue;
       const markerText = matchedMarkerText(marker, item.body);
       if (markerText === null) continue;
       const match = {

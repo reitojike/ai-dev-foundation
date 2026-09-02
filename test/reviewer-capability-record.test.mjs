@@ -316,7 +316,7 @@ function submission({
   };
 }
 
-function snapshot({ conversation = [], submissions = [], headSha = HEAD, failedSurfaces = [] } = {}) {
+function snapshot({ conversation = [], submissions = [], inline = [], headSha = HEAD, failedSurfaces = [] } = {}) {
   const surface = (key, items) => ({
     fetch_status: failedSurfaces.includes(key) ? "failed" : "fetched",
     count: failedSurfaces.includes(key) ? null : items.length,
@@ -331,7 +331,7 @@ function snapshot({ conversation = [], submissions = [], headSha = HEAD, failedS
     surfaces: {
       conversation_comments: surface("conversation_comments", conversation),
       review_submissions: surface("review_submissions", submissions),
-      inline_review_comments: surface("inline_review_comments", []),
+      inline_review_comments: surface("inline_review_comments", inline),
       review_threads: surface("review_threads", []),
       commit_status: { fetch_status: "fetched", failure: null, status: { state: "success", statuses: [] } },
       check_runs: surface("check_runs", []),
@@ -397,14 +397,16 @@ test("the declared marker is the fallback when the reviewer left no submission",
   assert.equal(state.matched_evidence[0].bound_target, HEAD);
 });
 
-test("a marker is searched on every fetched surface, not a declared one", () => {
-  // The same marker text is read wherever the reviewer put it. Switching
-  // surfaces cannot break the record.
+test("a marker is searched on every semantics-free surface, not a declared one", () => {
+  // The same marker text is read wherever the reviewer put it among the
+  // surfaces GitHub leaves semantics-free. Switching between them cannot break
+  // the record.
   const viaComment = stateFor([comment(`Reviewed commit: ${HEAD}`)]);
   assert.equal(viaComment.target_completion_state, "completed@target");
 
-  // In a submission body the surface's own commit field wins over the text, and
-  // here it points elsewhere — so this is not-bound rather than a false pass.
+  // A surface that already carries review meaning is read structurally instead,
+  // by GitHub's own rules. Body text there never overrides them: this
+  // submission is bound elsewhere, so it is not-bound, not a completion.
   const viaSubmissionBody = stateFor([], {
     submissions: [submission({ sha: ANCESTOR, body: `Reviewed commit: ${HEAD}` })],
   });
@@ -515,16 +517,38 @@ test("an incomplete fetch blocks completion even when target-bound evidence was 
   assert.equal(signalled.reason, "fetch_incomplete");
 });
 
-test("a draft submission cannot be promoted to completion through its own body text", () => {
-  // The structural path already excludes a draft. Without the same exclusion on
-  // the marker path, a declared reviewer's unsubmitted draft carrying the
-  // marker and the target would complete the required slot.
-  const state = stateFor([], {
-    submissions: [submission({ sha: HEAD, state: "PENDING", body: `Reviewed commit: ${HEAD}` })],
-  });
+test("an unsubmitted draft cannot be promoted to completion through text, on any surface", () => {
+  // The structural path excludes a draft by GitHub's own rules. Marker text is
+  // never read on the surfaces that carry review meaning, so a draft cannot be
+  // re-admitted through its submission body, through its inline comments, or
+  // through the threads they belong to — the exclusion does not have to be
+  // repeated once per surface.
+  const body = `Reviewed commit: ${HEAD}`;
 
-  assert.equal(state.target_completion_state, "unknown");
-  assert.equal(state.reason, "no_completion_evidence");
+  const viaSubmissionBody = stateFor([], {
+    submissions: [submission({ sha: HEAD, state: "PENDING", body })],
+  });
+  assert.equal(viaSubmissionBody.target_completion_state, "unknown");
+  assert.equal(viaSubmissionBody.reason, "no_completion_evidence");
+
+  const viaInlineComment = stateFor([], {
+    inline: [
+      {
+        id: 1,
+        actor: "r1-bot",
+        path: "a.mjs",
+        line: 1,
+        reviewed_sha: HEAD,
+        original_commit_sha: HEAD,
+        created_at: "2026-09-01T00:00:00Z",
+        updated_at: "2026-09-01T00:00:00Z",
+        locator: "https://github.com/octo/demo/pull/1#discussion_r1",
+        body,
+      },
+    ],
+  });
+  assert.equal(viaInlineComment.target_completion_state, "unknown");
+  assert.equal(viaInlineComment.reason, "no_completion_evidence");
 });
 
 test("the expected target defaults to the snapshot head and says so", () => {
