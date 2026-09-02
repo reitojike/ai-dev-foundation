@@ -151,7 +151,6 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
               author { login }
               commit { oid }
               body
-              pullRequestReview { databaseId }
             }
           }
         }
@@ -174,7 +173,6 @@ query($id: ID!, $cursor: String) {
           author { login }
           commit { oid }
           body
-          pullRequestReview { databaseId }
         }
       }
     }
@@ -297,7 +295,6 @@ function normalizeReviewSubmission(item) {
 function normalizeInlineReviewComment(item) {
   return {
     id: item.id,
-    review_id: item.pull_request_review_id ?? null,
     actor: item.user?.login ?? null,
     actor_type: item.user?.type ?? null,
     path: item.path ?? null,
@@ -321,7 +318,6 @@ function normalizeReviewThread(node) {
     line: node.line ?? null,
     comments: (node.comments?.nodes ?? []).map((comment) => ({
       id: comment.id ?? null,
-      review_id: comment.pullRequestReview?.databaseId ?? null,
       actor: comment.author?.login ?? null,
       created_at: comment.createdAt ?? null,
       reviewed_sha: comment.commit?.oid ?? null,
@@ -505,42 +501,18 @@ export function formatHumanSummary(result) {
   return lines.join("\n");
 }
 
-const USAGE =
-  "Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>] [--reviewers <path>] [--target-sha <sha>] [--since <ISO timestamp>]";
-
-// Reads the value belonging to a flag. A trailing flag (or one followed by the
-// next flag) has no value: taking argv[index + 1] blindly would leave the field
-// `undefined` — which a later `!== undefined` guard skips — or silently swallow
-// the following flag as the value.
-function requireValue(argv, index, flag) {
-  const value = argv[index + 1];
-  if (value === undefined || value.startsWith("--")) {
-    throw new Error(`${flag} must be followed by a value. ${USAGE}`);
-  }
-  return value;
-}
-
 export function parseReviewEvidenceArgs(argv) {
   const args = { json: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--repo") {
-      args.repo = requireValue(argv, index, arg);
+      args.repo = argv[index + 1];
       index += 1;
     } else if (arg === "--pr") {
-      args.pr = requireValue(argv, index, arg);
+      args.pr = argv[index + 1];
       index += 1;
     } else if (arg === "--token") {
-      args.token = requireValue(argv, index, arg);
-      index += 1;
-    } else if (arg === "--reviewers") {
-      args.reviewers = requireValue(argv, index, arg);
-      index += 1;
-    } else if (arg === "--target-sha") {
-      args.targetSha = requireValue(argv, index, arg);
-      index += 1;
-    } else if (arg === "--since") {
-      args.since = requireValue(argv, index, arg);
+      args.token = argv[index + 1];
       index += 1;
     } else if (arg === "--json") {
       args.json = true;
@@ -549,16 +521,10 @@ export function parseReviewEvidenceArgs(argv) {
     }
   }
   if (!args.repo || !args.repo.includes("/")) {
-    throw new Error(USAGE);
+    throw new Error("Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>]");
   }
   if (!args.pr || !/^\d+$/.test(args.pr)) {
-    throw new Error(USAGE);
-  }
-  if (args.targetSha !== undefined && !/^[0-9a-f]{7,40}$/i.test(args.targetSha)) {
-    throw new Error("--target-sha must be a commit SHA (at least 7 hex characters)");
-  }
-  if (args.since !== undefined && Number.isNaN(Date.parse(args.since))) {
-    throw new Error("--since must be an ISO 8601 timestamp");
+    throw new Error("Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>]");
   }
   return args;
 }

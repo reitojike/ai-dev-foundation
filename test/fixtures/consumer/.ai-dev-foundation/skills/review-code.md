@@ -36,20 +36,19 @@ review でも同じ意味で適用します。
 5. 選んだ reviewer の `trigger.value` を PR へ comment として投稿する。
    `trigger.target_argument` があれば `{target_sha}` を freeze した SHA へ置換し、同じ
    comment に含める。
-6. state は会話内の記憶ではなく、次の fresh 取得で機械的に確認する。
+6. 状態は会話内の記憶ではなく、fresh 取得で確認する。
 
    ```text
-   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
-     --reviewers <consumer>/.ai-dev-foundation/reviewers.json --target-sha <freeze した SHA>
+   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json
    ```
 
-7. 出力の `target_completion_state` / `operational_signal` で次を決める。
-   - `completed@target` — finding を triage する（手順 6 以降）
-   - `rate-limited` — 復帰を待たない。record の `fallback_order` の次の reviewer へ進み、
+7. 取得した surface を record の marker と突き合わせて次を決める。
+   - record の completion marker を、freeze した target への resolvable な参照とともに
+     観測できた — finding を triage する（手順 6 以降）
+   - rate-limit marker — 復帰を待たない。record の `fallback_order` の次の reviewer へ進み、
      Selection amendment を記録する
-   - `in-flight` — その run の終端だけを待つ
-   - `declined` / `failed` / `not-bound` / `unknown` — `0 findings` へ変換せず、
-     Failure / retry（`policy/core.md`）に従う
+   - 非参加 marker / failure marker、または何も観測できない — `0 findings` へ変換せず、
+     Failure / retry（`policy/core.md`）に従う。沈黙を completion へ変換しない
    - advisory member — completion を待たず blocker にしない。ただし到着済みの finding は
      class に関係なく triage / Resolution の対象
 8. accepted finding を batch で fix し、target が動いたら targeted closure を回す。
@@ -178,8 +177,6 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    この skill で行う実務は次です。completion 判定は record の completion marker を、
    comment ID を指定した fresh 取得で確認します。in-place 編集される surface では、
    新着 comment ではなく既存 comment の本文変化を見ます。
-   `node tooling/review-evidence.mjs --reviewers <record> --target-sha <SHA> --json` は、
-   この判定を marker と locator つきで機械的に出力します。
    どの surface item を positive completion evidence とし、どの field / surface を安定と
    判断して binding の根拠にしたかを記録します。安定性を必要な精度で確認できないまま
    binding が成立したものとして扱わないでください。
@@ -417,9 +414,7 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 - `collectOutputs()`: GitHub 上の durable review surface の mechanical
   acquisition は、ai-dev-foundation checkout を利用できる場合、
   `tooling/review-evidence.mjs --json`（Issue #62、使い方・現在の
-  coverage は同 tool の README 参照）に置き換えます。`--reviewers` /
-  `--target-sha` を付けると、record の marker に基づく reviewer ごとの
-  target completion state も同じ snapshot から出力されます。fetch が failed /
+  coverage は同 tool の README 参照）に置き換えます。fetch が failed /
   partial な場合、または snapshot が review target に必要な evidence を
   カバーしない場合は、Review Adapter boundary（`policy/core.md`）に
   従い不足分を fresh acquisition します。empty や success への変換は

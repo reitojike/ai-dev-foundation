@@ -98,33 +98,15 @@ supported value としており、1 comment の in-place 編集は採用しま�
 
 **record は「結果がどの surface に出るか」を宣言しません。** それは provider の応答形式の
 決め打ちであり、`policy/core.md` の Review Adapter boundary が禁じる negative claim
-（「この provider はこの surface に出ない」）そのものです。どの surface をどう読むかは helper が
-GitHub 側の意味論から決めます。したがって `result_surfaces`、marker の `surfaces`、marker の
-`target_field` はいずれも schema が reject します。
+（「この provider はこの surface に出ない」）そのものです。したがって `result_surfaces`、
+marker の `surfaces`、marker の `target_field` はいずれも schema が reject します。
 
-completion の判定は 2 段です。
-
-1. **構造的 evidence（主経路、宣言不要）** — 宣言された actor による GitHub の review
-   submission。GitHub の schema 自身が「actor が `commit_id` に対して review を提出した」
-   ことを表すため、marker も surface の知識も要りません。未提出の draft（`PENDING`）は
-   review 行為として扱いません
-2. **宣言された marker（fallback）** — GitHub が review の意味を与えていない surface
-   （通常の comment、status の description、check の name）で必要になります。marker は
-   surface を指定せず、helper は取得済みの**全 surface**を横断して検索します。特定の
-   surface を検索対象から外すことはしません。それは「この provider はこの surface に
-   出ない」という negative claim であり、Review Adapter boundary が恒久化を禁じています
-
-どちらの経路も、**未提出 review（`PENDING`）に属するものは読みません**。除外は所有する
-review の id で 1 回だけ行うため、同じ draft の comment が inline review comment と
-review thread の両方に現れても再昇格しません。surface ごとに除外を書き足す必要もありません。
-これを可能にするため、helper は inline review comment と thread comment に、それが属する
-review の id（`review_id`）を保持します。
-
-reviewed target への binding も surface の性質から helper が決めます。target 移動に追随
-しない commit field を持つ surface ではそれを使い（review submission の `commit_id`、
-inline review comment の `original_commit_id`）、持たない surface では record の
-`target_pattern` で本文から capture し、per-commit surface（commit status / check runs）
-なら snapshot head に束縛します。どれも成立しなければ unbound として `unknown` を返します。
+marker は agent が読みます。GitHub 上の surface を fresh 取得し、record が宣言した
+marker と突き合わせて、その reviewer が freeze した target について完了しているかを
+判定するのは agent の作業です。この判定を helper で機械化することは Phase 1 の範囲外
+です（Issue #72 Phase 1b）。REST と GraphQL が同じ GitHub object を別表現で返すため、
+機械化には surface を跨いだ canonical identity model が必要であり、Phase 1 はそれを
+定義しません。
 
 `check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
 non-zero で終了します。record の内容（どの reviewer を required にするか等）は
@@ -155,50 +137,6 @@ snapshot tool です。
 ```text
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json]
 ```
-
-`--reviewers <path>`（reviewer capability record）を渡すと、同じ snapshot から
-reviewer ごとの target completion state も出力します。`--target-sha` で Selection
-Contract の expected target を指定します（省略時は snapshot の head SHA）。
-
-```text
-node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
-  --reviewers <consumer>/.ai-dev-foundation/reviewers.json --target-sha <frozen SHA>
-```
-
-出力の `reviewer_states.reviewers[]` は次を持ちます。
-
-- `target_completion_state`: `completed@target` / `not-bound` / `declined` / `failed` /
-  `unknown`。`policy/core.md` の語彙と同じです。`reason` が
-  `structural_review_submission_at_target` なら構造的 evidence、
-  `completion_marker_bound_to_target` なら marker fallback で判定されたことを表します。
-- `operational_signal`: `rate-limited` / `in-flight` / `none`。これは新しい state ではなく
-  `unknown` 側の refinement であり、次の一手（fallback へ進むか、走っている run の終端だけ
-  待つか）を分けるためだけに独立した field にしています。
-- `reason` と `matched_evidence`（判定に使った surface item の locator と literal marker）。
-  agent が本文を解釈し直さずに済むようにするためのものです。
-- `evidence_complete` / `incomplete_surfaces`: surface の fetch が 1 つでも完了していない
-  場合は `false` になります。**この間は結論を出しません。** target へ束縛された completion
-  evidence を見つけていても `completed@target` にはせず、`unknown` / `fetch_incomplete` を
-  返します（`declined` / `failed` / signal も同様）。取得できなかった surface が、その
-  completion に属する finding や、より新しい非参加宣言を持っている可能性があるためです。
-  見つかった evidence は `matched_evidence` に残るため、fetch 成功後に再実行すれば済みます。
-  fetch failure が `0 findings` へ変換されることはありません。
-- `run_anchor`: 「現在の run」の起点。`comment_command` trigger の場合は、その reviewer の
-  `trigger.value` を含む最新 comment の timestamp を自動で使います。target へ束縛できない
-  marker（rate limit / in-flight / 非参加 / failure）は、この anchor より古ければ過去の run
-  のものとして state に反映されず、`matched_evidence` に `applies: false` と
-  `scope: "before-run-anchor"` として残ります。anchor を確定できない場合（`automatic` /
-  `operator_configured` trigger で `--since` を渡していない等）は `scope: "unscoped"` として
-  同様に適用しません。それらの trigger で marker を state へ反映させるには
-  `--since <ISO timestamp>` を渡します。anchor との比較は時刻値で行うため、`--since` には
-  任意の UTC offset を使えます。
-- `record_digest`: 判定に使った record file の sha256。Selection / run record にこれを
-  併記すると、run の途中で record を編集した場合に判定条件の変化を検知できます。
-
-この state 出力も mechanical acquisition の範囲に留まります。record が宣言した marker の
-照合と SHA の比較のみを行い、finding の分類、review obligation の充足判定、merge 可否の
-判断は行いません。`commit_status` / `check_runs` は normalize 後に投稿者を保持しないため、
-これらの surface 上の item は actor では絞り込めず marker 一致のみで判定されます。
 
 GitHub token は `--token`、`GH_TOKEN`、`GITHUB_TOKEN`、`gh auth token` の順で
 解決します。surface ごとに `fetch_status`（`fetched` / `partial` / `failed` /
