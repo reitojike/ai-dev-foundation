@@ -8,12 +8,16 @@
 //   1. Structural — a submitted GitHub review by a declared actor. GitHub's own
 //      schema says that is a review act bound to `commit_id`, so no text
 //      matching and no provider knowledge is involved at all.
-//   2. Declared markers — the fallback for surfaces GitHub gives no review
-//      semantics to (a plain comment, a status description, a check name),
-//      where nothing but the text distinguishes a finished review from a
-//      progress note. Markers name no surface: every fetched surface is
-//      searched, and the reviewed target comes from the surface's own commit
-//      field when it has one.
+//   2. Declared markers — for the surfaces GitHub gives no review semantics to
+//      (a plain comment, a status description, a check name), where nothing but
+//      the text distinguishes a finished review from a progress note. Markers
+//      name no surface: every fetched surface is searched, and the reviewed
+//      target comes from the surface's own commit field when it has one.
+//
+// Neither path reads anything belonging to an unsubmitted review. That is one
+// exclusion keyed on the owning review's id, not one per surface: a surface
+// allowlist would be a negative claim about where a provider posts, which the
+// Review Adapter boundary forbids fixing permanently.
 //
 // This module stays inside the same boundary as the acquisition helper: it
 // matches declared text and compares SHAs. It never categorizes a finding,
@@ -28,30 +32,41 @@ const SHA_MIN_PREFIX_LENGTH = 7;
 // here by a declared reviewer needs no marker to count as completion.
 const STRUCTURAL_COMPLETION_SURFACE = "review_submissions";
 
-// Surfaces GitHub gives no review semantics to. A marker is only read here,
-// because only here is the text the sole thing that distinguishes a finished
-// review from a progress note.
-//
-// The surfaces left out (review submissions, inline review comments, and the
-// review threads they belong to) already carry review meaning, and the
-// structural path reads them with GitHub's own rules — including which of them
-// are still unsubmitted drafts. Letting a marker match there too would re-admit
-// through text whatever the structural path deliberately excluded, once per
-// surface.
-const MARKER_SEARCH_SURFACES = ["conversation_comments", "commit_status", "check_runs"];
-
 // A submission that has not been submitted yet is a private draft, not a
 // completed review act.
 const DRAFT_SUBMISSION_STATE = "PENDING";
 
+// An unsubmitted review is not a review act. Its own submission is excluded
+// structurally, and every comment that belongs to it is excluded by the same
+// id — on whichever surface that comment appears. Excluding whole surfaces
+// instead would be a negative claim about where a provider posts, which the
+// Review Adapter boundary forbids fixing permanently, and it would drop
+// legitimate evidence a reviewer left on a review-bearing surface.
+function draftReviewIds(evidence) {
+  const ids = new Set();
+  for (const item of evidence?.surfaces?.review_submissions?.items ?? []) {
+    if (item.state !== DRAFT_SUBMISSION_STATE) continue;
+    if (item.id === null || item.id === undefined) continue;
+    ids.add(String(item.id));
+  }
+  return ids;
+}
+
+function belongsToDraftReview(item, drafts) {
+  if (item.surface === STRUCTURAL_COMPLETION_SURFACE) return item.state === DRAFT_SUBMISSION_STATE;
+  if (item.review_id === null || item.review_id === undefined) return false;
+  return drafts.has(String(item.review_id));
+}
+
 // Per-surface commit fields that keep the target a run actually reviewed, even
 // after the PR head moves. This is a property of the surface, not of any
-// reviewer, so it lives here rather than in a consumer's record. Only the
-// surfaces this evaluator reads for state appear: a submission's `commit_id`
-// is the reviewed target, while the semantics-free surfaces carry no commit at
-// all and fall back to the record's `target_pattern`.
+// reviewer, so it lives here rather than in a consumer's record.
+// `inline_review_comments.reviewed_sha` and a review thread comment's commit
+// both follow the moving head and are deliberately absent; a surface with no
+// entry falls back to the record's `target_pattern`.
 const SURFACE_TARGET_FIELD = {
   review_submissions: "reviewed_sha",
+  inline_review_comments: "original_commit_sha",
 };
 
 // The acquisition helper fetches these per-commit surfaces for the snapshot
@@ -84,6 +99,7 @@ function surfaceItems(evidence, surfaceKey) {
         locator: item.locator,
         timestamp: item.submitted_at,
         state: item.state,
+        id: item.id ?? null,
         fields: { reviewed_sha: item.reviewed_sha },
       }));
     case "inline_review_comments":
@@ -93,6 +109,7 @@ function surfaceItems(evidence, surfaceKey) {
         body: item.body,
         locator: item.locator,
         timestamp: item.updated_at ?? item.created_at,
+        review_id: item.review_id ?? null,
         fields: { reviewed_sha: item.reviewed_sha, original_commit_sha: item.original_commit_sha },
       }));
     case "review_threads":
@@ -103,6 +120,7 @@ function surfaceItems(evidence, surfaceKey) {
           body: comment.body,
           locator: comment.locator,
           timestamp: comment.created_at,
+          review_id: comment.review_id ?? null,
           fields: {},
         })),
       );
@@ -234,9 +252,9 @@ function scopeMatch(match, expectedTarget, anchor) {
 
 // Structural completion evidence: this reviewer's own submitted GitHub review.
 // No marker, no surface prediction — GitHub's schema already says what it is.
-function structuralCompletions(evidence, actors, expectedTarget, headSha) {
+function structuralCompletions(evidence, actors, expectedTarget, headSha, drafts) {
   return surfaceItems(evidence, STRUCTURAL_COMPLETION_SURFACE)
-    .filter((item) => isDeclaredActor(item, actors) && item.state !== DRAFT_SUBMISSION_STATE)
+    .filter((item) => isDeclaredActor(item, actors) && !belongsToDraftReview(item, drafts))
     .map((item) => {
       const match = {
         marker_kind: "structural_review_submission",
@@ -252,13 +270,14 @@ function structuralCompletions(evidence, actors, expectedTarget, headSha) {
     .sort(byTimestampDescending);
 }
 
-function collectMatches(reviewer, evidence, kind, headSha, expectedTarget, anchor, actors) {
+function collectMatches(reviewer, evidence, kind, headSha, expectedTarget, anchor, actors, drafts) {
   const marker = reviewer[kind];
   if (!marker) return [];
   const matches = [];
-  for (const surfaceKey of MARKER_SEARCH_SURFACES) {
+  for (const surfaceKey of allSurfaceKeys(evidence)) {
     for (const item of surfaceItems(evidence, surfaceKey)) {
       if (!isDeclaredActor(item, actors)) continue;
+      if (belongsToDraftReview(item, drafts)) continue;
       const markerText = matchedMarkerText(marker, item.body);
       if (markerText === null) continue;
       const match = {
@@ -282,9 +301,13 @@ function evaluateReviewer(reviewer, evidence, expectedTarget, headSha, since) {
   const runAnchor = runAnchorTimestamp(reviewer, evidence, since);
   const actors = new Set((reviewer.actors ?? []).map((actor) => actor.toLowerCase()));
 
-  const structural = structuralCompletions(evidence, actors, expectedTarget, headSha);
+  const drafts = draftReviewIds(evidence);
+  const structural = structuralCompletions(evidence, actors, expectedTarget, headSha, drafts);
   const matches = Object.fromEntries(
-    MARKER_KINDS.map((kind) => [kind, collectMatches(reviewer, evidence, kind, headSha, expectedTarget, runAnchor, actors)]),
+    MARKER_KINDS.map((kind) => [
+      kind,
+      collectMatches(reviewer, evidence, kind, headSha, expectedTarget, runAnchor, actors, drafts),
+    ]),
   );
   // Only in-scope matches may set state or signal. Out-of-scope ones stay in
   // matched_evidence so the reason a stale marker was NOT applied is visible.

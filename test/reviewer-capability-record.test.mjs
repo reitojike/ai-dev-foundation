@@ -316,7 +316,41 @@ function submission({
   };
 }
 
-function snapshot({ conversation = [], submissions = [], inline = [], headSha = HEAD, failedSurfaces = [] } = {}) {
+function inlineComment({ actor = "r1-bot", body = "", original = HEAD, reviewId = null, id = 1 } = {}) {
+  return {
+    id,
+    review_id: reviewId,
+    actor,
+    actor_type: "Bot",
+    path: "a.mjs",
+    line: 1,
+    // reviewed_sha follows the moving head; original_commit_sha is the stable
+    // reviewed target, and is the one the evaluator binds on.
+    reviewed_sha: HEAD,
+    original_commit_sha: original,
+    created_at: "2026-09-01T00:00:00Z",
+    updated_at: "2026-09-01T00:00:00Z",
+    locator: `https://github.com/octo/demo/pull/1#discussion_r${id}`,
+    body,
+  };
+}
+
+function threadComment({ actor = "r1-bot", body = "", reviewId = null, id = 1 } = {}) {
+  return {
+    id: `thread-comment-${id}`,
+    review_id: reviewId,
+    actor,
+    created_at: "2026-09-01T00:00:00Z",
+    locator: `https://github.com/octo/demo/pull/1#discussion_r${id}`,
+    body,
+  };
+}
+
+function thread(comments) {
+  return { id: "thread-1", is_resolved: false, is_outdated: false, path: "a.mjs", line: 1, comments };
+}
+
+function snapshot({ conversation = [], submissions = [], inline = [], threads = [], headSha = HEAD, failedSurfaces = [] } = {}) {
   const surface = (key, items) => ({
     fetch_status: failedSurfaces.includes(key) ? "failed" : "fetched",
     count: failedSurfaces.includes(key) ? null : items.length,
@@ -332,7 +366,7 @@ function snapshot({ conversation = [], submissions = [], inline = [], headSha = 
       conversation_comments: surface("conversation_comments", conversation),
       review_submissions: surface("review_submissions", submissions),
       inline_review_comments: surface("inline_review_comments", inline),
-      review_threads: surface("review_threads", []),
+      review_threads: surface("review_threads", threads),
       commit_status: { fetch_status: "fetched", failure: null, status: { state: "success", statuses: [] } },
       check_runs: surface("check_runs", []),
     },
@@ -347,6 +381,8 @@ const FULL_REVIEWER = baseReviewer({
   in_flight_marker: { any_of: ["is working"] },
   fallback_order: [],
 });
+
+const MARKERLESS = baseReviewer({ completion_marker: undefined });
 
 function stateFor(conversation, { targetSha = HEAD, reviewer = FULL_REVIEWER, since, ...rest } = {}) {
   const record = {
@@ -397,20 +433,22 @@ test("the declared marker is the fallback when the reviewer left no submission",
   assert.equal(state.matched_evidence[0].bound_target, HEAD);
 });
 
-test("a marker is searched on every semantics-free surface, not a declared one", () => {
-  // The same marker text is read wherever the reviewer put it among the
-  // surfaces GitHub leaves semantics-free. Switching between them cannot break
-  // the record.
-  const viaComment = stateFor([comment(`Reviewed commit: ${HEAD}`)]);
-  assert.equal(viaComment.target_completion_state, "completed@target");
+test("a marker is searched on every fetched surface, and no surface is excluded a priori", () => {
+  // No surface allowlist: excluding whole surfaces would be a negative claim
+  // about where a provider posts. Each surface below carries the same marker
+  // and each one alone is enough to bind the target.
+  const found = (options) => stateFor([], options).target_completion_state;
+  const body = `Reviewed commit: ${HEAD}`;
 
-  // A surface that already carries review meaning is read structurally instead,
-  // by GitHub's own rules. Body text there never overrides them: this
-  // submission is bound elsewhere, so it is not-bound, not a completion.
-  const viaSubmissionBody = stateFor([], {
-    submissions: [submission({ sha: ANCESTOR, body: `Reviewed commit: ${HEAD}` })],
-  });
-  assert.equal(viaSubmissionBody.target_completion_state, "not-bound");
+  assert.equal(stateFor([comment(body)]).target_completion_state, "completed@target");
+  assert.equal(found({ submissions: [submission({ sha: HEAD, body })] }), "completed@target");
+  assert.equal(found({ inline: [inlineComment({ body })] }), "completed@target");
+  assert.equal(found({ threads: [thread([threadComment({ body })])] }), "completed@target");
+
+  // On a surface that carries its own reviewed commit, that field decides the
+  // binding rather than the body text — so a submission bound elsewhere is
+  // not-bound rather than a false completion.
+  assert.equal(found({ submissions: [submission({ sha: ANCESTOR, body })] }), "not-bound");
 });
 
 test("an abbreviated SHA binds, but a too-short prefix does not", () => {
@@ -517,38 +555,60 @@ test("an incomplete fetch blocks completion even when target-bound evidence was 
   assert.equal(signalled.reason, "fetch_incomplete");
 });
 
-test("an unsubmitted draft cannot be promoted to completion through text, on any surface", () => {
-  // The structural path excludes a draft by GitHub's own rules. Marker text is
-  // never read on the surfaces that carry review meaning, so a draft cannot be
-  // re-admitted through its submission body, through its inline comments, or
-  // through the threads they belong to — the exclusion does not have to be
-  // repeated once per surface.
+test("an unsubmitted draft never completes: submission, its inline comments, or its threads", () => {
+  // A draft is not a review act. The exclusion is keyed on the owning review's
+  // id, so the same draft comment cannot be re-admitted by appearing on another
+  // surface — and it does not need a new exclusion per surface either.
   const body = `Reviewed commit: ${HEAD}`;
+  const draft = submission({ id: 42, sha: HEAD, state: "PENDING", body });
 
-  const viaSubmissionBody = stateFor([], {
-    submissions: [submission({ sha: HEAD, state: "PENDING", body })],
-  });
-  assert.equal(viaSubmissionBody.target_completion_state, "unknown");
-  assert.equal(viaSubmissionBody.reason, "no_completion_evidence");
+  const viaSubmission = stateFor([], { submissions: [draft] });
+  assert.equal(viaSubmission.target_completion_state, "unknown");
+  assert.equal(viaSubmission.reason, "no_completion_evidence");
 
-  const viaInlineComment = stateFor([], {
-    inline: [
-      {
-        id: 1,
-        actor: "r1-bot",
-        path: "a.mjs",
-        line: 1,
-        reviewed_sha: HEAD,
-        original_commit_sha: HEAD,
-        created_at: "2026-09-01T00:00:00Z",
-        updated_at: "2026-09-01T00:00:00Z",
-        locator: "https://github.com/octo/demo/pull/1#discussion_r1",
-        body,
-      },
-    ],
+  const viaInline = stateFor([], {
+    submissions: [draft],
+    inline: [inlineComment({ body, reviewId: 42 })],
   });
-  assert.equal(viaInlineComment.target_completion_state, "unknown");
-  assert.equal(viaInlineComment.reason, "no_completion_evidence");
+  assert.equal(viaInline.target_completion_state, "unknown");
+  assert.equal(viaInline.reason, "no_completion_evidence");
+
+  const viaThread = stateFor([], {
+    submissions: [draft],
+    threads: [thread([threadComment({ body, reviewId: 42 })])],
+  });
+  assert.equal(viaThread.target_completion_state, "unknown");
+  assert.equal(viaThread.reason, "no_completion_evidence");
+
+  // The same comment shapes, once the review they belong to is submitted, are
+  // legitimate evidence again.
+  const submitted = submission({ id: 42, sha: ANCESTOR, state: "COMMENTED" });
+  assert.equal(
+    stateFor([], { submissions: [submitted], inline: [inlineComment({ body, reviewId: 42 })] }).target_completion_state,
+    "completed@target",
+  );
+  assert.equal(
+    stateFor([], { submissions: [submitted], threads: [thread([threadComment({ body, reviewId: 42 })])] })
+      .target_completion_state,
+    "completed@target",
+  );
+});
+
+test("a standalone inline completion marker is detected when it is target-bound", () => {
+  // An inline comment that belongs to no draft is ordinary evidence. Its
+  // original_commit_id is a stable reviewed target, so it binds without the
+  // record's target_pattern.
+  const standalone = stateFor([], { inline: [inlineComment({ body: "done", original: HEAD })] , reviewer: MARKERLESS });
+  assert.equal(standalone.target_completion_state, "unknown", "no declared marker means no completion claim");
+
+  const withMarker = stateFor([], { inline: [inlineComment({ body: `Reviewed commit: ${HEAD}`, original: HEAD })] });
+  assert.equal(withMarker.target_completion_state, "completed@target");
+
+  // Bound to an ancestor instead: reported as not-bound, never as completion.
+  const elsewhere = stateFor([], {
+    inline: [inlineComment({ body: `Reviewed commit: ${ANCESTOR}`, original: ANCESTOR })],
+  });
+  assert.equal(elsewhere.target_completion_state, "not-bound");
 });
 
 test("the expected target defaults to the snapshot head and says so", () => {

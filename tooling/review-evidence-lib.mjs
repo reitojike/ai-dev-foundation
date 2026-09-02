@@ -151,6 +151,7 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
               author { login }
               commit { oid }
               body
+              pullRequestReview { databaseId }
             }
           }
         }
@@ -173,6 +174,7 @@ query($id: ID!, $cursor: String) {
           author { login }
           commit { oid }
           body
+          pullRequestReview { databaseId }
         }
       }
     }
@@ -295,6 +297,7 @@ function normalizeReviewSubmission(item) {
 function normalizeInlineReviewComment(item) {
   return {
     id: item.id,
+    review_id: item.pull_request_review_id ?? null,
     actor: item.user?.login ?? null,
     actor_type: item.user?.type ?? null,
     path: item.path ?? null,
@@ -318,6 +321,7 @@ function normalizeReviewThread(node) {
     line: node.line ?? null,
     comments: (node.comments?.nodes ?? []).map((comment) => ({
       id: comment.id ?? null,
+      review_id: comment.pullRequestReview?.databaseId ?? null,
       actor: comment.author?.login ?? null,
       created_at: comment.createdAt ?? null,
       reviewed_sha: comment.commit?.oid ?? null,

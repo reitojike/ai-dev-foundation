@@ -109,18 +109,22 @@ completion の判定は 2 段です。
    ことを表すため、marker も surface の知識も要りません。未提出の draft（`PENDING`）は
    review 行為として扱いません
 2. **宣言された marker（fallback）** — GitHub が review の意味を与えていない surface
-   （通常の comment、status の description、check の name）に結果が落ちた場合のみ使います。
-   marker は surface を指定せず、helper がこれらの surface を横断して検索します。逆に、
-   review の意味を持つ surface（review submission、inline review comment、review thread）
-   では marker を読みません。構造的経路が GitHub の規則で読んでおり、text でそれを上書き
-   できると、未提出 draft のように構造的経路が除外したものを surface の数だけ復活させる
-   経路ができるためです
+   （通常の comment、status の description、check の name）で必要になります。marker は
+   surface を指定せず、helper は取得済みの**全 surface**を横断して検索します。特定の
+   surface を検索対象から外すことはしません。それは「この provider はこの surface に
+   出ない」という negative claim であり、Review Adapter boundary が恒久化を禁じています
 
-reviewed target への binding も surface の性質から helper が決めます。review submission は
-target 移動に追随しない `commit_id` を持つためそれを使い、semantics-free な surface では
-record の `target_pattern` で本文から capture し、per-commit surface（commit status /
-check runs）なら snapshot head に束縛します。どれも成立しなければ unbound として
-`unknown` を返します。
+どちらの経路も、**未提出 review（`PENDING`）に属するものは読みません**。除外は所有する
+review の id で 1 回だけ行うため、同じ draft の comment が inline review comment と
+review thread の両方に現れても再昇格しません。surface ごとに除外を書き足す必要もありません。
+これを可能にするため、helper は inline review comment と thread comment に、それが属する
+review の id（`review_id`）を保持します。
+
+reviewed target への binding も surface の性質から helper が決めます。target 移動に追随
+しない commit field を持つ surface ではそれを使い（review submission の `commit_id`、
+inline review comment の `original_commit_id`）、持たない surface では record の
+`target_pattern` で本文から capture し、per-commit surface（commit status / check runs）
+なら snapshot head に束縛します。どれも成立しなければ unbound として `unknown` を返します。
 
 `check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
 non-zero で終了します。record の内容（どの reviewer を required にするか等）は
