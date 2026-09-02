@@ -423,13 +423,21 @@ test("a completion marker whose target cannot be resolved stays unknown", () => 
 });
 
 test("positive non-participation is declined, and a failure marker is failed", () => {
-  assert.equal(stateFor([comment("automatic review skipped")]).target_completion_state, "declined");
-  assert.equal(stateFor([comment("stopped: max-turns reached")]).target_completion_state, "failed");
+  const trigger = comment("@r1 review", { actor: "a-maintainer", created: "2026-09-01T00:00:00Z", id: 1 });
+  const after = (body) => [trigger, comment(body, { created: "2026-09-01T00:10:00Z", id: 2 })];
+  assert.equal(stateFor(after("automatic review skipped")).target_completion_state, "declined");
+  assert.equal(stateFor(after("stopped: max-turns reached")).target_completion_state, "failed");
 });
 
 test("a rate limit is an unknown state with a rate-limited signal and the declared fallback", () => {
   const reviewer = { ...FULL_REVIEWER, fallback_order: ["r2"] };
-  const state = stateFor([comment("Review rate limited. 0 remain.")], { reviewer });
+  const state = stateFor(
+    [
+      comment("@r1 review", { actor: "a-maintainer", created: "2026-09-01T00:00:00Z", id: 1 }),
+      comment("Review rate limited. 0 remain.", { created: "2026-09-01T00:10:00Z", id: 2 }),
+    ],
+    { reviewer },
+  );
 
   assert.equal(state.target_completion_state, "unknown");
   assert.equal(state.operational_signal, "rate-limited");
@@ -438,7 +446,10 @@ test("a rate limit is an unknown state with a rate-limited signal and the declar
 });
 
 test("an in-flight run is signalled separately, so only that run's end is worth waiting for", () => {
-  const state = stateFor([comment("Claude Code is working on it")]);
+  const state = stateFor([
+    comment("@r1 review", { actor: "a-maintainer", created: "2026-09-01T00:00:00Z", id: 1 }),
+    comment("Claude Code is working on it", { created: "2026-09-01T00:10:00Z", id: 2 }),
+  ]);
   assert.equal(state.target_completion_state, "unknown");
   assert.equal(state.operational_signal, "in-flight");
 });
@@ -524,12 +535,31 @@ test("a stale non-completion marker from an earlier run does not decide the curr
   assert.equal(fresh.target_completion_state, "failed");
 });
 
-test("--since scopes the run when the trigger kind provides no anchor", () => {
+test("an unscoped marker is never applied, and --since supplies the missing anchor", () => {
+  // Codex P1 on the closure round: with no anchor, every non-target-bound
+  // marker was applied, which reintroduced the stale-marker defect for the
+  // trigger kinds that have no trigger comment to anchor on.
   const reviewer = { ...FULL_REVIEWER, trigger: { kind: "automatic" } };
-  const conversation = [comment("Review rate limited", { created: "2026-09-01T00:00:00Z" })];
+  const conversation = [comment("Review rate limited", { created: "2026-09-02T00:10:00Z" })];
 
-  assert.equal(stateFor(conversation, { reviewer }).operational_signal, "rate-limited");
-  assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T00:00:00Z" }).operational_signal, "none");
+  const unscoped = stateFor(conversation, { reviewer });
+  assert.equal(unscoped.operational_signal, "none", "an unanchored marker must not decide the current run");
+  assert.equal(unscoped.matched_evidence[0].applies, false);
+  assert.equal(unscoped.matched_evidence[0].scope, "unscoped");
+
+  assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T00:00:00Z" }).operational_signal, "rate-limited");
+  assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T01:00:00Z" }).operational_signal, "none");
+});
+
+test("run scoping compares instants, not timestamp strings", () => {
+  // Codex P2 on the closure round: --since accepts any UTC offset while GitHub
+  // returns Z-suffixed timestamps, and those two do not sort lexicographically.
+  // 2026-09-02T12:00:00+09:00 is 03:00Z, so a 03:30Z marker is after it.
+  const reviewer = { ...FULL_REVIEWER, trigger: { kind: "automatic" } };
+  const conversation = [comment("Review rate limited", { created: "2026-09-02T03:30:00Z" })];
+
+  assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T12:00:00+09:00" }).operational_signal, "rate-limited");
+  assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T13:00:00+09:00" }).operational_signal, "none");
 });
 
 test("a comment whose author is unknown never stands in for the reviewer", () => {

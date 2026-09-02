@@ -648,7 +648,9 @@ function runAnchorTimestamp(reviewer, evidence, since) {
   let newest = null;
   for (const item of surfaceItems(evidence, "conversation_comments")) {
     if (!item.timestamp || !item.body?.includes(command)) continue;
-    if (newest === null || item.timestamp > newest) newest = item.timestamp;
+    const itemMs = Date.parse(item.timestamp);
+    if (Number.isNaN(itemMs)) continue;
+    if (newest === null || itemMs > Date.parse(newest)) newest = item.timestamp;
   }
   return newest;
 }
@@ -664,8 +666,17 @@ function scopeMatch(match, expectedTarget, anchor) {
       ? { applies: true, scope: "target-bound" }
       : { applies: false, scope: "other-target" };
   }
-  if (!anchor || !match.timestamp) return { applies: true, scope: "unscoped" };
-  return match.timestamp >= anchor
+  // Neither a target nor a run scopes this match, so there is nothing tying it
+  // to the current run. Applying it anyway is how a marker left by an earlier
+  // run decides the current target — the same defect as an unbound completion
+  // marker, and it stays `unknown` for the same reason. `--since` supplies the
+  // anchor when the trigger kind provides none.
+  const anchorMs = Date.parse(anchor ?? "");
+  const matchMs = Date.parse(match.timestamp ?? "");
+  if (Number.isNaN(anchorMs) || Number.isNaN(matchMs)) return { applies: false, scope: "unscoped" };
+  // Compared as instants: `--since` may carry any UTC offset while GitHub
+  // returns Z-suffixed timestamps, and those do not sort lexicographically.
+  return matchMs >= anchorMs
     ? { applies: true, scope: "after-run-anchor" }
     : { applies: false, scope: "before-run-anchor" };
 }
@@ -722,7 +733,10 @@ function evaluateReviewer(reviewer, evidence, expectedTarget, headSha, since) {
   const completionElsewhere = matches.completion_marker.find(
     (match) => match.bound_target && !shaMatches(match.bound_target, expectedTarget),
   );
-  const completionUnbound = applied.completion_marker.find((match) => !match.bound_target);
+  // Read from every match, not only the scoped ones: an unbound completion
+  // marker yields `unknown` either way, so using it here only sharpens the
+  // reason from "nothing matched" to "matched but could not be bound".
+  const completionUnbound = matches.completion_marker.find((match) => !match.bound_target);
 
   let state;
   let reason;

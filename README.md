@@ -158,8 +158,11 @@ node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
   `trigger.value` を含む最新 comment の timestamp を自動で使います。target へ束縛できない
   marker（rate limit / in-flight / 非参加 / failure）は、この anchor より古ければ過去の run
   のものとして state に反映されず、`matched_evidence` に `applies: false` と
-  `scope: "before-run-anchor"` として残ります。`automatic` / `operator_configured` の
-  ように anchor を取れない trigger では `--since <ISO timestamp>` で指定します。
+  `scope: "before-run-anchor"` として残ります。anchor を確定できない場合（`automatic` /
+  `operator_configured` trigger で `--since` を渡していない等）は `scope: "unscoped"` として
+  同様に適用しません。それらの trigger で marker を state へ反映させるには
+  `--since <ISO timestamp>` を渡します。anchor との比較は時刻値で行うため、`--since` には
+  任意の UTC offset を使えます。
 - `record_digest`: 判定に使った record file の sha256。Selection / run record にこれを
   併記すると、run の途中で record を編集した場合に判定条件の変化を検知できます。
 
