@@ -42,7 +42,7 @@ test("core policy defines a thin invocation convention over a canonical Task Con
     /Task の canonical context は Issue 本文です（本節冒頭）。この canonical\s+Task Contract が既に Issue 本文へ存在する場合、agent invocation はその\s+内容を原則として再掲せず、Issue を参照します。/,
   );
 
-  // Regression guard (Codex P2 finding on PR #33): the new section must not
+  // Regression guard: the new section must not
   // introduce a broader "durable surface" than the single canonical context
   // ("Issue 本文") already fixed earlier in this Task Protocol section.
   assert.doesNotMatch(core, /durable な project surface（Issue 本文等）/);
@@ -76,7 +76,7 @@ test("core policy defines a thin invocation convention over a canonical Task Con
     /canonical\s+Task Contract の不足に気付いた場合は、省略ではなく Task Contract 自体の\s+更新を優先します。/,
   );
 
-  // Guardrail (Codex P2 finding on PR #33 closure round): thin invocation
+  // Guardrail: thin invocation
   // presupposes the receiving agent/session can actually reach the Issue
   // (an Execution Envelope / capability property, independent of Semantic
   // Contract sufficiency). When that access isn't guaranteed, the invoker

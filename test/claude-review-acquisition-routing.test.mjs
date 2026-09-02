@@ -36,8 +36,7 @@ test("the reviewer capability record, not the skill, carries provider-specific a
     containsText(reviewCode, "## reviewer capability record"),
     "review-code.md must have a section pointing at the record as the owner of that knowledge",
   );
-  // CodeRabbit on PR #73 found this stated as a blanket prohibition that
-  // contradicted the documented in-session fallback. The boundary now excludes
+  // This was previously stated as a blanket prohibition that contradicted the documented in-session fallback. The boundary now excludes
   // undeclared reviewers and unselected local review, and makes the fallback
   // formal only once the durable evidence is persisted.
   assert.ok(
@@ -55,7 +54,7 @@ test("the reviewer capability record, not the skill, carries provider-specific a
   assert.equal(claude.trigger.kind, "comment_command");
   assert.ok(claude.trigger.value.includes("@claude"), "the GitHub-native mention trigger must be the declared trigger");
 
-  // Codex P2 (PR #50 closure round 4), preserved: the GitHub-native workflow is
+  // Preserved invariant: the GitHub-native workflow is
   // NOT something Foundation distributes. sync.mjs does not materialize .github/
   // into consumers and the reference consumer fixture has none, so most consumer
   // repositories have no such workflow and must fall back — the record has to
@@ -90,8 +89,7 @@ test("the reviewer capability record, not the skill, carries provider-specific a
 test("review-code.md excludes local/preflight Claude usage from formal required review counting", async () => {
   const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
 
-  // Closure round (Codex P1 + Claude closure review on PR #50): the boundary
-  // section's phrasing must not read as conditioning the entire common
+  // The boundary section's phrasing must not read as conditioning the entire common
   // `## 手順` procedure (Deterministic verify / Selection / Execution /
   // required review gate) on Claude being the selected reviewer — those
   // steps apply regardless of which reviewer/capability was selected. Only
@@ -136,7 +134,7 @@ test("review-code.md excludes local/preflight Claude usage from formal required 
 });
 
 test("review-doc.md also excludes local/preflight usage from formal required review counting", async () => {
-  // Claude review on PR #50 flagged that the review-code.md-only boundary left
+  // A review-code.md-only boundary leaves
   // the same ambiguity possible for Normative artifact review, since the
   // general "preflight/local doesn't count as formal review" principle isn't
   // specific to Executable's provider-adapter routing gap that motivated
@@ -158,7 +156,7 @@ test("review-doc.md also excludes local/preflight usage from formal required rev
 });
 
 test("review-doc.md points Normative formal review at the same record and acquisition routing", async () => {
-  // Codex P2 on PR #50 closure round 2: the acquisition routing only existed in
+  // The acquisition routing once existed only in
   // review-code.md (Executable), so a Normative artifact review following
   // review-doc.md had no reachable path to the preferred route, leaving Issue
   // #49's routing gap open for that classification. Fixed by a pointer, not a
@@ -186,7 +184,7 @@ test("review-doc.md points Normative formal review at the same record and acquis
     "review-doc.md must not duplicate the workflow-file-specific routing rule; it must defer to review-code.md",
   );
 
-  // Codex P2 (closure round 3): the bare Foundation-repo-only path is not
+  // Closure round 3: the bare Foundation-repo-only path is not
   // resolvable from a consumer's checkout, since sync.mjs materializes skills
   // under .ai-dev-foundation/skills/ and consumers have no skills/ at repo
   // root. The pointer must name the consumer-distributed path too.

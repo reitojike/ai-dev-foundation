@@ -15,9 +15,9 @@ import { REVIEWER_RECORD_SCHEMA_ID, readReviewerRecordFile, validateReviewerReco
 // instead of prose an agent rediscovers each session.
 //
 // The record deliberately does NOT say where a reviewer's output appears.
-// Predicting the surface is a negative claim the Kernel forbids, and PR #73
-// broke it twice in one day: the same reviewer posted its result as a review
-// submission when it had findings and as a plain comment when it did not.
+// Predicting the surface is a negative claim the Kernel forbids, and it does
+// not hold: the same reviewer posts its result as a review submission when it
+// has findings and as a plain comment when it does not.
 // Completion is therefore read structurally where GitHub gives it meaning (a
 // submitted review bound to a commit), and from a declared marker only on the
 // surfaces GitHub leaves semantics-free.
@@ -117,10 +117,10 @@ test("validateReviewerRecord accepts a minimal record and names each missing req
 });
 
 test("the record may not predict which surface a reviewer posts to", () => {
-  // The defect this rejects is the one PR #73 hit twice. `result_surfaces` and
-  // a marker's `surfaces` are negative claims ("it does not post anywhere
-  // else"), and `target_field` is a property of the surface rather than of the
-  // reviewer — all three are the evaluator's job, not the record's.
+  // `result_surfaces` and a marker's `surfaces` are negative claims ("it does
+  // not post anywhere else"), and `target_field` is a property of the surface
+  // rather than of the reviewer — all three are the evaluator's job, not the
+  // record's.
   const errors = validateReviewerRecord(
     baseRecord({
       reviewers: [
@@ -176,8 +176,8 @@ test("the portfolio decision is required and internally consistent", () => {
     [],
   );
 
-  // Codex P2 on PR #73: a record without this block passed every other check
-  // while still leaving Selection undecidable.
+  // Without this block a record passes every other check while still leaving
+  // Selection undecidable.
   assert.match(
     validateReviewerRecord(baseRecord({ required_selection: undefined })).join("\n"),
     /required_selection: is required so Selection can fill the required slot mechanically/,
@@ -386,9 +386,9 @@ test("a submission by a different actor never completes this reviewer's slot", (
 });
 
 test("the declared marker is the fallback when the reviewer left no submission", () => {
-  // PR #73 closure round 2: with no findings the reviewer posted only a plain
-  // comment. GitHub gives that no review semantics, so the marker is what makes
-  // it readable — and the record does not have to know it was a comment.
+  // With no findings a reviewer may post only a plain comment. GitHub gives
+  // that no review semantics, so the marker is what makes it readable — and the
+  // record does not have to know it was a comment.
   const state = stateFor([comment(`Review done. **Reviewed commit:** \`${HEAD}\``, { id: 7 })]);
 
   assert.equal(state.target_completion_state, "completed@target");
@@ -503,12 +503,12 @@ test("the expected target defaults to the snapshot head and says so", () => {
   assert.equal(explicit.reviewers[0].target_completion_state, "not-bound");
 });
 
-// --- regressions found by the PR #73 canary review --------------------------
+// --- regressions ------------------------------------------------------------
 
 test("a stale non-completion marker from an earlier run does not decide the current target", () => {
-  // Codex P1 / CodeRabbit: a `max-turns` or rate-limit comment posted for an
-  // earlier run stayed on the PR forever and kept deciding every later target.
-  // The reviewer's own trigger command anchors "the current run".
+  // A `max-turns` or rate-limit comment posted for an earlier run stays on the
+  // PR forever, and without scoping it keeps deciding every later target. The
+  // reviewer's own trigger command anchors "the current run".
   const conversation = [
     comment("stopped: max-turns reached", { created: "2026-09-01T00:00:00Z", id: 1 }),
     comment("Review rate limited", { created: "2026-09-01T00:05:00Z", id: 2 }),
@@ -533,9 +533,9 @@ test("a stale non-completion marker from an earlier run does not decide the curr
 });
 
 test("an unscoped marker is never applied, and --since supplies the missing anchor", () => {
-  // Codex P1 on the closure round: with no anchor, every non-target-bound
-  // marker was applied, which reintroduced the stale-marker defect for the
-  // trigger kinds that have no trigger comment to anchor on.
+  // With no anchor, applying every non-target-bound marker reintroduces the
+  // stale-marker defect for the trigger kinds that have no trigger comment to
+  // anchor on.
   const reviewer = { ...FULL_REVIEWER, trigger: { kind: "automatic" } };
   const conversation = [comment("Review rate limited", { created: "2026-09-02T00:10:00Z" })];
 
@@ -549,8 +549,8 @@ test("an unscoped marker is never applied, and --since supplies the missing anch
 });
 
 test("run scoping compares instants, not timestamp strings", () => {
-  // Codex P2 on the closure round: --since accepts any UTC offset while GitHub
-  // returns Z-suffixed timestamps, and those two do not sort lexicographically.
+  // --since accepts any UTC offset while GitHub returns Z-suffixed timestamps,
+  // and those two do not sort lexicographically.
   // 2026-09-02T12:00:00+09:00 is 03:00Z, so a 03:30Z marker is after it.
   const reviewer = { ...FULL_REVIEWER, trigger: { kind: "automatic" } };
   const conversation = [comment("Review rate limited", { created: "2026-09-02T03:30:00Z" })];
@@ -563,18 +563,18 @@ test("run scoping compares instants, not timestamp strings", () => {
 });
 
 test("a comment whose author is unknown never stands in for the reviewer", () => {
-  // Codex P2: `actor: null` (e.g. a deleted account) bypassed the actor check
-  // entirely, so any comment carrying a generic marker could complete a
-  // required review.
+  // `actor: null` (e.g. a deleted account) bypasses the actor check entirely
+  // unless it is rejected here, letting any comment that carries a generic
+  // marker complete a required review.
   const state = stateFor([comment(`Reviewed commit: ${HEAD}`, { actor: null })]);
   assert.equal(state.target_completion_state, "unknown");
   assert.equal(state.reason, "no_completion_evidence");
 });
 
 test("the CLI rejects a flag with no value instead of silently ignoring it", () => {
-  // CodeRabbit: a trailing `--reviewers` left the field undefined, which the
-  // `!== undefined` guards then skipped, and `--reviewers --json` consumed the
-  // next flag as the record path.
+  // A trailing `--reviewers` leaves the field undefined, which a `!== undefined`
+  // guard then skips, and `--reviewers --json` consumes the next flag as the
+  // record path.
   assert.throws(
     () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--reviewers"]),
     /--reviewers must be followed by a value/,
@@ -624,9 +624,9 @@ test("the CLI accepts --reviewers, --target-sha and --since, and rejects malform
 });
 
 test("the record carries identity and trigger, and only the observed fallback text", () => {
-  // What survived three review rounds on PR #73: the record says who posts and
-  // how to start them, plus the minimum text needed on surfaces GitHub leaves
-  // semantics-free. It says nothing about where the output lands.
+  // The record says who posts and how to start them, plus the minimum text
+  // needed on surfaces GitHub leaves semantics-free. It says nothing about where
+  // the output lands.
   const example = JSON.parse(readFileSync(path.join(root, "templates", "reviewers.example.json"), "utf8"));
   const byId = Object.fromEntries(example.reviewers.map((reviewer) => [reviewer.id, reviewer]));
 
@@ -669,9 +669,9 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
     "Selection must start by reading the record and stop when it is absent",
   );
 
-  // Execution dispatches on the record's own trigger.kind. CodeRabbit on PR
-  // #73: a single "post trigger.value as a comment" instruction was wrong for
-  // the automatic / operator_configured kinds, which have no value to post.
+  // Execution dispatches on the record's own trigger.kind. A single "post
+  // trigger.value as a comment" instruction is wrong for the automatic /
+  // operator_configured kinds, which have no value to post.
   assert.ok(containsText(skill, "起動方法は record の `trigger.kind` で分岐します"));
   for (const kind of ["comment_command", "automatic", "operator_configured"]) {
     assert.ok(containsText(skill, `- \`${kind}\`:`), `Execution must define a route for trigger.kind ${kind}`);

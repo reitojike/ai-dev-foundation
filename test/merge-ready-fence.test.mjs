@@ -32,8 +32,7 @@ function containsText(haystack, needle) {
 //      member's target completion state is `unknown` — never `0 findings`.
 //   R3 two axes. A run whose reviewed target != final target is unusable as
 //      clean/discovery evidence (evidence axis) but its findings survive
-//      (finding axis).
-//   R4 merge-ready = EVERY member of the expected review set — including
+//      (finding axis).   R4 merge-ready = EVERY member of the expected review set — including
 //      optional/advisory — has its review obligation satisfied, where the
 //      obligation is the one policy/core.md defines per class. This does not
 //      demand a fresh full re-review at every accepted fix; the narrow
@@ -338,7 +337,7 @@ test("the post-fix exception requires every one of its preconditions", () => {
   // Both routes into the `expected` class are exercised. Keying only on
   // observed participation left per-precondition mutations scoped to
   // `declaredAutomatic` members alive — and a declared automatic reviewer is
-  // exactly the actor shape of the PR #51 incident.
+  // exactly the actor shape that lets a late-arriving review escape the fence.
   for (const route of [{ participation: "review" }, { declaredAutomatic: true }]) {
     const label = JSON.stringify(route);
     const priorCompletion = {
@@ -376,7 +375,7 @@ test("the post-fix exception requires every one of its preconditions", () => {
     );
 
     // (b) a run is in flight at the current target => must await it. Exempting
-    // here is exactly the PR #51 late-arrival failure mode.
+    // here is exactly the late-arrival failure mode.
     const inFlight = structuredClone(base);
     inFlight.actors[0].runInFlightAtCurrentTarget = true;
     assert.deepEqual(
@@ -473,7 +472,7 @@ test("an optional member's unresolved finding blocks merge-ready via step 7", ()
 test("expected membership survives a target move (ancestor-only participation)", () => {
   // Closure round: keying membership off the *current* target would drop a
   // reviewer that only ever participated on an ancestor, and its ancestor
-  // findings would escape collection — reopening the PR #42 failure mode.
+  // findings would escape collection.
   const ancestorOnly = {
     name: "auto-reviewer",
     participation: "review",
@@ -601,7 +600,7 @@ test("regression 6: a required member is not exempted by declaring non-participa
 test("declining non-participation never discharges a finding already produced", () => {
   // The exemption covers the completion obligation only. A reviewer that filed
   // a finding on an ancestor target and then declined at the new target still
-  // owes that finding's Resolution — otherwise the PR #42 failure mode reopens
+  // owes that finding's Resolution — otherwise an ancestor finding escapes
   // through the decline path.
   const scenario = {
     finalTarget: "6800b796",

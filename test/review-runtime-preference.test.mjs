@@ -4,10 +4,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-// Issue #59: stage-tracker #118 canary promotion (Verify lane split,
-// CodeRabbit misleading-status removal) and manual-on-demand review runtime
-// preference (Claude GitHub-native + CodeRabbit manual primary, Codex manual
-// on-demand/fallback, Codex automatic no longer assumed as default baseline).
+// The reviewer portfolio and its runtime preferences (which reviewers are
+// required vs. advisory, which acquisition route each uses, what happens when
+// one is unavailable) live in the consumer-owned reviewer capability record.
+// These guards check that record, plus the provider-neutral procedure in the
+// skill that consumes it.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -38,9 +39,8 @@ test("the reviewer capability record materializes the reviewer portfolio without
   const example = JSON.parse(await readFile(path.join(root, "templates", "reviewers.example.json"), "utf8"));
   const byId = Object.fromEntries(example.reviewers.map((reviewer) => [reviewer.id, reviewer]));
 
-  // CodeRabbit: manual acquisition, declared advisory (PO portfolio decision,
-  // 2026-09-02). Advisory means its completion is not a blocker — not that its
-  // findings can be skipped.
+  // Declared advisory: its completion is not a blocker — which is not the same
+  // as permission to skip the findings it did produce.
   assert.equal(byId.coderabbitai.default_class, "advisory");
   assert.equal(byId.coderabbitai.trigger.kind, "comment_command");
   assert.ok(byId.coderabbitai.trigger.value.includes("@coderabbitai review"));
