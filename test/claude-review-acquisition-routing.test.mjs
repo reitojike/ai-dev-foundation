@@ -36,12 +36,18 @@ test("the reviewer capability record, not the skill, carries provider-specific a
     containsText(reviewCode, "## reviewer capability record"),
     "review-code.md must have a section pointing at the record as the owner of that knowledge",
   );
+  // CodeRabbit on PR #73 found this stated as a blanket prohibition that
+  // contradicted the documented in-session fallback. The boundary now excludes
+  // undeclared reviewers and unselected local review, and makes the fallback
+  // formal only once the durable evidence is persisted.
   assert.ok(
-    containsText(
-      reviewCode,
-      "record に宣言されていない reviewer、および in-session / local review（`/code-review` 等）は formal acquisition になりません。",
-    ),
-    "the skill must close the path where an undeclared or local review is mistaken for formal acquisition",
+    containsText(reviewCode, "record に宣言されていない reviewer は formal acquisition になりません。") &&
+      containsText(reviewCode, "selection されていない in-session / local review（`/code-review` 等）も同様です。"),
+    "the skill must close the path where an undeclared or unselected local review is mistaken for formal acquisition",
+  );
+  assert.ok(
+    containsText(reviewCode, "その場合は下記 `collectOutputs()` の persist 手順を完了して初めて formal acquisition になります"),
+    "the documented in-session fallback must be conditioned on persisting durable evidence, not forbidden outright",
   );
 
   const claude = example.reviewers.find((reviewer) => reviewer.id === "claude");

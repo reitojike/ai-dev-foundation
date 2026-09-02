@@ -92,8 +92,8 @@ reviewer ごとに表現するもの:
 | `fallback_order`                                                                         | この reviewer が使えない場合に次に選ぶ reviewer の id                                                           |
 | `observed_at`                                                                            | marker を最後に実測した日付。marker は observed evidence であり恒久仕様ではない                                 |
 
-top-level には `required_selection`（required slot の数と埋め方）と `durable_record`
-（Selection / run / fence record の投稿形式）を置きます。後者は schema が
+top-level には `required_selection`（required slot の数と埋め方、必須）と
+`durable_record`（Selection / run / fence record の投稿形式）を置きます。後者は schema が
 `new-comment-per-stage`（stage ごとに新規 comment を投稿し、最新を正とする）だけを
 supported value としており、1 comment の in-place 編集は採用しません。
 
@@ -154,6 +154,14 @@ node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
 - `evidence_complete` / `incomplete_surfaces`: 依存する surface の fetch が完了していない
   場合は `false` になり、marker 不在は `no_matching_marker` ではなく `fetch_incomplete`
   として報告されます。fetch failure が `0 findings` へ変換されることはありません。
+- `run_anchor`: 「現在の run」の起点。`comment_command` trigger の場合は、その reviewer の
+  `trigger.value` を含む最新 comment の timestamp を自動で使います。target へ束縛できない
+  marker（rate limit / in-flight / 非参加 / failure）は、この anchor より古ければ過去の run
+  のものとして state に反映されず、`matched_evidence` に `applies: false` と
+  `scope: "before-run-anchor"` として残ります。`automatic` / `operator_configured` の
+  ように anchor を取れない trigger では `--since <ISO timestamp>` で指定します。
+- `record_digest`: 判定に使った record file の sha256。Selection / run record にこれを
+  併記すると、run の途中で record を編集した場合に判定条件の変化を検知できます。
 
 この state 出力も mechanical acquisition の範囲に留まります。record が宣言した marker の
 照合と SHA の比較のみを行い、finding の分類、review obligation の充足判定、merge 可否の

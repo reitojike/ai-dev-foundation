@@ -635,17 +635,57 @@ function byTimestampDescending(left, right) {
   return left.timestamp < right.timestamp ? 1 : -1;
 }
 
-function collectMatches(reviewer, evidence, kind, headSha) {
+// Anchor for "the current run": the newest comment on this PR carrying the
+// reviewer's own trigger command. A marker item older than that anchor was
+// produced by an earlier run on the same PR, so applying it to the current
+// target would report a stale `declined` / `failed` / rate-limit / in-flight.
+// Only comment_command triggers have such an anchor; `--since` supplies one for
+// the trigger kinds that do not.
+function runAnchorTimestamp(reviewer, evidence, since) {
+  if (since) return since;
+  const command = reviewer.trigger?.kind === "comment_command" ? reviewer.trigger.value : null;
+  if (!command) return null;
+  let newest = null;
+  for (const item of surfaceItems(evidence, "conversation_comments")) {
+    if (!item.timestamp || !item.body?.includes(command)) continue;
+    if (newest === null || item.timestamp > newest) newest = item.timestamp;
+  }
+  return newest;
+}
+
+// Whether a match may set state/signal for the current target. A match that
+// resolves a target is applicable only against the expected one; a match that
+// resolves none is scoped by the run anchor instead. `scope` records which of
+// those decided it, so a non-applicable match is still visible as evidence
+// rather than silently dropped.
+function scopeMatch(match, expectedTarget, anchor) {
+  if (match.bound_target) {
+    return shaMatches(match.bound_target, expectedTarget)
+      ? { applies: true, scope: "target-bound" }
+      : { applies: false, scope: "other-target" };
+  }
+  if (!anchor || !match.timestamp) return { applies: true, scope: "unscoped" };
+  return match.timestamp >= anchor
+    ? { applies: true, scope: "after-run-anchor" }
+    : { applies: false, scope: "before-run-anchor" };
+}
+
+function collectMatches(reviewer, evidence, kind, headSha, expectedTarget, anchor) {
   const marker = reviewer[kind];
   if (!marker) return [];
   const actors = new Set((reviewer.actors ?? []).map((actor) => actor.toLowerCase()));
   const matches = [];
   for (const surfaceKey of marker.surfaces ?? []) {
     for (const item of surfaceItems(evidence, surfaceKey)) {
+      // A null actor is only legitimate on the head-bound per-commit surfaces,
+      // which carry no author at all. On a comment-shaped surface it means the
+      // author is unknown (e.g. a deleted account), and accepting it would let
+      // any comment carrying a generic marker stand in for the reviewer's.
+      if (item.actor === null && !item.head_bound) continue;
       if (item.actor !== null && !actors.has(item.actor.toLowerCase())) continue;
       const markerText = matchedMarkerText(marker, item.body);
       if (markerText === null) continue;
-      matches.push({
+      const match = {
         marker_kind: kind,
         surface: item.surface,
         actor: item.actor,
@@ -653,26 +693,36 @@ function collectMatches(reviewer, evidence, kind, headSha) {
         timestamp: item.timestamp ?? null,
         marker: markerText,
         bound_target: resolveBoundTarget(marker, item, headSha),
-      });
+      };
+      matches.push({ ...match, ...scopeMatch(match, expectedTarget, anchor) });
     }
   }
   return matches.sort(byTimestampDescending);
 }
 
-function evaluateReviewer(reviewer, evidence, expectedTarget, headSha) {
+function evaluateReviewer(reviewer, evidence, expectedTarget, headSha, since) {
   const surfacesUsed = markerSurfaces(reviewer);
   const incompleteSurfaces = surfacesUsed.filter((surface) => !surfaceIsComplete(evidence, surface));
   const evidenceComplete = incompleteSurfaces.length === 0;
+  const runAnchor = runAnchorTimestamp(reviewer, evidence, since);
 
   const matches = Object.fromEntries(
-    MARKER_KINDS.map((kind) => [kind, collectMatches(reviewer, evidence, kind, headSha)]),
+    MARKER_KINDS.map((kind) => [
+      kind,
+      collectMatches(reviewer, evidence, kind, headSha, expectedTarget, runAnchor),
+    ]),
+  );
+  // Only in-scope matches may set state or signal. Out-of-scope ones stay in
+  // matched_evidence so the reason a stale marker was NOT applied is visible.
+  const applied = Object.fromEntries(
+    MARKER_KINDS.map((kind) => [kind, matches[kind].filter((match) => match.applies)]),
   );
 
-  const completionAtTarget = matches.completion_marker.find((match) => shaMatches(match.bound_target, expectedTarget));
+  const completionAtTarget = applied.completion_marker.find((match) => shaMatches(match.bound_target, expectedTarget));
   const completionElsewhere = matches.completion_marker.find(
     (match) => match.bound_target && !shaMatches(match.bound_target, expectedTarget),
   );
-  const completionUnbound = matches.completion_marker.find((match) => !match.bound_target);
+  const completionUnbound = applied.completion_marker.find((match) => !match.bound_target);
 
   let state;
   let reason;
@@ -681,14 +731,14 @@ function evaluateReviewer(reviewer, evidence, expectedTarget, headSha) {
     state = "completed@target";
     reason = "completion_marker_bound_to_target";
     decisive = completionAtTarget;
-  } else if (matches.non_participation_marker.length > 0) {
+  } else if (applied.non_participation_marker.length > 0) {
     state = "declined";
     reason = "non_participation_marker";
-    [decisive] = matches.non_participation_marker;
-  } else if (matches.failure_marker.length > 0) {
+    [decisive] = applied.non_participation_marker;
+  } else if (applied.failure_marker.length > 0) {
     state = "failed";
     reason = "failure_marker";
-    [decisive] = matches.failure_marker;
+    [decisive] = applied.failure_marker;
   } else if (completionElsewhere) {
     state = "not-bound";
     reason = "completion_marker_bound_to_other_target";
@@ -710,12 +760,12 @@ function evaluateReviewer(reviewer, evidence, expectedTarget, headSha) {
   let operationalSignal = "none";
   let signalMatch = null;
   if (state !== "completed@target" && state !== "declined") {
-    if (matches.rate_limit_marker.length > 0) {
+    if (applied.rate_limit_marker.length > 0) {
       operationalSignal = "rate-limited";
-      [signalMatch] = matches.rate_limit_marker;
-    } else if (matches.in_flight_marker.length > 0) {
+      [signalMatch] = applied.rate_limit_marker;
+    } else if (applied.in_flight_marker.length > 0) {
       operationalSignal = "in-flight";
-      [signalMatch] = matches.in_flight_marker;
+      [signalMatch] = applied.in_flight_marker;
     }
   }
 
@@ -739,6 +789,7 @@ function evaluateReviewer(reviewer, evidence, expectedTarget, headSha) {
     reason,
     evidence_complete: evidenceComplete,
     incomplete_surfaces: incompleteSurfaces,
+    run_anchor: runAnchor,
     fallback_order: reviewer.fallback_order ?? [],
     observed_at: reviewer.observed_at ?? null,
     matched_evidence: matchedEvidence,
@@ -748,14 +799,18 @@ function evaluateReviewer(reviewer, evidence, expectedTarget, headSha) {
 // Evaluates every reviewer in the record against one snapshot. `targetSha` is
 // the Selection Contract's expected target; it defaults to the snapshot's head
 // SHA, which is only correct when the PR head IS the frozen review target.
-export function evaluateReviewerStates(evidence, record, { targetSha } = {}) {
+export function evaluateReviewerStates(evidence, record, { targetSha, since, recordDigest } = {}) {
   const headSha = evidence?.pr_metadata?.head_sha ?? null;
   const expectedTarget = targetSha ?? headSha;
   return {
     expected_target: expectedTarget,
     expected_target_source: targetSha ? "explicit" : "snapshot_head",
+    // The digest of the record this evaluation used. A Selection / run record
+    // that cites it makes a mid-run record edit detectable instead of silently
+    // changing what the same run means.
+    record_digest: recordDigest ?? null,
     reviewers: (record?.reviewers ?? []).map((reviewer) =>
-      evaluateReviewer(reviewer, evidence, expectedTarget, headSha),
+      evaluateReviewer(reviewer, evidence, expectedTarget, headSha, since),
     ),
   };
 }
@@ -768,7 +823,8 @@ export function formatReviewerStateSummary(states) {
       `${reviewer.id} [${reviewer.default_class}]: ${reviewer.target_completion_state}${signal} (${reviewer.reason})`,
     );
     for (const match of reviewer.matched_evidence) {
-      lines.push(`  ${match.marker_kind}: "${match.marker}" @ ${match.locator ?? "no locator"}`);
+      const scope = match.applies ? match.scope : `NOT APPLIED (${match.scope})`;
+      lines.push(`  ${match.marker_kind}: "${match.marker}" [${scope}] @ ${match.locator ?? "no locator"}`);
     }
     if (!reviewer.evidence_complete) {
       lines.push(`  incomplete surfaces: ${reviewer.incomplete_surfaces.join(", ")}`);
@@ -781,26 +837,41 @@ export function formatReviewerStateSummary(states) {
 }
 
 const USAGE =
-  "Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>] [--reviewers <path>] [--target-sha <sha>]";
+  "Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>] [--reviewers <path>] [--target-sha <sha>] [--since <ISO timestamp>]";
+
+// Reads the value belonging to a flag. A trailing flag (or one followed by the
+// next flag) has no value: taking argv[index + 1] blindly would leave the field
+// `undefined` — which a later `!== undefined` guard skips — or silently swallow
+// the following flag as the value.
+function requireValue(argv, index, flag) {
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error(`${flag} must be followed by a value. ${USAGE}`);
+  }
+  return value;
+}
 
 export function parseReviewEvidenceArgs(argv) {
   const args = { json: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--repo") {
-      args.repo = argv[index + 1];
+      args.repo = requireValue(argv, index, arg);
       index += 1;
     } else if (arg === "--pr") {
-      args.pr = argv[index + 1];
+      args.pr = requireValue(argv, index, arg);
       index += 1;
     } else if (arg === "--token") {
-      args.token = argv[index + 1];
+      args.token = requireValue(argv, index, arg);
       index += 1;
     } else if (arg === "--reviewers") {
-      args.reviewers = argv[index + 1];
+      args.reviewers = requireValue(argv, index, arg);
       index += 1;
     } else if (arg === "--target-sha") {
-      args.targetSha = argv[index + 1];
+      args.targetSha = requireValue(argv, index, arg);
+      index += 1;
+    } else if (arg === "--since") {
+      args.since = requireValue(argv, index, arg);
       index += 1;
     } else if (arg === "--json") {
       args.json = true;
@@ -814,11 +885,11 @@ export function parseReviewEvidenceArgs(argv) {
   if (!args.pr || !/^\d+$/.test(args.pr)) {
     throw new Error(USAGE);
   }
-  if (args.reviewers !== undefined && !args.reviewers) {
-    throw new Error("--reviewers must be followed by a path to a reviewer capability record");
-  }
-  if (args.targetSha !== undefined && !/^[0-9a-f]{7,40}$/i.test(args.targetSha ?? "")) {
+  if (args.targetSha !== undefined && !/^[0-9a-f]{7,40}$/i.test(args.targetSha)) {
     throw new Error("--target-sha must be a commit SHA (at least 7 hex characters)");
+  }
+  if (args.since !== undefined && Number.isNaN(Date.parse(args.since))) {
+    throw new Error("--since must be an ISO 8601 timestamp");
   }
   return args;
 }

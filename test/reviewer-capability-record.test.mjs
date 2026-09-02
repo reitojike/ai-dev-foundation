@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -42,7 +43,12 @@ function baseReviewer(overrides = {}) {
 }
 
 function baseRecord(overrides = {}) {
-  return { schema: REVIEWER_RECORD_SCHEMA_ID, reviewers: [baseReviewer()], ...overrides };
+  return {
+    schema: REVIEWER_RECORD_SCHEMA_ID,
+    required_selection: { count: 1, prefer: "different-provider-family-from-implementer" },
+    reviewers: [baseReviewer()],
+    ...overrides,
+  };
 }
 
 // --- schema -----------------------------------------------------------------
@@ -212,7 +218,7 @@ test("a target_pattern must compile and actually capture something", () => {
   );
 });
 
-test("the portfolio decision is expressible and internally consistent", () => {
+test("the portfolio decision is required and internally consistent", () => {
   assert.deepEqual(
     validateReviewerRecord(
       baseRecord({
@@ -220,6 +226,13 @@ test("the portfolio decision is expressible and internally consistent", () => {
       }),
     ),
     [],
+  );
+
+  // Codex P2 on PR #73: a record without this block passed every other check
+  // while still leaving Selection undecidable.
+  assert.match(
+    validateReviewerRecord(baseRecord({ required_selection: undefined })).join("\n"),
+    /required_selection: is required so Selection can fill the required slot mechanically/,
   );
 
   const errors = validateReviewerRecord(
@@ -371,9 +384,13 @@ const FULL_REVIEWER = baseReviewer({
   fallback_order: [],
 });
 
-function stateFor(conversation, { targetSha = HEAD, reviewer = FULL_REVIEWER, ...rest } = {}) {
-  const record = { schema: REVIEWER_RECORD_SCHEMA_ID, reviewers: [reviewer] };
-  return evaluateReviewerStates(snapshot({ conversation, ...rest }), record, { targetSha }).reviewers[0];
+function stateFor(conversation, { targetSha = HEAD, reviewer = FULL_REVIEWER, since, ...rest } = {}) {
+  const record = {
+    schema: REVIEWER_RECORD_SCHEMA_ID,
+    required_selection: { count: 1, prefer: "record-order" },
+    reviewers: [reviewer],
+  };
+  return evaluateReviewerStates(snapshot({ conversation, ...rest }), record, { targetSha, since }).reviewers[0];
 }
 
 test("a completion marker bound to the expected target reports completed@target with its locator", () => {
@@ -463,7 +480,11 @@ test("an incomplete fetch is reported as such and never becomes a no-marker conc
 });
 
 test("the expected target defaults to the snapshot head and says so", () => {
-  const record = { schema: REVIEWER_RECORD_SCHEMA_ID, reviewers: [FULL_REVIEWER] };
+  const record = {
+    schema: REVIEWER_RECORD_SCHEMA_ID,
+    required_selection: { count: 1, prefer: "record-order" },
+    reviewers: [FULL_REVIEWER],
+  };
   const evidence = snapshot({ conversation: [comment(`Reviewed commit: ${HEAD}`)] });
 
   const defaulted = evaluateReviewerStates(evidence, record, {});
@@ -473,6 +494,88 @@ test("the expected target defaults to the snapshot head and says so", () => {
   const explicit = evaluateReviewerStates(evidence, record, { targetSha: ANCESTOR });
   assert.equal(explicit.expected_target_source, "explicit");
   assert.equal(explicit.reviewers[0].target_completion_state, "not-bound");
+});
+
+// --- regressions found by the PR #73 canary review ------------------------
+
+test("a stale non-completion marker from an earlier run does not decide the current target", () => {
+  // Codex P1 / CodeRabbit: a `max-turns` or rate-limit comment posted for an
+  // earlier run stayed on the PR forever and kept deciding every later target.
+  // The reviewer's own trigger command anchors "the current run".
+  const conversation = [
+    comment("stopped: max-turns reached", { created: "2026-09-01T00:00:00Z", id: 1 }),
+    comment("Review rate limited", { created: "2026-09-01T00:05:00Z", id: 2 }),
+    comment("@r1 review", { actor: "a-maintainer", created: "2026-09-02T00:00:00Z", id: 3 }),
+  ];
+
+  const state = stateFor(conversation);
+  assert.equal(state.target_completion_state, "unknown");
+  assert.equal(state.reason, "no_matching_marker", "a pre-anchor failure marker must not report `failed`");
+  assert.equal(state.operational_signal, "none", "a pre-anchor rate limit must not trigger a fallback");
+  assert.equal(state.run_anchor, "2026-09-02T00:00:00Z");
+
+  // Still visible as evidence, with the reason it was not applied.
+  const stale = state.matched_evidence.find((match) => match.marker_kind === "failure_marker");
+  assert.equal(stale.applies, false);
+  assert.equal(stale.scope, "before-run-anchor");
+
+  // The same marker posted after the anchor does decide the state.
+  const fresh = stateFor([...conversation, comment("stopped: max-turns reached", { created: "2026-09-02T00:01:00Z", id: 4 })]);
+  assert.equal(fresh.target_completion_state, "failed");
+});
+
+test("--since scopes the run when the trigger kind provides no anchor", () => {
+  const reviewer = { ...FULL_REVIEWER, trigger: { kind: "automatic" } };
+  const conversation = [comment("Review rate limited", { created: "2026-09-01T00:00:00Z" })];
+
+  assert.equal(stateFor(conversation, { reviewer }).operational_signal, "rate-limited");
+  assert.equal(stateFor(conversation, { reviewer, since: "2026-09-02T00:00:00Z" }).operational_signal, "none");
+});
+
+test("a comment whose author is unknown never stands in for the reviewer", () => {
+  // Codex P2: `actor: null` (e.g. a deleted account) bypassed the actor check
+  // entirely, so any comment carrying a generic marker could complete a
+  // required review. Only the head-bound per-commit surfaces legitimately have
+  // no author.
+  const state = stateFor([comment(`Reviewed commit: ${HEAD}`, { actor: null })]);
+  assert.equal(state.target_completion_state, "unknown");
+  assert.equal(state.reason, "no_matching_marker");
+});
+
+test("the CLI rejects a flag with no value instead of silently ignoring it", () => {
+  // CodeRabbit: a trailing `--reviewers` left the field undefined, which the
+  // `!== undefined` guards then skipped, and `--reviewers --json` consumed the
+  // next flag as the record path.
+  assert.throws(
+    () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--reviewers"]),
+    /--reviewers must be followed by a value/,
+  );
+  assert.throws(
+    () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--reviewers", "--json"]),
+    /--reviewers must be followed by a value/,
+  );
+  assert.throws(() => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "1", "--target-sha"]), /must be followed by a value/);
+  assert.throws(() => parseReviewEvidenceArgs(["--repo", "--pr", "1"]), /--repo must be followed by a value/);
+});
+
+test("the record's observed markers match what the reviewers actually posted on PR #73", () => {
+  // The canary result: completion lands on review_submissions, whose commit_id
+  // is a stable reviewed target, not on a conversation comment. The record was
+  // wrong about both the surface and Codex's actor login until this was
+  // measured against a real PR.
+  const example = JSON.parse(readFileSync(path.join(root, "templates", "reviewers.example.json"), "utf8"));
+  const byId = Object.fromEntries(example.reviewers.map((reviewer) => [reviewer.id, reviewer]));
+
+  for (const id of ["codex", "coderabbitai"]) {
+    assert.deepEqual(byId[id].completion_marker.surfaces, ["review_submissions"], `${id}: measured completion surface`);
+    assert.equal(byId[id].completion_marker.target_field, "reviewed_sha", `${id}: stable binding field`);
+    assert.ok(byId[id].result_surfaces.includes("review_submissions"));
+  }
+  assert.deepEqual(byId.codex.actors, ["chatgpt-codex-connector[bot]"]);
+  assert.ok(byId.coderabbitai.actors.includes("coderabbitai[bot]"));
+
+  // The untested entry has to say so rather than look equally measured.
+  assert.ok(byId.claude.notes.includes("未実測"));
 });
 
 test("the CLI accepts --reviewers and --target-sha and rejects a malformed SHA", () => {
@@ -500,9 +603,15 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
     "Selection must start by reading the record and stop when it is absent",
   );
 
-  // Execution posts the record's own trigger, and carries the frozen target
-  // into the reviewer's output so completion becomes bindable.
-  assert.ok(containsText(skill, "trigger は record の `trigger.value` を PR へ comment として投稿することです"));
+  // Execution dispatches on the record's own trigger.kind, and the comment
+  // route carries the frozen target into the reviewer's output so completion
+  // becomes bindable. CodeRabbit on PR #73: a single "post trigger.value as a
+  // comment" instruction was wrong for the automatic / operator_configured
+  // kinds, which have no trigger.value to post.
+  assert.ok(containsText(skill, "起動方法は record の `trigger.kind` で分岐します"));
+  for (const kind of ["comment_command", "automatic", "operator_configured"]) {
+    assert.ok(containsText(skill, `- \`${kind}\`:`), `Execution must define a route for trigger.kind ${kind}`);
+  }
   assert.ok(
     containsText(
       skill,

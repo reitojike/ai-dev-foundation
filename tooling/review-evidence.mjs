@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   collectReviewEvidence,
@@ -30,14 +32,17 @@ const token = resolveToken(args.token);
 // record fails fast with the same messages `check` reports rather than after a
 // full fetch.
 let reviewerRecord = null;
+let recordDigest = null;
 if (args.reviewers) {
-  const loaded = await readReviewerRecordFile(path.resolve(args.reviewers));
+  const recordPath = path.resolve(args.reviewers);
+  const loaded = await readReviewerRecordFile(recordPath);
   if (loaded.status !== "ok") {
     console.error(`Reviewer capability record ${loaded.status} (${loaded.path})`);
     for (const message of loaded.errors) console.error(`  - ${message}`);
     process.exitCode = 2;
   } else {
     reviewerRecord = loaded.record;
+    recordDigest = `sha256:${createHash("sha256").update(await readFile(recordPath)).digest("hex")}`;
   }
 }
 
@@ -49,7 +54,11 @@ if (process.exitCode === 2) {
 } else {
   const result = await collectReviewEvidence({ owner, repo, pullNumber: Number(args.pr), token });
   const reviewerStates = reviewerRecord
-    ? evaluateReviewerStates(result, reviewerRecord, { targetSha: args.targetSha })
+    ? evaluateReviewerStates(result, reviewerRecord, {
+        targetSha: args.targetSha,
+        since: args.since,
+        recordDigest,
+      })
     : null;
   if (args.json) {
     console.log(JSON.stringify(reviewerStates ? { ...result, reviewer_states: reviewerStates } : result, null, 2));

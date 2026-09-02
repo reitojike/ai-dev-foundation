@@ -65,8 +65,11 @@ failure の marker、fallback order は、consumer-owned な reviewer capability
 - record の schema と、その存在 / parse / 最小妥当性の check は Foundation tooling
   （`tooling/reviewer-record-lib.mjs`、`tooling/check.mjs`）が所有します。durable
   record（Selection / run / fence record）の投稿形式も schema 側が定めます。
-- record に宣言されていない reviewer、および in-session / local review（`/code-review`
-  等）は formal acquisition になりません。
+- record に宣言されていない reviewer は formal acquisition になりません。selection されて
+  いない in-session / local review（`/code-review` 等）も同様です。record で selection した
+  reviewer の宣言 route が unavailable / unsuitable な場合に限り、in-session / subagent
+  review を代替 route として使えます。その場合は下記 `collectOutputs()` の persist 手順を
+  完了して初めて formal acquisition になります（`## Adapter boundary` 参照）。
 - record の marker は observed evidence であり恒久仕様ではありません（`policy/core.md`
   の Observed evidence is not a permanent provider rule）。実挙動が record と食い違った
   場合は待ち続けず、record と `observed_at` を更新します。
@@ -146,13 +149,20 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    記録します。
 4. **Execution** — Execution Contract に従い、Selection で確定した expected
    target SHA / applicable な commit range と target artifact set を各
-   reviewer の trigger へ渡して起動します。trigger は record の `trigger.value`
-   を PR へ comment として投稿することです。`trigger.target_argument` がある
-   場合は `{target_sha}` を freeze した target へ置換して同じ comment に含め、
-   reviewer の結果自体が reviewed target を持つようにします。record に宣言され
-   ていない reviewer、および in-session / local review（`/code-review` 等）は
-   formal acquisition になりません。
-   trigger 方法、実際に渡した target と artifact set、required context を記録します。
+   reviewer の trigger へ渡して起動します。起動方法は record の `trigger.kind`
+   で分岐します。
+   - `comment_command`: `trigger.value` を PR へ comment として投稿します。
+     `trigger.target_argument` がある場合は `{target_sha}` を freeze した target
+     へ置換して同じ comment に含め、reviewer の結果自体が reviewed target を
+     持つようにします。
+   - `automatic`: 明示的な起動は行わず、observed な participation evidence を
+     待ちます。expected trigger behavior は completion evidence と同義では
+     ないため、evidence が得られなければ `unknown` として扱います。
+   - `operator_configured`: repository code の外側の設定に依存します。
+     設定変更を repository code から完了したものとして扱わず、unavailable
+     なら fallback order に従います。
+     record に宣言されていない reviewer は formal acquisition になりません。
+     trigger 方法、実際に渡した target と artifact set、required context を記録します。
 5. **Acquisition & Validity** — reviewer の run ごとに Acquisition & Validity
    Contract（`policy/core.md`）に従って record schema を埋めます。
    completion と validity は独立した判定とし、completed な run についてのみ
@@ -436,5 +446,6 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 record が、結果を durable な GitHub surface へ残す trigger 経路を宣言している場合は、
 その経路を preferred route として使います。宣言された経路が unavailable / unsuitable で、
 in-session / subagent review を formal acquisition として使う場合は、上記
-`collectOutputs()` の persist 手順に従います。この fallback は durable evidence
+`collectOutputs()` の persist 手順を完了することがその条件です。persist を完了するまで
+その run は formal acquisition になりません。この fallback は durable evidence
 requirement を免除しません。

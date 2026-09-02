@@ -252,8 +252,14 @@ function validateReviewer(reviewer, index, knownIds) {
 
 function validateRequiredSelection(value) {
   const selection = value.required_selection;
-  if (selection === undefined || selection === null) return [];
-  if (!isPlainObject(selection)) return ["required_selection: must be an object when present"];
+  // Required, not optional: the review procedure fills the required slot from
+  // this block's count/prefer. A record without it passes every other check and
+  // still leaves Selection undecidable, which is the failure the record exists
+  // to remove.
+  if (selection === undefined || selection === null) {
+    return ["required_selection: is required so Selection can fill the required slot mechanically"];
+  }
+  if (!isPlainObject(selection)) return ["required_selection: must be an object"];
 
   const errors = [];
   if (!Number.isInteger(selection.count) || selection.count < 1) {
