@@ -247,6 +247,10 @@ function collectMatches(reviewer, evidence, kind, headSha, expectedTarget, ancho
   for (const surfaceKey of allSurfaceKeys(evidence)) {
     for (const item of surfaceItems(evidence, surfaceKey)) {
       if (!isDeclaredActor(item, actors)) continue;
+      // A draft review is excluded from the structural path because it is not a
+      // review act yet. It has to be excluded here too, or the same draft could
+      // be promoted to completion through text in its body.
+      if (item.surface === STRUCTURAL_COMPLETION_SURFACE && item.state === DRAFT_SUBMISSION_STATE) continue;
       const markerText = matchedMarkerText(marker, item.body);
       if (markerText === null) continue;
       const match = {
@@ -334,6 +338,19 @@ function evaluateReviewer(reviewer, evidence, expectedTarget, headSha, since) {
       operationalSignal = "in-flight";
       [signalMatch] = applied.in_flight_marker;
     }
+  }
+
+  // A conclusion drawn from an incomplete snapshot is not a sound conclusion.
+  // A surface that failed to fetch may hold the findings that belong to this
+  // completion, a newer non-participation declaration, or a later run — and the
+  // review procedure treats `completed@target` as the entry to triage, so
+  // reporting it here would let an agent triage a finding set it never fully
+  // collected. Whatever positive evidence was found stays in matched_evidence,
+  // so re-running after a successful fetch is all this costs.
+  if (!evidenceComplete) {
+    state = "unknown";
+    reason = "fetch_incomplete";
+    operationalSignal = "none";
   }
 
   const matchedEvidence = [];

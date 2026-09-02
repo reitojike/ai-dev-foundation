@@ -486,6 +486,47 @@ test("an incomplete fetch is reported as such and never becomes a no-evidence co
   assert.deepEqual(state.incomplete_surfaces, ["conversation_comments"]);
 });
 
+test("an incomplete fetch blocks completion even when target-bound evidence was found", () => {
+  // A surface that failed to fetch may hold this completion's findings. The
+  // review procedure enters triage on `completed@target`, so reporting it from
+  // a partial snapshot would let an agent triage a set it never fully collected.
+  const state = stateFor([], {
+    submissions: [submission({ sha: HEAD, id: 9 })],
+    failedSurfaces: ["inline_review_comments"],
+  });
+
+  assert.equal(state.target_completion_state, "unknown");
+  assert.equal(state.reason, "fetch_incomplete");
+  assert.deepEqual(state.incomplete_surfaces, ["inline_review_comments"]);
+  // The evidence that was found is still reported, so a re-run after a
+  // successful fetch is all this costs.
+  assert.equal(state.matched_evidence[0].marker_kind, "structural_review_submission");
+
+  // A rate limit observed under the same partial snapshot must not drive a
+  // fallback decision either.
+  const signalled = stateFor(
+    [
+      comment("@r1 review", { actor: "a-maintainer", created: "2026-09-01T00:00:00Z", id: 1 }),
+      comment("Review rate limited", { created: "2026-09-01T00:10:00Z", id: 2 }),
+    ],
+    { failedSurfaces: ["review_threads"] },
+  );
+  assert.equal(signalled.operational_signal, "none");
+  assert.equal(signalled.reason, "fetch_incomplete");
+});
+
+test("a draft submission cannot be promoted to completion through its own body text", () => {
+  // The structural path already excludes a draft. Without the same exclusion on
+  // the marker path, a declared reviewer's unsubmitted draft carrying the
+  // marker and the target would complete the required slot.
+  const state = stateFor([], {
+    submissions: [submission({ sha: HEAD, state: "PENDING", body: `Reviewed commit: ${HEAD}` })],
+  });
+
+  assert.equal(state.target_completion_state, "unknown");
+  assert.equal(state.reason, "no_completion_evidence");
+});
+
 test("the expected target defaults to the snapshot head and says so", () => {
   const record = {
     schema: REVIEWER_RECORD_SCHEMA_ID,

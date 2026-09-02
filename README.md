@@ -168,9 +168,13 @@ node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json \
   待つか）を分けるためだけに独立した field にしています。
 - `reason` と `matched_evidence`（判定に使った surface item の locator と literal marker）。
   agent が本文を解釈し直さずに済むようにするためのものです。
-- `evidence_complete` / `incomplete_surfaces`: 依存する surface の fetch が完了していない
-  場合は `false` になり、marker 不在は `no_matching_marker` ではなく `fetch_incomplete`
-  として報告されます。fetch failure が `0 findings` へ変換されることはありません。
+- `evidence_complete` / `incomplete_surfaces`: surface の fetch が 1 つでも完了していない
+  場合は `false` になります。**この間は結論を出しません。** target へ束縛された completion
+  evidence を見つけていても `completed@target` にはせず、`unknown` / `fetch_incomplete` を
+  返します（`declined` / `failed` / signal も同様）。取得できなかった surface が、その
+  completion に属する finding や、より新しい非参加宣言を持っている可能性があるためです。
+  見つかった evidence は `matched_evidence` に残るため、fetch 成功後に再実行すれば済みます。
+  fetch failure が `0 findings` へ変換されることはありません。
 - `run_anchor`: 「現在の run」の起点。`comment_command` trigger の場合は、その reviewer の
   `trigger.value` を含む最新 comment の timestamp を自動で使います。target へ束縛できない
   marker（rate limit / in-flight / 非参加 / failure）は、この anchor より古ければ過去の run
