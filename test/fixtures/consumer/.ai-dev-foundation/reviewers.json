@@ -60,12 +60,7 @@
       },
       "fallback_order": ["codex"],
       "observed_at": "2026-09-02",
-      "notes": "この entry の actors と marker は未実測。次に selection した時点で実測し observed_at を更新する。GitHub Actions 経由のこの route は review submission を作らず、単一の conversation comment を in-place 編集して `**Claude finished ...**` で完成するため、構造的 evidence が無く completion_marker に依存する。comment 自体は reviewed SHA を持たないため、trigger.target_argument で結果へ `Reviewed commit:` 行を要求し binding に使う。その行が無ければ state は unknown になる。mention trigger workflow（例: .github/workflows/claude-review.yml）は review 対象 repository が個別に用意する必要があり、Foundation は配布しない。workflow が無い repository ではこの trigger は unavailable。",
-      "run_budget": {
-        "kind": "monthly-agent-sdk-credit",
-        "observed_at": "2026-09-02",
-        "note": "2026-06-15 以降、GitHub Actions を含む Agent SDK 経由の利用は interactive usage とは別の月次 Agent SDK credit から消費される（opt-in が必要）。interactive 枠とは競合しないが、月内で枯渇して unavailable になり得る bounded budget。"
-      }
+      "notes": "この entry の actors と marker は未実測。次に selection した時点で実測し observed_at を更新する。GitHub Actions 経由のこの route は review submission を作らず、単一の conversation comment を in-place 編集して `**Claude finished ...**` で完成するため、構造的 evidence が無く completion_marker に依存する。comment 自体は reviewed SHA を持たないため、trigger.target_argument で結果へ `Reviewed commit:` 行を要求し binding に使う。その行が無ければ state は unknown になる。mention trigger workflow（例: .github/workflows/claude-review.yml）は review 対象 repository が個別に用意する必要があり、Foundation は配布しない。workflow が無い repository ではこの trigger は unavailable。"
     },
     {
       "id": "coderabbitai",
