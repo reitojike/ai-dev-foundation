@@ -314,39 +314,31 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
     assert.ok(containsText(skill, `- \`${kind}\`:`), `Execution must define a route for trigger.kind ${kind}`);
   }
 
-  // Marker evidence has to be attributable to the reviewer it is claimed for.
-  // Without this, any comment carrying a generic "Reviewed commit: <target>" —
-  // including the agent's own trigger comment, which contains exactly that —
-  // would satisfy a required reviewer's completion.
+  // State evaluation keeps actor attribution and snapshot identity in the
+  // machine-readable helper instead of duplicating the implementation here.
   assert.ok(
-    containsText(skill, "marker evidence として扱ってよいのは、record の `actors` に帰属する item だけです"),
+    containsText(skill, "actor attribution 不明、binding 不明、または fetch incomplete は positive completion に使いません"),
     "marker evidence must be attributable to the record's declared actors",
   );
   assert.ok(
     containsText(
       skill,
-      "comment / review 型の surface で actor を確認できない item は、positive completion evidence に使いません",
+      "record の actor login と exact match する observation から得た stable actor ID は同じ snapshot 内の login drift の補助にだけ使います",
     ),
-    "an item whose author cannot be confirmed must not carry a completion claim",
+    "stable actor identity must remain snapshot-local",
   );
 
-  // A marker left by an earlier run on the same PR must not decide this one.
-  // The anchor is defined per trigger kind, so it exists for every kind rather
-  // than only for the one that posts a trigger comment.
-  assert.ok(containsText(skill, "marker は、current run を識別する anchor 以後の evidence にのみ適用します"));
-  assert.ok(containsText(skill, "`comment_command` では、実際に投稿した trigger comment を run anchor とします"));
   assert.ok(
     containsText(
       skill,
-      "`automatic` / `operator_configured` では、Selection / Execution で記録した run 開始時点、またはその run に帰属すると確認できる participation evidence を anchor とします",
+      "current target に target-bound evidence があり",
     ),
   );
   assert.ok(
     containsText(
       skill,
-      "current run への帰属を確定できない marker は、その run の completion / rate-limit / failure / 非参加 のいずれの判定にも使いません",
+      "`unknown` と `in-flight` は terminal failure ではなく",
     ),
-    "a marker that cannot be tied to this run must decide nothing about it",
   );
 
   // The happy path defers the trigger branching to the procedure instead of
@@ -354,12 +346,13 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
   // automatic reviewer to post a command it does not have.
   assert.ok(containsText(skill, "5. record の `trigger.kind` に従って reviewer を起動する（分岐の詳細は手順 4）。"));
 
-  // Symptom 3 (#72): waiting for a result that already arrived.
+  // Mutable evidence is represented by the snapshot revision, not a second
+  // history model in the skill.
   assert.ok(
-    containsText(skill, "in-place 編集される surface では、新着 comment ではなく既存 comment の本文変化を見ます。"),
+    containsText(skill, "同一 object の編集は current body、`updated_at`、body digest の snapshot projection"),
   );
   assert.ok(
-    containsText(skill, "取得した surface を record の marker と突き合わせて"),
+    containsText(skill, "state output の `state`、`coverage_complete`、`evidence`、`reason_codes` を記録します。"),
     "the skill must send the agent to the record's markers rather than to remembered state",
   );
 

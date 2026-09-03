@@ -98,20 +98,20 @@ test("collects a representative multi-surface snapshot with independent per-surf
     {
       match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/issues/62/comments"),
       handler: () =>
-        jsonResponse([{ id: 1, user: { login: "alice", type: "User" }, created_at: "t1", updated_at: "t1", html_url: "loc1" }]),
+        jsonResponse([{ id: 1, user: { login: "alice", type: "User", id: 11, node_id: "U_11" }, created_at: "t1", updated_at: "t1", html_url: "loc1" }]),
     },
     {
       match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/pulls/62/reviews"),
       handler: () =>
         jsonResponse([
-          { id: 2, user: { login: "codex" }, state: "APPROVED", commit_id: "abc1234", submitted_at: "t2", html_url: "loc2" },
+          { id: 2, user: { login: "codex", id: 12, node_id: "U_12" }, state: "APPROVED", commit_id: "abc1234", submitted_at: "t2", html_url: "loc2" },
         ]),
     },
     {
       match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/pulls/62/comments"),
       handler: () =>
         jsonResponse([
-          { id: 3, user: { login: "codex" }, path: "a.mjs", line: 5, commit_id: "abc1234", html_url: "loc3" },
+          { id: 3, user: { login: "codex", id: 12, node_id: "U_12" }, path: "a.mjs", line: 5, commit_id: "abc1234", original_commit_id: "orig123", pull_request_review_id: 2, html_url: "loc3" },
         ]),
     },
     {
@@ -130,7 +130,7 @@ test("collects a representative multi-surface snapshot with independent per-surf
                       isOutdated: false,
                       path: "a.mjs",
                       line: 5,
-                      comments: { nodes: [{ id: "c1", author: { login: "codex" }, createdAt: "t3", url: "loc4", commit: { oid: "abc1234" } }] },
+                      comments: { nodes: [{ id: "c1", databaseId: 3, author: { login: "codex", databaseId: 12, id: "U_12" }, createdAt: "t3", updatedAt: "t3", url: "loc4", originalCommit: { oid: "orig123" }, commit: { oid: "abc1234" }, pullRequestReview: { databaseId: 2, id: "R_2", state: "APPROVED", submittedAt: "t2", commit: { oid: "abc1234" } } }] },
                     },
                     {
                       id: "th2",
@@ -165,16 +165,25 @@ test("collects a representative multi-surface snapshot with independent per-surf
 
   assert.equal(result.surfaces.conversation_comments.fetch_status, "fetched");
   assert.equal(result.surfaces.conversation_comments.count, 1);
+  assert.equal(result.surfaces.conversation_comments.items[0].actor_database_id, 11);
+  assert.equal(result.surfaces.conversation_comments.items[0].actor_node_id, "U_11");
 
   assert.equal(result.surfaces.review_submissions.count, 1);
   assert.equal(result.surfaces.review_submissions.items[0].reviewed_sha, "abc1234");
+  assert.equal(result.surfaces.review_submissions.items[0].actor_database_id, 12);
 
   assert.equal(result.surfaces.inline_review_comments.count, 1);
   assert.equal(result.surfaces.inline_review_comments.items[0].reviewed_sha, "abc1234");
+  assert.equal(result.surfaces.inline_review_comments.items[0].original_commit_sha, "orig123");
+  assert.equal(result.surfaces.inline_review_comments.items[0].review_id, 2);
+  assert.equal(result.surfaces.inline_review_comments.items[0].ownership_field_present, true);
 
   assert.equal(result.surfaces.review_threads.count, 2);
-  assert.equal(result.surfaces.review_threads.unresolved_count, 1);
   assert.equal(result.surfaces.review_threads.items[0].comments[0].reviewed_sha, "abc1234");
+  assert.equal(result.surfaces.review_threads.items[0].comments[0].database_id, 3);
+  assert.equal(result.surfaces.review_threads.items[0].comments[0].actor_database_id, 12);
+  assert.equal(result.surfaces.review_threads.items[0].comments[0].review_id, 2);
+  assert.equal(result.surfaces.review_threads.items[0].comments[0].owner_state, "APPROVED");
 
   assert.equal(result.surfaces.commit_status.status.state, "success");
   assert.equal(result.surfaces.check_runs.count, 1);
@@ -196,7 +205,6 @@ test("a surface with genuinely zero items is reported as fetched(0), not conflat
   }
   assert.equal(result.surfaces.review_threads.fetch_status, "fetched");
   assert.equal(result.surfaces.review_threads.count, 0);
-  assert.equal(result.surfaces.review_threads.unresolved_count, 0);
   assert.equal(result.fetch_failures, 0);
 });
 
@@ -249,7 +257,7 @@ test("pagination is followed to completion, not truncated to the first page", as
   assert.equal(result.surfaces.conversation_comments.pages_fetched, 2);
 });
 
-test("review thread GraphQL pagination across pages accumulates the full unresolved count", async () => {
+test("review thread GraphQL pagination across pages accumulates the full thread list", async () => {
   const routes = baseRoutes();
   routes[4] = {
     match: (url, init) => url.endsWith("/graphql") && init.method === "POST",
@@ -289,7 +297,6 @@ test("review thread GraphQL pagination across pages accumulates the full unresol
 
   assert.equal(result.surfaces.review_threads.fetch_status, "fetched");
   assert.equal(result.surfaces.review_threads.count, 2);
-  assert.equal(result.surfaces.review_threads.unresolved_count, 1);
 });
 
 test("a thread with more than one page of its own comments is paginated to completion, not silently capped", async () => {
@@ -595,7 +602,7 @@ test("formatHumanSummary renders a deterministic snapshot summary", async () => 
   assert.match(text, /^PR #62 review evidence snapshot \(octo\/demo\)$/m);
   assert.match(text, /^Head: abc1234 \(state: open\)$/m);
   assert.match(text, /^Conversation comments: fetched \(0\)$/m);
-  assert.match(text, /^Review threads: fetched \(0\) — unresolved: 0$/m);
+  assert.match(text, /^Review threads: fetched \(0\)$/m);
   assert.match(text, /^Fetch failures: 0$/m);
 });
 
@@ -609,6 +616,42 @@ test("parseReviewEvidenceArgs parses --repo/--pr/--json and rejects malformed in
   assert.throws(() => parseReviewEvidenceArgs(["--pr", "62"]), /Usage:/);
   assert.throws(() => parseReviewEvidenceArgs(["--repo", "octo/demo"]), /Usage:/);
   assert.throws(() => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "not-a-number"]), /Usage:/);
+  assert.deepEqual(parseReviewEvidenceArgs([
+    "--repo", "octo/demo", "--pr", "62", "--state", "--target-sha", "abc1234",
+    "--run-after", "2026-09-03T00:00:00.000Z", "--reviewer", "claude",
+    "--run-anchor-id", "comment-1", "--json",
+  ]), {
+    json: true,
+    state: true,
+    repo: "octo/demo",
+    pr: "62",
+    targetSha: "abc1234",
+    runAfter: "2026-09-03T00:00:00.000Z",
+    reviewer: "claude",
+    runAnchorId: "comment-1",
+  });
+  assert.throws(
+    () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "62", "--target-sha", "abc1234"]),
+    /State options require --state/,
+  );
+  assert.throws(
+    () => parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "62", "--state"]),
+    /State mode requires --target-sha/,
+  );
+  assert.throws(
+    () => parseReviewEvidenceArgs([
+      "--repo", "octo/demo", "--pr", "62", "--state",
+      "--target-sha", "abc1234", "--run-after", "not-a-timestamp",
+    ]),
+    /ISO-8601/,
+  );
+  assert.throws(
+    () => parseReviewEvidenceArgs([
+      "--repo", "octo/demo", "--pr", "62", "--state",
+      "--target-sha", "not-a-sha", "--run-anchor-id", "anchor-1",
+    ]),
+    /7-40 hex SHA/,
+  );
 });
 
 // Issue #62 boundary: this helper is mechanical acquisition only. It must

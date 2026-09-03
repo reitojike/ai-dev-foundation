@@ -137,10 +137,6 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
-          isResolved
-          isOutdated
-          path
-          line
           comments(first: 50) {
             pageInfo { hasNextPage endCursor }
             nodes {
@@ -148,8 +144,17 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
               databaseId
               url
               createdAt
-              author { login }
+              updatedAt
+              author { login databaseId id }
               commit { oid }
+              originalCommit { oid }
+              pullRequestReview {
+                databaseId
+                id
+                state
+                submittedAt
+                commit { oid }
+              }
               body
             }
           }
@@ -170,8 +175,17 @@ query($id: ID!, $cursor: String) {
           databaseId
           url
           createdAt
-          author { login }
+          updatedAt
+          author { login databaseId id }
           commit { oid }
+          originalCommit { oid }
+          pullRequestReview {
+            databaseId
+            id
+            state
+            submittedAt
+            commit { oid }
+          }
           body
         }
       }
@@ -197,14 +211,9 @@ async function completeThreadComments(fetchImpl, token, threadId, firstPage) {
   return comments;
 }
 
-// Review thread resolved/unresolved state is only exposed by the GraphQL
-// API, not REST, so this surface is fetched separately from the other list
-// surfaces. unresolved_count reflects the full thread list once that list
-// itself is complete, even if fetch_status ends up "partial" because a
-// single thread's own comments couldn't be paginated to completion — that
-// failure narrows only that thread's comment list, not thread enumeration
-// or resolved state. unresolved_count is unreliable only when fetch_status
-// is "failed" (the thread list itself was never fully enumerated).
+// Review-thread comments are fetched separately from the REST surfaces. The
+// thread is an acquisition envelope; only its child comments enter the
+// canonical review_comment projection.
 export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber) {
   let cursor = null;
   let nodes = [];
@@ -217,7 +226,6 @@ export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, p
       return {
         fetch_status: pages === 0 ? "failed" : "partial",
         count: pages === 0 ? null : nodes.length,
-        unresolved_count: null,
         pages_fetched: pages,
         items: nodes,
         failure: error.failure ?? { status: null, message: error.message },
@@ -229,7 +237,6 @@ export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, p
       return {
         fetch_status: pages === 1 ? "failed" : "partial",
         count: pages === 1 ? null : nodes.length,
-        unresolved_count: null,
         pages_fetched: pages,
         items: nodes,
         failure: { status: null, message: "reviewThreads connection missing from GraphQL response (PR/repo may not exist)" },
@@ -253,18 +260,16 @@ export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, p
     }
   }
 
-  const unresolvedCount = nodes.filter((node) => node.isResolved === false).length;
   if (threadCommentsFailure) {
     return {
       fetch_status: "partial",
       count: nodes.length,
-      unresolved_count: unresolvedCount,
       pages_fetched: pages,
       items: nodes,
       failure: threadCommentsFailure,
     };
   }
-  return { fetch_status: "fetched", count: nodes.length, unresolved_count: unresolvedCount, pages_fetched: pages, items: nodes, failure: null };
+  return { fetch_status: "fetched", count: nodes.length, pages_fetched: pages, items: nodes, failure: null };
 }
 
 function normalizeConversationComment(item) {
@@ -272,6 +277,8 @@ function normalizeConversationComment(item) {
     id: item.id,
     actor: item.user?.login ?? null,
     actor_type: item.user?.type ?? null,
+    actor_database_id: item.user?.id ?? null,
+    actor_node_id: item.user?.node_id ?? null,
     created_at: item.created_at ?? null,
     updated_at: item.updated_at ?? null,
     locator: item.html_url ?? null,
@@ -284,6 +291,8 @@ function normalizeReviewSubmission(item) {
     id: item.id,
     actor: item.user?.login ?? null,
     actor_type: item.user?.type ?? null,
+    actor_database_id: item.user?.id ?? null,
+    actor_node_id: item.user?.node_id ?? null,
     state: item.state ?? null,
     reviewed_sha: item.commit_id ?? null,
     submitted_at: item.submitted_at ?? null,
@@ -297,10 +306,15 @@ function normalizeInlineReviewComment(item) {
     id: item.id,
     actor: item.user?.login ?? null,
     actor_type: item.user?.type ?? null,
+    actor_database_id: item.user?.id ?? null,
+    actor_node_id: item.user?.node_id ?? null,
     path: item.path ?? null,
     line: item.line ?? item.original_line ?? null,
     reviewed_sha: item.commit_id ?? null,
     original_commit_sha: item.original_commit_id ?? null,
+    review_id: item.pull_request_review_id ?? null,
+    review_node_id: item.pull_request_review_node_id ?? null,
+    ownership_field_present: true,
     in_reply_to_id: item.in_reply_to_id ?? null,
     created_at: item.created_at ?? null,
     updated_at: item.updated_at ?? null,
@@ -312,15 +326,23 @@ function normalizeInlineReviewComment(item) {
 function normalizeReviewThread(node) {
   return {
     id: node.id ?? null,
-    is_resolved: node.isResolved ?? null,
-    is_outdated: node.isOutdated ?? null,
-    path: node.path ?? null,
-    line: node.line ?? null,
     comments: (node.comments?.nodes ?? []).map((comment) => ({
       id: comment.id ?? null,
+      database_id: comment.databaseId ?? null,
+      node_id: comment.id ?? null,
       actor: comment.author?.login ?? null,
+      actor_database_id: comment.author?.databaseId ?? null,
+      actor_node_id: comment.author?.id ?? null,
       created_at: comment.createdAt ?? null,
+      updated_at: comment.updatedAt ?? null,
       reviewed_sha: comment.commit?.oid ?? null,
+      original_commit_sha: comment.originalCommit?.oid ?? null,
+      review_id: comment.pullRequestReview?.databaseId ?? null,
+      review_node_id: comment.pullRequestReview?.id ?? null,
+      owner_state: comment.pullRequestReview?.state ?? null,
+      owner_reviewed_sha: comment.pullRequestReview?.commit?.oid ?? null,
+      ownership_field_present: true,
+      state: comment.pullRequestReview?.state ?? null,
       locator: comment.url ?? null,
       body: comment.body ?? null,
     })),
@@ -361,7 +383,7 @@ function notApplicableSurface(note) {
 
 // Collects a single PR's durable GitHub review-evidence surfaces: PR
 // metadata/head SHA, Conversation comments, review submissions, inline
-// review comments, review threads (with resolved state), combined commit
+// review comments, review-thread comments, combined commit
 // status, and check runs. Every surface reports its own fetch_status
 // (fetched / partial / failed / not_applicable) and count independently —
 // a failure on one surface never becomes a 0 on another, and a 0 count is
@@ -490,9 +512,6 @@ export function formatHumanSummary(result) {
     if (surface.fetch_status === "not_applicable" && surface.note) {
       line += ` — ${surface.note}`;
     }
-    if (key === "review_threads" && surface.fetch_status === "fetched") {
-      line += ` — unresolved: ${surface.unresolved_count}`;
-    }
     lines.push(line);
   }
 
@@ -516,6 +535,23 @@ export function parseReviewEvidenceArgs(argv) {
       index += 1;
     } else if (arg === "--json") {
       args.json = true;
+    } else if (arg === "--state") {
+      args.state = true;
+    } else if (arg === "--target-sha") {
+      args.targetSha = argv[index + 1];
+      index += 1;
+    } else if (arg === "--record") {
+      args.record = argv[index + 1];
+      index += 1;
+    } else if (arg === "--reviewer") {
+      args.reviewer = argv[index + 1];
+      index += 1;
+    } else if (arg === "--run-after") {
+      args.runAfter = argv[index + 1];
+      index += 1;
+    } else if (arg === "--run-anchor-id") {
+      args.runAnchorId = argv[index + 1];
+      index += 1;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -526,5 +562,20 @@ export function parseReviewEvidenceArgs(argv) {
   if (!args.pr || !/^\d+$/.test(args.pr)) {
     throw new Error("Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>]");
   }
+  const stateOptions = ["targetSha", "record", "reviewer", "runAfter", "runAnchorId"];
+  if (!args.state && stateOptions.some((key) => args[key] !== undefined)) {
+    throw new Error("State options require --state");
+  }
+  if (args.state && !args.targetSha) {
+    throw new Error("State mode requires --target-sha");
+  }
+  if (args.state && !/^[0-9a-f]{7,40}$/i.test(args.targetSha)) {
+    throw new Error("State mode requires --target-sha <7-40 hex SHA>");
+  }
+  if (args.state && !args.runAfter && !args.runAnchorId) {
+    throw new Error("State mode requires --run-after or --run-anchor-id");
+  }
+  if (args.runAfter !== undefined && Number.isNaN(Date.parse(args.runAfter)))
+    throw new Error("Usage: --run-after needs an ISO-8601 timestamp");
   return args;
 }

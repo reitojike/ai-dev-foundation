@@ -101,12 +101,10 @@ supported value としており、1 comment の in-place 編集は採用しま�
 （「この provider はこの surface に出ない」）そのものです。したがって `result_surfaces`、
 marker の `surfaces`、marker の `target_field` はいずれも schema が reject します。
 
-marker は agent が読みます。GitHub 上の surface を fresh 取得し、record が宣言した
-marker と突き合わせて、その reviewer が freeze した target について完了しているかを
-判定するのは agent の作業です。この判定を helper で機械化することは Phase 1 の範囲外
-です（Issue #72 Phase 1b）。REST と GraphQL が同じ GitHub object を別表現で返すため、
-機械化には surface を跨いだ canonical identity model が必要であり、Phase 1 はそれを
-定義しません。
+marker は agent が読みます。Issue #74 の state evaluator は GitHub の stable object ID
+を先に使って REST / GraphQL の projection を canonicalize し、record の `actors` と
+snapshot 内で観測した stable actor ID から attribution を補助します。login suffix や
+alias の推測はしません。record は従来どおり `reviewer-capability-record@1` です。
 
 `check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
 non-zero で終了します。record の内容（どの reviewer を required にするか等）は
@@ -129,10 +127,9 @@ blocking checkで検知します。
 
 `tooling/review-evidence.mjs` は、指定した GitHub PR について durable review
 surface（PR metadata / head SHA、Conversation comments、review submissions、
-inline review comments、review thread の resolved/unresolved 状態、combined
-commit status、check runs）を fresh に取得し、pagination を完了した上で
-human-readable summary または `--json` machine-readable output を返す
-snapshot tool です。
+inline review comments、review-thread comments、combined commit status、check
+runs）を fresh に取得し、pagination を完了した上で human-readable summary または
+`--json` machine-readable output を返す snapshot tool です。
 
 ```text
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json]
@@ -150,6 +147,29 @@ review completion / target Validity / finding triage / Resolution 等の
 count と fetch state のみを表示し、判定に必要な actor / body / locator 等の
 item detail を含みません。
 
+reviewer の target completion state まで機械判定する場合は、同じ invocation で
+record と run anchor を指定します。
+
+```text
+node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --state \
+  --target-sha <sha> --run-after <ISO timestamp> --reviewer <reviewer-id> --json
+```
+
+state output は `state`、`coverage_complete`、`evidence`、`observed_signals`、
+`reason_codes` を持ちます。`completed@target` は current target に構造化または
+explicit な target binding があり、snapshot coverage も complete である場合だけです。
+`not-bound` は別 target の完了、`rate-limited` / `failed` / `declined` は取得 complete
+な snapshot の明示的 terminal signal、`in-flight` は明示的な進行中 signal、
+`unknown` はそれ以外です。`unknown`、`in-flight`、fetch incomplete、silence、
+acknowledgement は failure や 0 findings に変換しません。completion state は finding
+の有無、clean、merge-ready を意味しません。
+
+canonical object は `review`、`review_comment`、`conversation_comment` のいずれかです。
+GraphQL review thread は child comment の source / `thread_id` としてだけ保持します。
+各 object は current body、`updated_at`、body digest、actor stable ID、ownership、
+binding candidates、および `{surface, surface_id}` の sources を持ちます。snapshot
+内で同一 object の本文が更新されていた場合は、最新 observation を current とし、
+同時刻に異なる本文があれば `unknown` の理由として扱います。履歴は保存しません。
 **現在の coverage の既知の限界**（呼び出し側は、この範囲外の evidence が
 必要な場合、Review Adapter boundary に従って追加で fresh acquisition する
 必要があります）:
@@ -172,11 +192,9 @@ item detail を含みません。
   ため、`fetch_status` の値だけではこの欠落を検知できません。`commit_status`
   も投稿者（`creator`）を保持しません。
 
-この helper は GitHub durable surface の mechanical acquisition に限定され、
-review completion / target Validity / finding triage / merge-readiness の
-判定は行いません。それらは `policy/core.md` の Review Protocol と
-`skills/review-code.md` / `skills/review-doc.md` が引き続き所有します
-（Issue #62）。
+helper の acquisition と state projection はそれぞれ mechanical な取得と Issue #74 の
+target completion 判定だけを行います。finding の意味付け、Resolution、Selection、
+merge-ready 判定は `policy/core.md` と review skills が引き続き所有します。
 
 ## Next.js + Supabase quality profile
 
