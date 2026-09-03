@@ -1,5 +1,5 @@
 {
-  "schema": "ai-dev-foundation/reviewer-capability-record@1",
+  "schema": "ai-dev-foundation/reviewer-capability-record@2",
   "notes": "この repository の reviewer capability record。field の意味と completion 判定の順序は README の Reviewer capability record を参照。marker は observed evidence であり恒久仕様ではない（policy/core.md の Observed evidence is not a permanent provider rule）。実挙動と食い違った場合は待たず、marker と observed_at を更新する。",
   "durable_record": {
     "posting": "new-comment-per-stage",
@@ -17,6 +17,13 @@
       "default_class": "required",
       "provider_family": "openai",
       "actors": ["chatgpt-codex-connector[bot]"],
+      "actor_identities": [
+        {
+          "database_id": 199175422,
+          "node_id": "BOT_kgDOC98s_g",
+          "logins": ["chatgpt-codex-connector[bot]", "chatgpt-codex-connector"]
+        }
+      ],
       "trigger": {
         "kind": "comment_command",
         "value": "@codex review",
@@ -40,6 +47,13 @@
       "default_class": "required",
       "provider_family": "anthropic",
       "actors": ["claude", "claude[bot]", "github-actions[bot]"],
+      "actor_identities": [
+        {
+          "database_id": 209825114,
+          "node_id": "BOT_kgDODIGtWg",
+          "logins": ["claude", "claude[bot]"]
+        }
+      ],
       "trigger": {
         "kind": "comment_command",
         "value": "@claude review",
@@ -68,6 +82,13 @@
       "default_class": "advisory",
       "provider_family": "coderabbit",
       "actors": ["coderabbitai[bot]"],
+      "actor_identities": [
+        {
+          "database_id": 136622811,
+          "node_id": "BOT_kgDOCCSy2w",
+          "logins": ["coderabbitai[bot]", "coderabbitai"]
+        }
+      ],
       "trigger": {
         "kind": "comment_command",
         "value": "@coderabbitai review"

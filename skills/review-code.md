@@ -174,9 +174,22 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    completion evidence の target-bound 要件、binding へ使う field / surface の安定性
    要件、binding が成立しない場合の扱い、および `not-bound` な reviewer の evidence 軸 /
    finding 軸の分離は、いずれも `policy/core.md` が定めます。
-   この skill で行う実務は次です。completion 判定は record の completion marker を、
-   comment ID を指定した fresh 取得で確認します。in-place 編集される surface では、
-   新着 comment ではなく既存 comment の本文変化を見ます。
+   この skill で行う実務は次です。fresh snapshot と state projection は、次の helper
+   呼び出しで同じ取得結果から作ります（target、record、run anchor は Selection /
+   Execution の記録から渡します）。
+
+   ```text
+   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --target-sha <sha> --record .ai-dev-foundation/reviewers.json --run-after <ISO-8601> --json
+   ```
+
+   `review-evidence-state-lib.mjs` が surface を canonical object へ投影し、
+   `reviewer_states` の `state` / `terminal` / `polarity` / `binding_status` /
+   `coverage` / `fallback_eligible` / `reason_codes` を返します。canonical object は
+   current body、`updated_at`、body digest、`captured_at`、stable ID、provenance を
+   保持します。ここでの projection は finding の意味付けや Resolution を行いません。
+   completion 判定は record の completion marker を fresh 取得で確認します。
+   in-place 編集される surface では、新着 comment ではなく既存 comment の本文変化を
+   見ます。
    marker evidence として扱ってよいのは、record の `actors` に帰属する item だけです。
    comment / review 型の surface で actor を確認できない item は、positive completion
    evidence に使いません。
@@ -187,14 +200,21 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
    します。current run への帰属を確定できない marker は、その run の completion /
    rate-limit / failure / 非参加 のいずれの判定にも使いません。
    どの surface item を positive completion evidence とし、どの field / surface を安定と
-   判断して binding の根拠にしたかを記録します。安定性を必要な精度で確認できないまま
-   binding が成立したものとして扱わないでください。
+   判断して binding の根拠にしたかは、state output の `evidence` / `effective_binding`
+   / `reason_codes` とともに記録します。安定性を必要な精度で確認できないまま binding
+   が成立したものとして扱わないでください。
+   `unknown` と `in-flight` は待機・再取得または Failure / retry の判断へ渡し、failure
+   へ変換しません。`not-bound` は current target の completion ではありません。
+   `rate-limited` / `failed` / `declined` の fallback eligibility は state output の
+   `fallback_eligible` が示す explicit terminal negative と complete coverage の組合せ
+   に限ります。fallback の実行は既存 policy に従います。
    rate-limit marker を観測したら復帰を待ちません。record の `fallback_order` で次の
    reviewer へ進み、Selection amendment を記録します。待つのは in-flight な run の
    終端だけです。
    advisory member の completion は待たず、blocker にしません。ただし merge-ready 判定
    までに review surface へ到着した finding は、class に関係なく triage / Resolution の
    対象です。
+
 6. **Required review gate & aggregate / triage** — Selection Contract で
    required とした review 数ぶんの `validity: valid` な run が揃うまで triage
    へ進みません。

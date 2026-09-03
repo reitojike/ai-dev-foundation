@@ -41,7 +41,10 @@ async function readJsonBody(response) {
 }
 
 function failureFromResponse(response, body) {
-  const message = body && typeof body === "object" && typeof body.message === "string" ? body.message : `HTTP ${response.status}`;
+  const message =
+    body && typeof body === "object" && typeof body.message === "string"
+      ? body.message
+      : `HTTP ${response.status}`;
   return { status: response.status, message };
 }
 
@@ -64,7 +67,12 @@ async function fetchRestPage(fetchImpl, token, url) {
 // like check-runs). Pagination that fails after collecting >=1 page is
 // reported as "partial" (count reflects only what was fetched, not the
 // surface's true total) rather than silently truncated to "fetched".
-export async function fetchPaginatedSurface(fetchImpl, token, initialUrl, extractItems = (body) => (Array.isArray(body) ? body : [])) {
+export async function fetchPaginatedSurface(
+  fetchImpl,
+  token,
+  initialUrl,
+  extractItems = (body) => (Array.isArray(body) ? body : []),
+) {
   let url = initialUrl;
   let items = [];
   let pages = 0;
@@ -85,7 +93,13 @@ export async function fetchPaginatedSurface(fetchImpl, token, initialUrl, extrac
     items = items.concat(extractItems(page.body));
     url = page.nextUrl;
   }
-  return { fetch_status: "fetched", count: items.length, pages_fetched: pages, items, failure: null };
+  return {
+    fetch_status: "fetched",
+    count: items.length,
+    pages_fetched: pages,
+    items,
+    failure: null,
+  };
 }
 
 // The combined-status endpoint's `statuses` array is itself paginated (one
@@ -123,7 +137,12 @@ async function fetchGraphQL(fetchImpl, token, query, variables) {
   }
   if (body?.errors?.length) {
     const error = new Error("GraphQL response contained errors");
-    error.failure = { status: null, message: body.errors.map((graphqlError) => graphqlError.message).join("; ") };
+    error.failure = {
+      status: null,
+      message: body.errors
+        .map((graphqlError) => graphqlError.message)
+        .join("; "),
+    };
     throw error;
   }
   return body?.data ?? null;
@@ -146,10 +165,19 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
             nodes {
               id
               databaseId
+              fullDatabaseId
               url
               createdAt
-              author { login }
+              updatedAt
+              originalCommit { oid }
+              author {
+                login
+                __typename
+                ... on User { id databaseId fullDatabaseId }
+                ... on Bot { id databaseId fullDatabaseId }
+              }
               commit { oid }
+              pullRequestReview { id databaseId fullDatabaseId }
               body
             }
           }
@@ -168,10 +196,19 @@ query($id: ID!, $cursor: String) {
         nodes {
           id
           databaseId
+          fullDatabaseId
           url
           createdAt
-          author { login }
+          updatedAt
+          originalCommit { oid }
+          author {
+            login
+            __typename
+            ... on User { id databaseId fullDatabaseId }
+            ... on Bot { id databaseId fullDatabaseId }
+          }
           commit { oid }
+          pullRequestReview { id databaseId fullDatabaseId }
           body
         }
       }
@@ -188,9 +225,15 @@ async function completeThreadComments(fetchImpl, token, threadId, firstPage) {
   let comments = firstPage?.nodes ?? [];
   let pageInfo = firstPage?.pageInfo;
   while (pageInfo?.hasNextPage) {
-    const data = await fetchGraphQL(fetchImpl, token, THREAD_COMMENTS_QUERY, { id: threadId, cursor: pageInfo.endCursor });
+    const data = await fetchGraphQL(fetchImpl, token, THREAD_COMMENTS_QUERY, {
+      id: threadId,
+      cursor: pageInfo.endCursor,
+    });
     const connection = data?.node?.comments;
-    if (!connection) throw new Error("thread comments connection missing from GraphQL response");
+    if (!connection)
+      throw new Error(
+        "thread comments connection missing from GraphQL response",
+      );
     comments = comments.concat(connection.nodes ?? []);
     pageInfo = connection.pageInfo;
   }
@@ -205,14 +248,25 @@ async function completeThreadComments(fetchImpl, token, threadId, firstPage) {
 // failure narrows only that thread's comment list, not thread enumeration
 // or resolved state. unresolved_count is unreliable only when fetch_status
 // is "failed" (the thread list itself was never fully enumerated).
-export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber) {
+export async function fetchReviewThreadsSurface(
+  fetchImpl,
+  token,
+  owner,
+  repo,
+  pullNumber,
+) {
   let cursor = null;
   let nodes = [];
   let pages = 0;
   for (;;) {
     let data;
     try {
-      data = await fetchGraphQL(fetchImpl, token, REVIEW_THREADS_QUERY, { owner, repo, number: pullNumber, cursor });
+      data = await fetchGraphQL(fetchImpl, token, REVIEW_THREADS_QUERY, {
+        owner,
+        repo,
+        number: pullNumber,
+        cursor,
+      });
     } catch (error) {
       return {
         fetch_status: pages === 0 ? "failed" : "partial",
@@ -232,7 +286,11 @@ export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, p
         unresolved_count: null,
         pages_fetched: pages,
         items: nodes,
-        failure: { status: null, message: "reviewThreads connection missing from GraphQL response (PR/repo may not exist)" },
+        failure: {
+          status: null,
+          message:
+            "reviewThreads connection missing from GraphQL response (PR/repo may not exist)",
+        },
       };
     }
     nodes = nodes.concat(connection.nodes ?? []);
@@ -246,14 +304,26 @@ export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, p
   for (const node of nodes) {
     if (!node.comments?.pageInfo?.hasNextPage) continue;
     try {
-      node.comments = { nodes: await completeThreadComments(fetchImpl, token, node.id, node.comments) };
+      node.comments = {
+        nodes: await completeThreadComments(
+          fetchImpl,
+          token,
+          node.id,
+          node.comments,
+        ),
+      };
     } catch (error) {
-      threadCommentsFailure = error.failure ?? { status: null, message: error.message };
+      threadCommentsFailure = error.failure ?? {
+        status: null,
+        message: error.message,
+      };
       break;
     }
   }
 
-  const unresolvedCount = nodes.filter((node) => node.isResolved === false).length;
+  const unresolvedCount = nodes.filter(
+    (node) => node.isResolved === false,
+  ).length;
   if (threadCommentsFailure) {
     return {
       fetch_status: "partial",
@@ -264,14 +334,45 @@ export async function fetchReviewThreadsSurface(fetchImpl, token, owner, repo, p
       failure: threadCommentsFailure,
     };
   }
-  return { fetch_status: "fetched", count: nodes.length, unresolved_count: unresolvedCount, pages_fetched: pages, items: nodes, failure: null };
+  return {
+    fetch_status: "fetched",
+    count: nodes.length,
+    unresolved_count: unresolvedCount,
+    pages_fetched: pages,
+    items: nodes,
+    failure: null,
+  };
+}
+
+function normalizeRestActor(user) {
+  return {
+    database_id: user?.id ?? null,
+    node_id: user?.node_id ?? null,
+    login: user?.login ?? null,
+    type: user?.type ?? null,
+  };
+}
+
+function normalizeGraphqlActor(author) {
+  return {
+    database_id: author?.fullDatabaseId ?? author?.databaseId ?? null,
+    node_id: author?.id ?? null,
+    login: author?.login ?? null,
+    type: author?.__typename ?? null,
+  };
 }
 
 function normalizeConversationComment(item) {
+  const actor = normalizeRestActor(item.user);
   return {
     id: item.id,
-    actor: item.user?.login ?? null,
-    actor_type: item.user?.type ?? null,
+    database_id: item.id ?? null,
+    node_id: item.node_id ?? null,
+    actor: actor.login,
+    actor_type: actor.type,
+    actor_database_id: actor.database_id,
+    actor_node_id: actor.node_id,
+    actor_identity: { database_id: actor.database_id, node_id: actor.node_id },
     created_at: item.created_at ?? null,
     updated_at: item.updated_at ?? null,
     locator: item.html_url ?? null,
@@ -280,12 +381,20 @@ function normalizeConversationComment(item) {
 }
 
 function normalizeReviewSubmission(item) {
+  const actor = normalizeRestActor(item.user);
   return {
     id: item.id,
-    actor: item.user?.login ?? null,
-    actor_type: item.user?.type ?? null,
+    database_id: item.id ?? null,
+    node_id: item.node_id ?? null,
+    actor: actor.login,
+    actor_type: actor.type,
+    actor_database_id: actor.database_id,
+    actor_node_id: actor.node_id,
+    actor_identity: { database_id: actor.database_id, node_id: actor.node_id },
     state: item.state ?? null,
     reviewed_sha: item.commit_id ?? null,
+    created_at: item.created_at ?? null,
+    updated_at: item.updated_at ?? null,
     submitted_at: item.submitted_at ?? null,
     locator: item.html_url ?? null,
     body: item.body ?? null,
@@ -293,14 +402,25 @@ function normalizeReviewSubmission(item) {
 }
 
 function normalizeInlineReviewComment(item) {
+  const actor = normalizeRestActor(item.user);
   return {
     id: item.id,
-    actor: item.user?.login ?? null,
-    actor_type: item.user?.type ?? null,
+    database_id: item.id ?? null,
+    node_id: item.node_id ?? null,
+    actor: actor.login,
+    actor_type: actor.type,
+    actor_database_id: actor.database_id,
+    actor_node_id: actor.node_id,
+    actor_identity: { database_id: actor.database_id, node_id: actor.node_id },
     path: item.path ?? null,
     line: item.line ?? item.original_line ?? null,
     reviewed_sha: item.commit_id ?? null,
     original_commit_sha: item.original_commit_id ?? null,
+    pull_request_review_id: item.pull_request_review_id ?? null,
+    ownership_field_present: Object.prototype.hasOwnProperty.call(
+      item,
+      "pull_request_review_id",
+    ),
     in_reply_to_id: item.in_reply_to_id ?? null,
     created_at: item.created_at ?? null,
     updated_at: item.updated_at ?? null,
@@ -312,15 +432,34 @@ function normalizeInlineReviewComment(item) {
 function normalizeReviewThread(node) {
   return {
     id: node.id ?? null,
+    node_id: node.id ?? null,
     is_resolved: node.isResolved ?? null,
     is_outdated: node.isOutdated ?? null,
     path: node.path ?? null,
     line: node.line ?? null,
     comments: (node.comments?.nodes ?? []).map((comment) => ({
       id: comment.id ?? null,
+      node_id: comment.id ?? null,
+      database_id: comment.fullDatabaseId ?? comment.databaseId ?? null,
       actor: comment.author?.login ?? null,
+      actor_type: comment.author?.__typename ?? null,
+      actor_database_id:
+        comment.author?.fullDatabaseId ?? comment.author?.databaseId ?? null,
+      actor_node_id: comment.author?.id ?? null,
+      actor_identity: normalizeGraphqlActor(comment.author),
       created_at: comment.createdAt ?? null,
+      updated_at: comment.updatedAt ?? null,
       reviewed_sha: comment.commit?.oid ?? null,
+      original_commit_sha: comment.originalCommit?.oid ?? null,
+      review_id:
+        comment.pullRequestReview?.fullDatabaseId ??
+        comment.pullRequestReview?.databaseId ??
+        null,
+      review_node_id: comment.pullRequestReview?.id ?? null,
+      ownership_field_present: true,
+      thread_id: node.id ?? null,
+      thread_is_resolved: node.isResolved ?? null,
+      thread_is_outdated: node.isOutdated ?? null,
       locator: comment.url ?? null,
       body: comment.body ?? null,
     })),
@@ -356,7 +495,14 @@ function normalizeStatus(status) {
 }
 
 function notApplicableSurface(note) {
-  return { fetch_status: "not_applicable", count: null, pages_fetched: 0, items: [], failure: null, note };
+  return {
+    fetch_status: "not_applicable",
+    count: null,
+    pages_fetched: 0,
+    items: [],
+    failure: null,
+    note,
+  };
 }
 
 // Collects a single PR's durable GitHub review-evidence surfaces: PR
@@ -366,23 +512,53 @@ function notApplicableSurface(note) {
 // (fetched / partial / failed / not_applicable) and count independently —
 // a failure on one surface never becomes a 0 on another, and a 0 count is
 // only ever reported when the surface actually completed a fetch.
-export async function collectReviewEvidence({ owner, repo, pullNumber, token, fetchImpl = defaultFetch }) {
+export async function collectReviewEvidence({
+  owner,
+  repo,
+  pullNumber,
+  token,
+  fetchImpl = defaultFetch,
+}) {
   const restBase = `${GITHUB_API_ROOT}/repos/${owner}/${repo}`;
 
   let prBody = null;
   let prMetadataFailure = null;
   try {
-    const page = await fetchRestPage(fetchImpl, token, `${restBase}/pulls/${pullNumber}`);
+    const page = await fetchRestPage(
+      fetchImpl,
+      token,
+      `${restBase}/pulls/${pullNumber}`,
+    );
     prBody = page.body;
   } catch (error) {
-    prMetadataFailure = error.failure ?? { status: null, message: error.message };
+    prMetadataFailure = error.failure ?? {
+      status: null,
+      message: error.message,
+    };
   }
   const headSha = prBody?.head?.sha ?? null;
 
-  const [conversationComments, reviewSubmissions, inlineReviewComments, reviewThreads] = await Promise.all([
-    fetchPaginatedSurface(fetchImpl, token, `${restBase}/issues/${pullNumber}/comments?per_page=100`),
-    fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/reviews?per_page=100`),
-    fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/comments?per_page=100`),
+  const [
+    conversationComments,
+    reviewSubmissions,
+    inlineReviewComments,
+    reviewThreads,
+  ] = await Promise.all([
+    fetchPaginatedSurface(
+      fetchImpl,
+      token,
+      `${restBase}/issues/${pullNumber}/comments?per_page=100`,
+    ),
+    fetchPaginatedSurface(
+      fetchImpl,
+      token,
+      `${restBase}/pulls/${pullNumber}/reviews?per_page=100`,
+    ),
+    fetchPaginatedSurface(
+      fetchImpl,
+      token,
+      `${restBase}/pulls/${pullNumber}/comments?per_page=100`,
+    ),
     fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber),
   ]);
 
@@ -401,7 +577,11 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
   let checkRuns;
   if (headSha) {
     [commitStatus, checkRuns] = await Promise.all([
-      fetchCombinedStatusSurface(fetchImpl, token, `${restBase}/commits/${headSha}/status?per_page=100`),
+      fetchCombinedStatusSurface(
+        fetchImpl,
+        token,
+        `${restBase}/commits/${headSha}/status?per_page=100`,
+      ),
       fetchPaginatedSurface(
         fetchImpl,
         token,
@@ -410,32 +590,58 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
       ),
     ]);
   } else {
-    commitStatus = notApplicableSurface("head SHA unavailable because PR metadata fetch failed");
-    checkRuns = notApplicableSurface("head SHA unavailable because PR metadata fetch failed");
+    commitStatus = notApplicableSurface(
+      "head SHA unavailable because PR metadata fetch failed",
+    );
+    checkRuns = notApplicableSurface(
+      "head SHA unavailable because PR metadata fetch failed",
+    );
   }
 
   const surfaces = {
-    conversation_comments: { ...conversationComments, items: conversationComments.items.map(normalizeConversationComment) },
-    review_submissions: { ...reviewSubmissions, items: reviewSubmissions.items.map(normalizeReviewSubmission) },
-    inline_review_comments: { ...inlineReviewComments, items: inlineReviewComments.items.map(normalizeInlineReviewComment) },
-    review_threads: { ...reviewThreads, items: reviewThreads.items.map(normalizeReviewThread) },
+    conversation_comments: {
+      ...conversationComments,
+      items: conversationComments.items.map(normalizeConversationComment),
+    },
+    review_submissions: {
+      ...reviewSubmissions,
+      items: reviewSubmissions.items.map(normalizeReviewSubmission),
+    },
+    inline_review_comments: {
+      ...inlineReviewComments,
+      items: inlineReviewComments.items.map(normalizeInlineReviewComment),
+    },
+    review_threads: {
+      ...reviewThreads,
+      items: reviewThreads.items.map(normalizeReviewThread),
+    },
     commit_status:
       commitStatus.fetch_status === "not_applicable"
-        ? { fetch_status: "not_applicable", failure: null, status: null, note: commitStatus.note }
+        ? {
+            fetch_status: "not_applicable",
+            failure: null,
+            status: null,
+            note: commitStatus.note,
+          }
         : {
             fetch_status: commitStatus.fetch_status,
             failure: commitStatus.failure,
             status:
               commitStatus.fetch_status === "failed"
                 ? null
-                : { state: commitStatus.state, total_count: commitStatus.total_count, statuses: commitStatus.items.map(normalizeStatus) },
+                : {
+                    state: commitStatus.state,
+                    total_count: commitStatus.total_count,
+                    statuses: commitStatus.items.map(normalizeStatus),
+                  },
           },
     check_runs: { ...checkRuns, items: checkRuns.items.map(normalizeCheckRun) },
   };
 
   let fetchFailures = prMetadataFailure ? 1 : 0;
   for (const surface of Object.values(surfaces)) {
-    if (surface.fetch_status === "failed" || surface.fetch_status === "partial") fetchFailures += 1;
+    if (surface.fetch_status === "failed" || surface.fetch_status === "partial")
+      fetchFailures += 1;
   }
 
   return {
@@ -443,8 +649,22 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     pull_number: pullNumber,
     generated_at: new Date().toISOString(),
     pr_metadata: prBody
-      ? { fetch_status: "fetched", failure: null, head_sha: headSha, state: prBody.state ?? null, html_url: prBody.html_url ?? null, updated_at: prBody.updated_at ?? null }
-      : { fetch_status: "failed", failure: prMetadataFailure, head_sha: null, state: null, html_url: null, updated_at: null },
+      ? {
+          fetch_status: "fetched",
+          failure: null,
+          head_sha: headSha,
+          state: prBody.state ?? null,
+          html_url: prBody.html_url ?? null,
+          updated_at: prBody.updated_at ?? null,
+        }
+      : {
+          fetch_status: "failed",
+          failure: prMetadataFailure,
+          head_sha: null,
+          state: null,
+          html_url: null,
+          updated_at: null,
+        },
     surfaces,
     fetch_failures: fetchFailures,
   };
@@ -464,11 +684,17 @@ const SURFACE_LABELS = [
 // computed above — it adds no new judgment.
 export function formatHumanSummary(result) {
   const lines = [];
-  lines.push(`PR #${result.pull_number} review evidence snapshot (${result.repo})`);
+  lines.push(
+    `PR #${result.pull_number} review evidence snapshot (${result.repo})`,
+  );
   if (result.pr_metadata.fetch_status === "fetched") {
-    lines.push(`Head: ${result.pr_metadata.head_sha ?? "unknown"} (state: ${result.pr_metadata.state ?? "unknown"})`);
+    lines.push(
+      `Head: ${result.pr_metadata.head_sha ?? "unknown"} (state: ${result.pr_metadata.state ?? "unknown"})`,
+    );
   } else {
-    lines.push(`Head: unknown (PR metadata fetch failed: ${result.pr_metadata.failure?.message ?? "unknown error"})`);
+    lines.push(
+      `Head: unknown (PR metadata fetch failed: ${result.pr_metadata.failure?.message ?? "unknown error"})`,
+    );
   }
   lines.push(`Snapshot fetched at: ${result.generated_at}`);
   lines.push("");
@@ -478,13 +704,19 @@ export function formatHumanSummary(result) {
     if (!surface) continue;
     let line = `${label}: ${surface.fetch_status}`;
     if (key === "commit_status") {
-      if (surface.fetch_status === "fetched" || surface.fetch_status === "partial") {
+      if (
+        surface.fetch_status === "fetched" ||
+        surface.fetch_status === "partial"
+      ) {
         line += ` (state: ${surface.status?.state ?? "unknown"}, contexts: ${surface.status?.statuses?.length ?? 0})`;
       }
     } else if (surface.count !== null && surface.count !== undefined) {
       line += ` (${surface.count})`;
     }
-    if (surface.fetch_status === "failed" || surface.fetch_status === "partial") {
+    if (
+      surface.fetch_status === "failed" ||
+      surface.fetch_status === "partial"
+    ) {
       line += ` — ${surface.failure?.message ?? "unknown failure"}`;
     }
     if (surface.fetch_status === "not_applicable" && surface.note) {
@@ -516,15 +748,34 @@ export function parseReviewEvidenceArgs(argv) {
       index += 1;
     } else if (arg === "--json") {
       args.json = true;
+    } else if (arg === "--target-sha") {
+      args.targetSha = argv[index + 1];
+      index += 1;
+    } else if (arg === "--record") {
+      args.recordPath = argv[index + 1];
+      index += 1;
+    } else if (arg === "--run-after") {
+      args.runAfter = argv[index + 1];
+      index += 1;
+    } else if (arg === "--run-anchor-id") {
+      args.runAnchorId = argv[index + 1];
+      index += 1;
+    } else if (arg === "--reviewer") {
+      args.reviewerId = argv[index + 1];
+      index += 1;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
   if (!args.repo || !args.repo.includes("/")) {
-    throw new Error("Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>]");
+    throw new Error(
+      "Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--target-sha <sha>] [--record <path>] [--run-after <ISO>] [--run-anchor-id <id>] [--reviewer <id>] [--token <token>]",
+    );
   }
   if (!args.pr || !/^\d+$/.test(args.pr)) {
-    throw new Error("Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--token <token>]");
+    throw new Error(
+      "Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--target-sha <sha>] [--record <path>] [--run-after <ISO>] [--run-anchor-id <id>] [--reviewer <id>] [--token <token>]",
+    );
   }
   return args;
 }

@@ -80,16 +80,17 @@ cp templates/reviewers.example.json <consumer>/.ai-dev-foundation/reviewers.json
 
 reviewer ごとに表現するもの:
 
-| field                                                                                    | 用途                                                                                                            |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `id` / `display_name` / `provider_family`                                                | 識別と、implementer と異なる family を選ぶための比較軸                                                          |
-| `default_class`                                                                          | `required` / `expected` / `advisory`。portfolio 上の default であり Task 固有の obligation ではない             |
-| `actors`                                                                                 | この reviewer が投稿する login。surface item の帰属に使う                                                       |
-| `trigger`                                                                                | `kind` と、`comment_command` なら投稿する literal command。`target_argument` は `{target_sha}` を結果へ持ち込む |
-| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence の文字列（**必須**）                                        |
-| `non_participation_marker` / `rate_limit_marker` / `failure_marker` / `in_flight_marker` | `declined` / rate limit / `failed` / in-flight の evidence（いずれも省略可）                                    |
-| `fallback_order`                                                                         | この reviewer が使えない場合に次に選ぶ reviewer の id                                                           |
-| `observed_at`                                                                            | marker を最後に実測した日付。marker は observed evidence であり恒久仕様ではない                                 |
+| field                                                                                    | 用途                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id` / `display_name` / `provider_family`                                                | 識別と、implementer と異なる family を選ぶための比較軸                                                                                                        |
+| `default_class`                                                                          | `required` / `expected` / `advisory`。portfolio 上の default であり Task 固有の obligation ではない                                                           |
+| `actors`                                                                                 | この reviewer が投稿する login。surface item の帰属に使う                                                                                                     |
+| `actor_identities`                                                                       | schema `@2` の stable GitHub actor identity。各 entry は `database_id` または `node_id` の少なくとも一方を持ち、`logins` は観測された表記の provenance に限る |
+| `trigger`                                                                                | `kind` と、`comment_command` なら投稿する literal command。`target_argument` は `{target_sha}` を結果へ持ち込む                                               |
+| `completion_marker`                                                                      | `completed@target` と判定してよい positive evidence の文字列（**必須**）                                                                                      |
+| `non_participation_marker` / `rate_limit_marker` / `failure_marker` / `in_flight_marker` | `declined` / rate limit / `failed` / in-flight の evidence（いずれも省略可）                                                                                  |
+| `fallback_order`                                                                         | この reviewer が使えない場合に次に選ぶ reviewer の id                                                                                                         |
+| `observed_at`                                                                            | marker を最後に実測した日付。marker は observed evidence であり恒久仕様ではない                                                                               |
 
 top-level には `required_selection`（required slot の数と埋め方、必須）と
 `durable_record`（Selection / run / fence record の投稿形式）を置きます。後者は schema が
@@ -101,12 +102,18 @@ supported value としており、1 comment の in-place 編集は採用しま�
 （「この provider はこの surface に出ない」）そのものです。したがって `result_surfaces`、
 marker の `surfaces`、marker の `target_field` はいずれも schema が reject します。
 
+Foundation の default は `ai-dev-foundation/reviewer-capability-record@2` です。旧
+`@1` は互換読み取りしますが、stable actor identity が無い場合は、exact login で
+帰属でき、target と completion が一つの surface item だけで完結する場合に限って
+保守的に使います。surface 間の login 表記差を alias 推測で補完することはありません。
+
 marker は agent が読みます。GitHub 上の surface を fresh 取得し、record が宣言した
 marker と突き合わせて、その reviewer が freeze した target について完了しているかを
-判定するのは agent の作業です。この判定を helper で機械化することは Phase 1 の範囲外
-です（Issue #72 Phase 1b）。REST と GraphQL が同じ GitHub object を別表現で返すため、
-機械化には surface を跨いだ canonical identity model が必要であり、Phase 1 はそれを
-定義しません。
+判定します。REST と GraphQL が同じ GitHub object を別表現で返すため、state evaluator
+は stable object identity を先に解決し、field ごとの projection と provenance を持つ
+canonical object を作ります。actor identity、ownership、thread state、target binding
+は別軸です。入力順や surface の優先順位に依存せず、body の最新版、`updated_at`、
+body digest、`captured_at` を snapshot 内に保持します。
 
 `check` は record の存在 / parse / 最小妥当性を検証し、いずれかを満たさない場合は
 non-zero で終了します。record の内容（どの reviewer を required にするか等）は
@@ -137,6 +144,23 @@ snapshot tool です。
 ```text
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json]
 ```
+
+target completion state まで同じ snapshot から出す場合は、target、record、run anchor
+を明示します。
+
+```text
+node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --target-sha <sha> --record .ai-dev-foundation/reviewers.json --run-after <ISO-8601> --json
+```
+
+この mode は `reviewer_states` と `canonical_objects` を返します。各 state は
+`state`、`terminal`、`polarity`、`binding_status`、`effective_binding`、`coverage`、
+`fallback_eligible`、evidence locator、`reason_codes` を持ちます。状態は
+`completed@target`、`not-bound`、`rate-limited`、`failed`、`declined`、`in-flight`、
+`unknown` を使います。`completed@target` は target 上で run が完了したことだけを
+表し、finding 0、clean、merge-ready を意味しません。`unknown`、`in-flight`、
+`not-bound`、不完全な取得は fallback eligible ではありません。explicit terminal
+negative と全 review surface の取得完了が揃った場合だけ `fallback_eligible` が true
+になります。fallback の実行自体はこの helper の責務ではありません。
 
 GitHub token は `--token`、`GH_TOKEN`、`GITHUB_TOKEN`、`gh auth token` の順で
 解決します。surface ごとに `fetch_status`（`fetched` / `partial` / `failed` /
@@ -172,11 +196,11 @@ item detail を含みません。
   ため、`fetch_status` の値だけではこの欠落を検知できません。`commit_status`
   も投稿者（`creator`）を保持しません。
 
-この helper は GitHub durable surface の mechanical acquisition に限定され、
-review completion / target Validity / finding triage / merge-readiness の
-判定は行いません。それらは `policy/core.md` の Review Protocol と
-`skills/review-code.md` / `skills/review-doc.md` が引き続き所有します
-（Issue #62）。
+この helper は GitHub durable surface の mechanical acquisition と、取得済み snapshot
+を入力にした Issue #74 の canonical state projection に限定されます。Selection、
+Resolution、finding の意味付け、merge-ready fence、fallback の実行は行いません。
+それらは `policy/core.md` の Review Protocol と `skills/review-code.md` /
+`skills/review-doc.md` が引き続き所有します。
 
 ## Next.js + Supabase quality profile
 
