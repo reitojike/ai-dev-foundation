@@ -7,17 +7,21 @@
     "standalone_inline_marker",
     "completion_surface_varies_with_findings",
     "stable_original_vs_moving_binding",
+    "stable_review_vs_body_binding",
     "mutable_body_revision",
     "actor_stable_id_login_drift",
     "actor_unattributed",
+    "actor_database_id_only",
+    "actor_node_id_only",
+    "actor_both_ids_conflict",
     "non_terminal_intermediate",
     "explicit_terminal_negative",
     "incomplete_acquisition",
+    "empty_complete_acquisition",
     "wrong_target",
     "surface_order_permutation",
-    "legacy_v1_compatibility",
-    "actor_database_id_only",
-    "actor_node_id_only",
-    "actor_both_ids_conflict"
+    "moving_only_binding",
+    "same_tier_binding_conflict",
+    "legacy_v1_compatibility"
   ]
 }

@@ -1,10 +1,5 @@
 import { createHash } from "node:crypto";
 
-// Issue #74: the smallest provider-neutral model needed to turn a fetched
-// review-evidence snapshot into canonical GitHub objects and reviewer target
-// lifecycle states. This module is deliberately pure: it neither fetches nor
-// posts anything, and it does not decide findings, Resolution, or readiness.
-
 export const REVIEW_EVIDENCE_STATE_SCHEMA_ID =
   "ai-dev-foundation/review-evidence-state@1";
 
@@ -24,45 +19,31 @@ const REVIEW_SURFACES = [
   "inline_review_comments",
   "review_threads",
 ];
-const SURFACE_ORDER = [
-  "conversation_comments",
-  "review_submissions",
-  "inline_review_comments",
-  "review_threads",
-];
-const KIND_ORDER = [
-  "conversation_comment",
-  "review",
-  "review_comment",
-  "review_thread",
-];
-const NEGATIVE_STATES = new Set(["rate-limited", "failed", "declined"]);
+const KIND_ORDER = ["conversation_comment", "review", "review_comment"];
 
 function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function nonEmpty(value) {
-  return typeof value === "string" && value.trim() !== "" ? value : null;
-}
-
-function stableDatabaseId(value) {
-  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
-    return String(value);
-  if (typeof value === "string" && /^\d+$/.test(value.trim()))
-    return value.trim();
-  return null;
-}
-
-function stableNodeId(value) {
-  return nonEmpty(value);
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
 function firstNonNull(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? null;
 }
 
-function sortStrings(values) {
+function stableDatabaseId(value) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return String(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return value.trim();
+  }
+  return null;
+}
+
+function sortedUnique(values) {
   return [
     ...new Set(
       [...values]
@@ -72,24 +53,25 @@ function sortStrings(values) {
   ].sort();
 }
 
-function bodyDigest(body) {
+function compareNullable(left, right) {
+  const a = left ?? "";
+  const b = right ?? "";
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function digestBody(body) {
   if (body === null || body === undefined) return null;
-  return `sha256:${createHash("sha256").update(String(body), "utf8").digest("hex")}`;
+  return (
+    "sha256:" + createHash("sha256").update(String(body), "utf8").digest("hex")
+  );
 }
 
 export function digestReviewBody(body) {
-  return bodyDigest(body);
-}
-
-function shortDigest(value) {
-  return createHash("sha256")
-    .update(String(value), "utf8")
-    .digest("hex")
-    .slice(0, 16);
+  return digestBody(body);
 }
 
 function timeValue(value) {
-  if (!value || typeof value !== "string") return null;
+  if (typeof value !== "string" || value.trim() === "") return null;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
 }
@@ -99,61 +81,47 @@ function eventTime(observation) {
     observation.updated_at,
     observation.submitted_at,
     observation.created_at,
+    observation.captured_at,
   );
 }
 
-function compareNullable(a, b) {
-  const left = a ?? "";
-  const right = b ?? "";
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
 function compareObservations(left, right) {
-  const surfaceDifference =
-    SURFACE_ORDER.indexOf(left.surface) - SURFACE_ORDER.indexOf(right.surface);
-  if (surfaceDifference !== 0) return surfaceDifference;
-  const kindDifference =
-    KIND_ORDER.indexOf(left.object_kind) -
-    KIND_ORDER.indexOf(right.object_kind);
-  if (kindDifference !== 0) return kindDifference;
-  for (const [a, b] of [
-    [left.database_id, right.database_id],
-    [left.node_id, right.node_id],
-    [left.surface_id, right.surface_id],
-    [left.updated_at, right.updated_at],
-    [left.created_at, right.created_at],
-    [left.body_digest, right.body_digest],
-    [left.locator, right.locator],
-  ]) {
-    const difference = compareNullable(a, b);
-    if (difference !== 0) return difference;
-  }
-  return 0;
-}
-
-function identityKeys(value) {
-  const keys = [];
-  const databaseId = stableDatabaseId(value.database_id);
-  const nodeId = stableNodeId(value.node_id);
-  if (databaseId !== null) keys.push(`database:${databaseId}`);
-  if (nodeId !== null) keys.push(`node:${nodeId}`);
-  return keys;
+  return compareNullable(JSON.stringify(left), JSON.stringify(right));
 }
 
 function actorFromItem(item) {
+  const actorObject = isObject(item.actor) ? item.actor : {};
+  const authorObject = isObject(item.author) ? item.author : {};
   const identity = isObject(item.actor_identity) ? item.actor_identity : {};
   return {
-    login: nonEmpty(firstNonNull(item.actor, identity.login)),
-    type: nonEmpty(firstNonNull(item.actor_type, identity.type)),
+    login: nonEmpty(
+      firstNonNull(
+        typeof item.actor === "string" ? item.actor : null,
+        item.actor_login,
+        actorObject.login,
+        item.author_login,
+        authorObject.login,
+        identity.login,
+      ),
+    ),
     database_id: stableDatabaseId(
       firstNonNull(
         item.actor_database_id,
-        identity.database_id,
         item.actor_full_database_id,
+        identity.database_id,
         identity.full_database_id,
+        actorObject.database_id,
+        authorObject.database_id,
       ),
     ),
-    node_id: stableNodeId(firstNonNull(item.actor_node_id, identity.node_id)),
+    node_id: nonEmpty(
+      firstNonNull(
+        item.actor_node_id,
+        identity.node_id,
+        actorObject.node_id,
+        authorObject.node_id,
+      ),
+    ),
   };
 }
 
@@ -162,63 +130,73 @@ function observationFromItem({
   objectKind,
   item,
   evidence,
-  isGraphql = false,
-  parent = null,
+  graphql = false,
+  threadId = null,
 }) {
-  const itemId = firstNonNull(item.id, item.database_id, item.node_id);
+  const itemId = firstNonNull(
+    item.id,
+    item.surface_id,
+    item.database_id,
+    item.node_id,
+  );
   const databaseId = stableDatabaseId(
     firstNonNull(
-      item.full_database_id,
       item.database_id,
-      !isGraphql && itemId !== null ? itemId : null,
+      item.full_database_id,
+      !graphql ? itemId : null,
     ),
   );
-  const nodeId = stableNodeId(
-    firstNonNull(item.node_id, isGraphql ? item.id : null),
-  );
-  const actor = actorFromItem(item);
-  const body = item.body ?? null;
+  const nodeId = nonEmpty(firstNonNull(item.node_id, graphql ? item.id : null));
+  const body = item.body === undefined ? null : item.body;
   return {
     surface,
     object_kind: objectKind,
     surface_id: itemId === null ? null : String(itemId),
     database_id: databaseId,
     node_id: nodeId,
-    actor,
+    actor: actorFromItem(item),
     body,
-    body_digest: bodyDigest(body),
-    created_at: firstNonNull(item.created_at, item.submitted_at),
-    updated_at: item.updated_at ?? null,
+    body_digest: item.body_digest ?? digestBody(body),
+    created_at: firstNonNull(
+      item.created_at,
+      item.createdAt,
+      item.submitted_at,
+    ),
+    updated_at: firstNonNull(item.updated_at, item.updatedAt),
     submitted_at: item.submitted_at ?? null,
     captured_at: item.captured_at ?? evidence.generated_at ?? null,
-    locator: item.locator ?? null,
     state: item.state ?? null,
-    reviewed_sha: item.reviewed_sha ?? null,
-    original_commit_sha: item.original_commit_sha ?? null,
-    review_id: firstNonNull(item.pull_request_review_id, item.review_id),
-    review_node_id: item.review_node_id ?? null,
-    ownership_field_present: item.ownership_field_present ?? null,
-    in_reply_to_id: item.in_reply_to_id ?? null,
-    path: item.path ?? null,
-    line: item.line ?? null,
-    thread_id: firstNonNull(item.thread_id, parent?.id),
-    thread_is_resolved: firstNonNull(
-      item.thread_is_resolved,
-      parent?.is_resolved,
+    reviewed_sha: firstNonNull(item.reviewed_sha, item.commit_oid),
+    original_commit_sha: firstNonNull(
+      item.original_commit_sha,
+      item.original_commit_oid,
     ),
-    thread_is_outdated: firstNonNull(
-      item.thread_is_outdated,
-      parent?.is_outdated,
+    review_id: stableDatabaseId(
+      firstNonNull(
+        item.review_id,
+        item.pull_request_review_id,
+        item.review_database_id,
+      ),
     ),
+    review_node_id: nonEmpty(
+      firstNonNull(item.review_node_id, item.pull_request_review_node_id),
+    ),
+    owner_state: nonEmpty(item.owner_state),
+    owner_reviewed_sha: nonEmpty(item.owner_reviewed_sha),
+    ownership_field_present:
+      typeof item.ownership_field_present === "boolean"
+        ? item.ownership_field_present
+        : null,
+    thread_id: threadId ?? nonEmpty(item.thread_id),
   };
 }
 
 function flattenObservations(evidence) {
   const observations = [];
   for (const surface of REVIEW_SURFACES) {
-    const surfaceValue = evidence?.surfaces?.[surface];
-    if (!surfaceValue || !Array.isArray(surfaceValue.items)) continue;
-    for (const item of surfaceValue.items) {
+    const value = evidence?.surfaces?.[surface];
+    if (!value || !Array.isArray(value.items)) continue;
+    for (const item of value.items) {
       if (!isObject(item)) continue;
       if (surface === "conversation_comments") {
         observations.push(
@@ -248,36 +226,22 @@ function flattenObservations(evidence) {
           }),
         );
       } else {
-        const thread = observationFromItem({
-          surface,
-          objectKind: "review_thread",
-          item: {
-            id: item.id,
-            node_id: item.node_id ?? item.id,
-            is_resolved: item.is_resolved,
-            is_outdated: item.is_outdated,
-          },
-          evidence,
-          isGraphql: true,
-        });
-        thread.thread_id = thread.surface_id;
-        thread.thread_is_resolved = item.is_resolved ?? null;
-        thread.thread_is_outdated = item.is_outdated ?? null;
-        observations.push(thread);
-        for (const comment of item.comments ?? []) {
+        // A review_thread is only an acquisition envelope. Its child comments
+        // are the canonical review_comment objects; thread_id is a relation.
+        for (const comment of Array.isArray(item.comments)
+          ? item.comments
+          : []) {
           if (!isObject(comment)) continue;
-          const commentObservation = observationFromItem({
-            surface,
-            objectKind: "review_comment",
-            item: comment,
-            evidence,
-            isGraphql: true,
-            parent: thread,
-          });
-          commentObservation.thread_id = thread.surface_id;
-          commentObservation.thread_is_resolved = item.is_resolved ?? null;
-          commentObservation.thread_is_outdated = item.is_outdated ?? null;
-          observations.push(commentObservation);
+          observations.push(
+            observationFromItem({
+              surface,
+              objectKind: "review_comment",
+              item: comment,
+              evidence,
+              graphql: true,
+              threadId: firstNonNull(item.id, item.node_id),
+            }),
+          );
         }
       }
     }
@@ -285,98 +249,113 @@ function flattenObservations(evidence) {
   return observations.sort(compareObservations);
 }
 
-function buildIdentityConflictSet(observations) {
+function identityConflictIndexes(observations) {
   const conflicts = new Set();
   for (const kind of KIND_ORDER) {
-    const byDatabase = new Map();
-    const byNode = new Map();
-    const conflictingDatabaseIds = new Set();
-    const conflictingNodeIds = new Set();
-    for (const [index, observation] of observations.entries()) {
-      if (observation.object_kind !== kind) continue;
-      const databaseId = stableDatabaseId(observation.database_id);
-      const nodeId = stableNodeId(observation.node_id);
-      if (databaseId !== null && nodeId !== null) {
-        const values = byDatabase.get(databaseId) ?? new Map();
-        values.set(nodeId, [...(values.get(nodeId) ?? []), index]);
-        byDatabase.set(databaseId, values);
+    const databaseNodes = new Map();
+    const nodeDatabases = new Map();
+    const surfaceIdentities = new Map();
+    for (const observation of observations) {
+      if (observation.object_kind !== kind || observation.surface_id === null)
+        continue;
+      const surfaceKey = [observation.surface, observation.surface_id].join(
+        ":",
+      );
+      const identity = surfaceIdentities.get(surfaceKey) ?? {
+        indexes: [],
+        databases: new Set(),
+        nodes: new Set(),
+      };
+      identity.indexes.push(observations.indexOf(observation));
+      if (observation.database_id !== null)
+        identity.databases.add(observation.database_id);
+      if (observation.node_id !== null) identity.nodes.add(observation.node_id);
+      surfaceIdentities.set(surfaceKey, identity);
+      if (observation.database_id !== null && observation.node_id !== null) {
+        databaseNodes.set(
+          observation.database_id,
+          new Set([
+            ...(databaseNodes.get(observation.database_id) ?? []),
+            observation.node_id,
+          ]),
+        );
+        nodeDatabases.set(
+          observation.node_id,
+          new Set([
+            ...(nodeDatabases.get(observation.node_id) ?? []),
+            observation.database_id,
+          ]),
+        );
       }
-      if (nodeId !== null && databaseId !== null) {
-        const values = byNode.get(nodeId) ?? new Map();
-        values.set(databaseId, [...(values.get(databaseId) ?? []), index]);
-        byNode.set(nodeId, values);
+    }
+    for (const identity of surfaceIdentities.values()) {
+      if (identity.databases.size > 1 || identity.nodes.size > 1) {
+        for (const index of identity.indexes) conflicts.add(index);
       }
     }
-    for (const [databaseId, values] of byDatabase.entries()) {
-      if (values.size < 2) continue;
-      conflictingDatabaseIds.add(databaseId);
-      for (const indices of values.values())
-        for (const index of indices) conflicts.add(index);
-    }
-    for (const [nodeId, values] of byNode.entries()) {
-      if (values.size < 2) continue;
-      conflictingNodeIds.add(nodeId);
-      for (const indices of values.values())
-        for (const index of indices) conflicts.add(index);
-    }
+    const badDatabases = new Set(
+      [...databaseNodes]
+        .filter((entry) => entry[1].size > 1)
+        .map((entry) => entry[0]),
+    );
+    const badNodes = new Set(
+      [...nodeDatabases]
+        .filter((entry) => entry[1].size > 1)
+        .map((entry) => entry[0]),
+    );
     for (const [index, observation] of observations.entries()) {
-      if (observation.object_kind !== kind) continue;
       if (
-        conflictingDatabaseIds.has(stableDatabaseId(observation.database_id)) ||
-        conflictingNodeIds.has(stableNodeId(observation.node_id))
-      ) {
+        observation.object_kind === kind &&
+        (badDatabases.has(observation.database_id) ||
+          badNodes.has(observation.node_id))
+      )
         conflicts.add(index);
-      }
     }
   }
   return conflicts;
 }
 
-function groupHasKey(group, key) {
-  return group.keys.has(key);
+function compatible(group, observation) {
+  return (
+    (observation.database_id === null ||
+      group.database_ids.size === 0 ||
+      group.database_ids.has(observation.database_id)) &&
+    (observation.node_id === null ||
+      group.node_ids.size === 0 ||
+      group.node_ids.has(observation.node_id))
+  );
 }
 
-function compatibleWithGroup(observation, group) {
-  const databaseId = stableDatabaseId(observation.database_id);
-  const nodeId = stableNodeId(observation.node_id);
-  if (
-    databaseId !== null &&
-    group.database_ids.size > 0 &&
-    !group.database_ids.has(databaseId)
-  )
-    return false;
-  if (nodeId !== null && group.node_ids.size > 0 && !group.node_ids.has(nodeId))
-    return false;
-  return true;
-}
-
-function groupObservations(observations, conflictIndices) {
+function groupObservations(observations) {
+  const conflicts = identityConflictIndexes(observations);
   const groups = [];
   for (const [index, observation] of observations.entries()) {
-    const keys = identityKeys(observation);
-    const localCandidates = groups.filter(
-      (group) =>
-        group.object_kind === observation.object_kind &&
-        keys.length === 0 &&
-        group.keys.size === 0 &&
-        group.observations.some(
-          (candidate) =>
-            candidate.surface === observation.surface &&
-            candidate.surface_id === observation.surface_id,
-        ),
-    );
-    const stableCandidates = groups.filter(
-      (group) =>
-        group.object_kind === observation.object_kind &&
-        keys.some((key) => groupHasKey(group, key)) &&
-        compatibleWithGroup(observation, group) &&
-        !group.observations.some((candidate) =>
-          conflictIndices.has(observations.indexOf(candidate)),
-        ),
-    );
-    const candidates = conflictIndices.has(index)
+    const keys = [
+      observation.database_id === null
+        ? null
+        : "database:" + observation.database_id,
+      observation.node_id === null ? null : "node:" + observation.node_id,
+    ].filter(Boolean);
+    const candidates = conflicts.has(index)
       ? []
-      : [...new Set([...localCandidates, ...stableCandidates])];
+      : groups.filter((group) => {
+          if (
+            group.object_kind !== observation.object_kind ||
+            group.identity_ambiguous
+          ) {
+            return false;
+          }
+          const sharedStableId = keys.some((key) => group.keys.has(key));
+          const sameSurface = group.observations.some(
+            (candidate) =>
+              candidate.surface === observation.surface &&
+              candidate.surface_id !== null &&
+              candidate.surface_id === observation.surface_id,
+          );
+          return (
+            (sharedStableId || sameSurface) && compatible(group, observation)
+          );
+        });
     if (candidates.length === 1) {
       const group = candidates[0];
       group.observations.push(observation);
@@ -386,7 +365,10 @@ function groupObservations(observations, conflictIndices) {
       if (observation.node_id !== null) group.node_ids.add(observation.node_id);
       continue;
     }
-    const group = {
+    if (candidates.length > 1) {
+      for (const candidate of candidates) candidate.identity_ambiguous = true;
+    }
+    groups.push({
       object_kind: observation.object_kind,
       observations: [observation],
       keys: new Set(keys),
@@ -396,252 +378,171 @@ function groupObservations(observations, conflictIndices) {
       node_ids: new Set(
         observation.node_id === null ? [] : [observation.node_id],
       ),
-      identity_conflict: conflictIndices.has(index) || candidates.length > 1,
-    };
-    if (candidates.length > 1)
-      for (const candidate of candidates) candidate.identity_conflict = true;
-    groups.push(group);
+      identity_ambiguous: conflicts.has(index) || candidates.length > 1,
+    });
   }
   return groups;
 }
 
-function projectActor(observations) {
-  const actors = observations
-    .map((observation) => observation.actor)
-    .filter((actor) => isObject(actor));
-  const databaseIds = sortStrings(actors.map((actor) => actor.database_id));
-  const nodeIds = sortStrings(actors.map((actor) => actor.node_id));
-  const logins = sortStrings(actors.map((actor) => actor.login));
-  const hasCorroboratedPair = actors.some(
-    (actor) => actor.database_id !== null && actor.node_id !== null,
-  );
-  const splitIdentity =
-    actors.length > 1 &&
-    databaseIds.length > 0 &&
-    nodeIds.length > 0 &&
-    !hasCorroboratedPair;
-  const status =
-    databaseIds.length > 1 || nodeIds.length > 1 || splitIdentity
-      ? "ambiguous"
-      : databaseIds.length || nodeIds.length
-        ? "stable"
-        : "unresolved";
-  return {
-    status,
-    database_id: databaseIds[0] ?? null,
-    node_id: nodeIds[0] ?? null,
-    database_ids: databaseIds,
-    node_ids: nodeIds,
-    logins,
-    basis:
-      status === "stable"
-        ? "stable-id"
-        : status === "ambiguous"
-          ? "conflicting-stable-id"
-          : "no-stable-id",
-  };
-}
-
 function projectBody(observations) {
-  const withBodies = observations.filter(
-    (observation) =>
-      observation.body !== null && observation.body !== undefined,
+  const bodies = observations.filter(
+    (observation) => observation.body !== null,
   );
-  const byDigest = new Map();
-  for (const observation of withBodies) {
-    const digest = observation.body_digest ?? bodyDigest(observation.body);
-    const entries = byDigest.get(digest) ?? [];
-    entries.push(observation);
-    byDigest.set(digest, entries);
-  }
-  if (withBodies.length === 0) {
+  if (bodies.length === 0) {
     return {
       body: null,
       body_digest: null,
-      status: "missing",
-      source_observation_ids: [],
+      body_status: "missing",
       updated_at: null,
       captured_at: null,
     };
   }
+  const timed = bodies.map((observation) => ({
+    observation,
+    time: timeValue(eventTime(observation)),
+  }));
+  const knownTimes = timed.filter((entry) => entry.time !== null);
+  const latestTime =
+    knownTimes.length === 0
+      ? null
+      : Math.max(...knownTimes.map((entry) => entry.time));
+  const latest =
+    latestTime === null
+      ? bodies
+      : timed
+          .filter((entry) => entry.time === latestTime)
+          .map((entry) => entry.observation);
+  const digests = sortedUnique(
+    latest.map(
+      (observation) => observation.body_digest ?? digestBody(observation.body),
+    ),
+  );
+  if (digests.length > 1) {
+    return {
+      body: null,
+      body_digest: null,
+      body_status: "ambiguous",
+      updated_at: null,
+      captured_at: null,
+    };
+  }
+  const chosen = [...latest].sort(compareObservations)[latest.length - 1];
+  return {
+    body: chosen.body,
+    body_digest: chosen.body_digest ?? digestBody(chosen.body),
+    body_status: "current",
+    updated_at: chosen.updated_at ?? null,
+    captured_at: chosen.captured_at ?? null,
+  };
+}
 
-  let selected = withBodies;
-  let status = "current";
-  if (byDigest.size > 1) {
-    const timed = withBodies.filter(
-      (observation) => timeValue(eventTime(observation)) !== null,
-    );
-    if (timed.length > 0) {
-      const latestTime = Math.max(
-        ...timed.map((observation) => timeValue(eventTime(observation))),
-      );
-      selected = timed.filter(
-        (observation) => timeValue(eventTime(observation)) === latestTime,
-      );
-      if (
-        new Set(selected.map((observation) => observation.body_digest)).size > 1
-      )
-        status = "ambiguous";
-    } else {
-      selected = [...withBodies].sort(compareObservations).slice(-1);
-      status = "ambiguous";
-    }
-  } else {
-    const latestTime = Math.max(
-      ...withBodies.map(
-        (observation) => timeValue(eventTime(observation)) ?? -Infinity,
-      ),
-    );
-    if (latestTime !== -Infinity)
-      selected = withBodies.filter(
+function projectActor(observations) {
+  const actors = observations.map((observation) => observation.actor);
+  const databaseIds = sortedUnique(actors.map((actor) => actor.database_id));
+  const nodeIds = sortedUnique(actors.map((actor) => actor.node_id));
+  const corroborated = actors.some(
+    (actor) => actor.database_id !== null && actor.node_id !== null,
+  );
+  const split = databaseIds.length > 0 && nodeIds.length > 0 && !corroborated;
+  const ambiguous = databaseIds.length > 1 || nodeIds.length > 1 || split;
+  return {
+    status: ambiguous
+      ? "ambiguous"
+      : databaseIds.length || nodeIds.length
+        ? "stable"
+        : "unresolved",
+    database_id: ambiguous ? null : (databaseIds[0] ?? null),
+    node_id: ambiguous ? null : (nodeIds[0] ?? null),
+    logins: sortedUnique(actors.map((actor) => actor.login)),
+  };
+}
+
+function projectReviewState(observations) {
+  const withState = observations.filter((observation) =>
+    nonEmpty(observation.state),
+  );
+  if (withState.length === 0) return null;
+  const latestTime = Math.max(
+    ...withState.map(
+      (observation) => timeValue(eventTime(observation)) ?? -Infinity,
+    ),
+  );
+  const states = sortedUnique(
+    withState
+      .filter(
         (observation) =>
           (timeValue(eventTime(observation)) ?? -Infinity) === latestTime,
-      );
-  }
-  const current = [...selected].sort(compareObservations)[selected.length - 1];
-  const sourceObservationIds = withBodies
-    .filter(
-      (observation) =>
-        observation.body_digest === current.body_digest &&
-        observation.body === current.body,
+      )
+      .map((observation) => observation.state.toUpperCase()),
+  );
+  return states.length === 1 ? states[0] : "AMBIGUOUS";
+}
+
+function initialOwnership(observations) {
+  if (observations[0].object_kind !== "review_comment")
+    return { status: "not_applicable" };
+  if (
+    !observations.every(
+      (observation) => observation.ownership_field_present === true,
     )
-    .map(observationIdentity)
-    .sort();
+  ) {
+    return { status: "unknown" };
+  }
+  const ids = sortedUnique(
+    observations.map((observation) => observation.review_id),
+  );
+  const nodeIds = sortedUnique(
+    observations.map((observation) => observation.review_node_id),
+  );
+  const ownerStates = sortedUnique(
+    observations.map((observation) => observation.owner_state),
+  );
+  const ownerReviewedShas = sortedUnique(
+    observations.map((observation) => observation.owner_reviewed_sha),
+  );
+  if (ids.length > 1 || nodeIds.length > 1) return { status: "ambiguous" };
+  if (ids.length === 0 && nodeIds.length === 0) return { status: "standalone" };
   return {
-    body: current.body,
-    body_digest: current.body_digest ?? bodyDigest(current.body),
-    status,
-    source_observation_ids: sourceObservationIds,
-    updated_at: current.updated_at,
-    captured_at: current.captured_at,
+    status: "owner_reference",
+    review_id: ids[0] ?? null,
+    review_node_id: nodeIds[0] ?? null,
+    owner_state: ownerStates.length === 1 ? ownerStates[0] : null,
+    owner_reviewed_sha:
+      ownerReviewedShas.length === 1 ? ownerReviewedShas[0] : null,
   };
 }
 
-function observationIdentity(observation) {
-  return `${observation.surface}:${observation.surface_id ?? "<none>"}:${observation.database_id ?? "<none>"}:${observation.node_id ?? "<none>"}`;
+function structuralBindings(observations) {
+  return dedupeBindings(
+    observations.flatMap((observation) =>
+      [
+        observation.original_commit_sha && {
+          tier: 1,
+          basis: "comment.original_commit",
+          target: observation.original_commit_sha,
+        },
+        observation.object_kind === "review" &&
+          observation.reviewed_sha && {
+            tier: 2,
+            basis: "review.submitted_commit",
+            target: observation.reviewed_sha,
+          },
+        observation.object_kind === "review_comment" &&
+          observation.reviewed_sha && {
+            tier: 4,
+            basis: "comment.commit",
+            target: observation.reviewed_sha,
+          },
+      ].filter(Boolean),
+    ),
+  );
 }
 
-function projectTimestamp(observations, field, direction) {
-  const values = observations
-    .map((observation) => observation[field])
-    .filter(nonEmpty);
-  if (values.length === 0) return null;
-  const timed = values
-    .map((value) => ({ value, time: timeValue(value) }))
-    .filter((entry) => entry.time !== null);
-  if (timed.length > 0) {
-    const selectedTime =
-      direction === "earliest"
-        ? Math.min(...timed.map((entry) => entry.time))
-        : Math.max(...timed.map((entry) => entry.time));
-    return timed.find((entry) => entry.time === selectedTime).value;
-  }
-  return [...values].sort().at(direction === "earliest" ? 0 : -1);
-}
-
-function projectOwnership(observations) {
-  const relevant = observations.filter(
-    (observation) => observation.object_kind === "review_comment",
-  );
-  if (relevant.length === 0)
-    return {
-      status: "not_applicable",
-      review_ids: [],
-      review_node_ids: [],
-      field_present: false,
-    };
-  const fieldPresent = relevant.every(
-    (observation) => observation.ownership_field_present === true,
-  );
-  const reviewIds = sortStrings(
-    relevant.map((observation) => stableDatabaseId(observation.review_id)),
-  );
-  const reviewNodeIds = sortStrings(
-    relevant.map((observation) => stableNodeId(observation.review_node_id)),
-  );
-  if (!fieldPresent)
-    return {
-      status: "unknown",
-      review_ids: reviewIds,
-      review_node_ids: reviewNodeIds,
-      field_present: false,
-    };
-  if (reviewIds.length > 1 || reviewNodeIds.length > 1)
-    return {
-      status: "ambiguous",
-      review_ids: reviewIds,
-      review_node_ids: reviewNodeIds,
-      field_present: true,
-    };
-  if (reviewIds.length || reviewNodeIds.length)
-    return {
-      status: "owned",
-      review_ids: reviewIds,
-      review_node_ids: reviewNodeIds,
-      field_present: true,
-    };
-  return {
-    status: "standalone",
-    review_ids: [],
-    review_node_ids: [],
-    field_present: true,
-  };
-}
-
-function projectThread(observations) {
-  const ids = sortStrings(
-    observations.map((observation) => observation.thread_id),
-  );
-  const resolved = sortStrings(
-    observations.map((observation) => observation.thread_is_resolved),
-  );
-  const outdated = sortStrings(
-    observations.map((observation) => observation.thread_is_outdated),
-  );
-  let status = ids.length === 0 ? "none" : "known";
-  if (resolved.length > 1 || outdated.length > 1) status = "ambiguous";
-  return { status, ids, resolved, outdated };
-}
-
-function structuralBindingCandidates(observations) {
-  const candidates = [];
-  for (const observation of observations) {
-    if (observation.original_commit_sha) {
-      candidates.push({
-        tier: 1,
-        stability: "stable",
-        basis: "comment.original_commit",
-        target: observation.original_commit_sha,
-        observation: observationIdentity(observation),
-      });
-    }
-    if (observation.object_kind === "review" && observation.reviewed_sha) {
-      candidates.push({
-        tier: 2,
-        stability: "stable",
-        basis: "review.submitted_commit",
-        target: observation.reviewed_sha,
-        observation: observationIdentity(observation),
-      });
-    }
-    if (observation.reviewed_sha) {
-      candidates.push({
-        tier: 4,
-        stability: "moving",
-        basis: "comment.commit",
-        target: observation.reviewed_sha,
-        observation: observationIdentity(observation),
-      });
-    }
-  }
-  return dedupeCandidates(candidates);
-}
-
-function dedupeCandidates(candidates) {
+function dedupeBindings(candidates) {
   const seen = new Set();
   return candidates
     .filter((candidate) => {
-      const key = `${candidate.tier}:${candidate.target}:${candidate.basis}:${candidate.observation ?? ""}`;
+      const key = [candidate.tier, candidate.basis, candidate.target].join(":");
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -655,49 +556,55 @@ function dedupeCandidates(candidates) {
 }
 
 function canonicalIdentity(repo, pullNumber, group) {
-  const databaseIds = sortStrings(group.database_ids);
-  const nodeIds = sortStrings(group.node_ids);
-  const identityStatus = group.identity_conflict
+  const databases = sortedUnique(group.database_ids);
+  const nodes = sortedUnique(group.node_ids);
+  const stable =
+    !group.identity_ambiguous && (databases.length === 1 || nodes.length === 1);
+  const local = group.observations.every(
+    (observation) =>
+      observation.surface === group.observations[0].surface &&
+      observation.surface_id !== null,
+  );
+  const idPart = stable
+    ? databases.length === 1
+      ? "database:" + databases[0]
+      : "node:" + nodes[0]
+    : local && !group.identity_ambiguous
+      ? "surface:" +
+        group.observations[0].surface +
+        ":id:" +
+        group.observations[0].surface_id
+      : "observation:" +
+        JSON.stringify(
+          group.observations
+            .map((observation) => [
+              observation.surface,
+              observation.surface_id,
+              observation.database_id,
+              observation.node_id,
+            ])
+            .sort(),
+        );
+  const status = group.identity_ambiguous
     ? "ambiguous"
-    : databaseIds.length || nodeIds.length
+    : stable
       ? "stable"
-      : group.observations.every(
-            (observation) =>
-              observation.surface === group.observations[0].surface,
-          ) && group.observations[0].surface_id
+      : local
         ? "surface-local"
         : "uncanonicalized";
-  if (!group.identity_conflict && databaseIds.length > 0) {
-    return {
-      status: identityStatus,
-      database_ids: databaseIds,
-      node_ids: nodeIds,
-      canonical_id: `github://${repo ?? "unknown"}/pull/${pullNumber ?? "unknown"}/${group.object_kind}/database:${databaseIds[0]}`,
-    };
-  }
-  if (!group.identity_conflict && nodeIds.length > 0) {
-    return {
-      status: identityStatus,
-      database_ids: databaseIds,
-      node_ids: nodeIds,
-      canonical_id: `github://${repo ?? "unknown"}/pull/${pullNumber ?? "unknown"}/${group.object_kind}/node:${nodeIds[0]}`,
-    };
-  }
-  const claims = group.observations.map((observation) => ({
-    surface: observation.surface,
-    surface_id: observation.surface_id,
-    database_id: observation.database_id,
-    node_id: observation.node_id,
-  }));
-  const prefix =
-    identityStatus === "surface-local"
-      ? `surface:${group.observations[0].surface}:id:${group.observations[0].surface_id}`
-      : "uncanonicalized";
   return {
-    status: identityStatus,
-    database_ids: databaseIds,
-    node_ids: nodeIds,
-    canonical_id: `github://${repo ?? "unknown"}/pull/${pullNumber ?? "unknown"}/${group.object_kind}/${prefix}:${shortDigest(JSON.stringify(claims))}`,
+    status,
+    database_id: stable && databases.length === 1 ? databases[0] : null,
+    node_id: stable && nodes.length === 1 ? nodes[0] : null,
+    canonical_id:
+      "github://" +
+      (repo ?? "unknown") +
+      "/pull/" +
+      (pullNumber ?? "unknown") +
+      "/" +
+      group.object_kind +
+      "/" +
+      idPart,
   };
 }
 
@@ -705,259 +612,185 @@ function buildCanonicalObject(repo, pullNumber, group) {
   const observations = [...group.observations].sort(compareObservations);
   const identity = canonicalIdentity(repo, pullNumber, group);
   const body = projectBody(observations);
-  const actor = projectActor(observations);
-  const current = {
-    body: body.body,
-    body_digest: body.body_digest,
-    body_status: body.status,
-    created_at: projectTimestamp(observations, "created_at", "earliest"),
-    updated_at: body.updated_at,
-    captured_at: body.captured_at,
-    revision: {
-      updated_at: body.updated_at,
-      body_digest: body.body_digest,
-      captured_at: body.captured_at,
-    },
-    actor,
-    ownership: projectOwnership(observations),
-    thread: projectThread(observations),
-    state: sortStrings(observations.map((observation) => observation.state)),
-    binding_candidates: structuralBindingCandidates(observations),
-  };
+  const createdAt =
+    observations
+      .map((observation) => observation.created_at)
+      .filter(nonEmpty)
+      .sort((left, right) => compareNullable(left, right))[0] ?? null;
+  const sources = [
+    ...new Map(
+      observations.map((observation) => [
+        [observation.surface, observation.surface_id ?? null].join(":"),
+        { surface: observation.surface, surface_id: observation.surface_id },
+      ]),
+    ).values(),
+  ].sort(
+    (left, right) =>
+      compareNullable(left.surface, right.surface) ||
+      compareNullable(left.surface_id, right.surface_id),
+  );
   return {
     canonical_id: identity.canonical_id,
     object_kind: group.object_kind,
     identity: {
       status: identity.status,
-      database_id: identity.database_ids[0] ?? null,
-      node_id: identity.node_ids[0] ?? null,
-      database_ids: identity.database_ids,
-      node_ids: identity.node_ids,
+      database_id: identity.database_id,
+      node_id: identity.node_id,
     },
-    current,
-    relationships: {
-      review_ids: current.ownership.review_ids,
-      review_node_ids: current.ownership.review_node_ids,
-      thread_ids: current.thread.ids,
-      reply_to_ids: sortStrings(
-        observations.map((observation) => observation.in_reply_to_id),
-      ),
-    },
-    observations: observations.map((observation) => ({
-      surface: observation.surface,
-      object_kind: observation.object_kind,
-      surface_id: observation.surface_id,
-      database_id: observation.database_id,
-      node_id: observation.node_id,
-      actor: observation.actor,
-      body: observation.body,
-      body_digest: observation.body_digest,
-      created_at: observation.created_at,
-      updated_at: observation.updated_at,
-      submitted_at: observation.submitted_at,
-      captured_at: observation.captured_at,
-      locator: observation.locator,
-      state: observation.state,
-      reviewed_sha: observation.reviewed_sha,
-      original_commit_sha: observation.original_commit_sha,
-      review_id: observation.review_id,
-      review_node_id: observation.review_node_id,
-      ownership_field_present: observation.ownership_field_present,
-      thread_id: observation.thread_id,
-      thread_is_resolved: observation.thread_is_resolved,
-      thread_is_outdated: observation.thread_is_outdated,
-      path: observation.path,
-      line: observation.line,
-    })),
-    provenance: observations.map((observation) => ({
-      surface: observation.surface,
-      locator: observation.locator,
-      surface_id: observation.surface_id,
-      captured_at: observation.captured_at,
-      updated_at: observation.updated_at,
-      body_digest: observation.body_digest,
-      field_sources: {
-        identity: [
-          observation.database_id ? "database_id" : null,
-          observation.node_id ? "node_id" : null,
-        ].filter(Boolean),
-        body: observation.body === null ? [] : ["body"],
-        actor: [
-          observation.actor.database_id ? "actor_database_id" : null,
-          observation.actor.node_id ? "actor_node_id" : null,
-          observation.actor.login ? "actor_login" : null,
-        ].filter(Boolean),
+    sources,
+    current: {
+      body: body.body,
+      body_digest: body.body_digest,
+      body_status: body.body_status,
+      created_at: createdAt,
+      updated_at: body.updated_at,
+      captured_at: body.captured_at,
+      revision: {
+        updated_at: body.updated_at,
+        body_digest: body.body_digest,
+        captured_at: body.captured_at,
       },
-    })),
+      actor: projectActor(observations),
+      ownership: initialOwnership(observations),
+      review_state:
+        group.object_kind === "review"
+          ? projectReviewState(observations)
+          : null,
+      thread_id:
+        sortedUnique(
+          observations.map((observation) => observation.thread_id),
+        )[0] ?? null,
+      binding_candidates: structuralBindings(observations),
+    },
   };
 }
 
-function reviewLookup(objects) {
-  const lookup = new Map();
-  for (const object of objects.filter(
-    (candidate) =>
-      candidate.object_kind === "review" &&
-      candidate.identity.status !== "ambiguous",
-  )) {
-    for (const key of [
-      `database:${object.identity.database_id}`,
-      `node:${object.identity.node_id}`,
-    ]) {
-      if (!key.endsWith(":null")) lookup.set(key, object);
-    }
-    for (const observation of object.observations) {
-      for (const key of identityKeys({
-        database_id: observation.database_id,
-        node_id: observation.node_id,
-      }))
-        lookup.set(key, object);
-    }
-  }
-  return lookup;
-}
-
-function attachOwnerBindings(objects) {
-  const lookup = reviewLookup(objects);
-  for (const object of objects.filter(
-    (candidate) => candidate.object_kind === "review_comment",
-  )) {
-    const owners = [];
-    for (const observation of object.observations) {
-      for (const key of identityKeys({
-        database_id: observation.review_id,
-        node_id: observation.review_node_id,
-      })) {
-        const review = lookup.get(key);
-        if (review) owners.push(review);
-      }
-    }
-    const uniqueOwners = [
-      ...new Map(owners.map((owner) => [owner.canonical_id, owner])).values(),
-    ];
-    if (["unknown", "ambiguous"].includes(object.current.ownership.status)) {
+function attachOwners(objects) {
+  const reviews = objects.filter((object) => object.object_kind === "review");
+  for (const object of objects) {
+    if (
+      object.object_kind !== "review_comment" ||
+      object.current.ownership.status !== "owner_reference"
+    ) {
       continue;
     }
-    if (uniqueOwners.length === 1) {
-      const owner = uniqueOwners[0];
+    const ref = object.current.ownership;
+    const matches = reviews.filter(
+      (review) =>
+        review.identity.status === "stable" &&
+        ((ref.review_id !== null &&
+          review.identity.database_id === ref.review_id) ||
+          (ref.review_node_id !== null &&
+            review.identity.node_id === ref.review_node_id)),
+    );
+    if (matches.length !== 1) {
+      if (["PENDING", "DRAFT"].includes(ref.owner_state?.toUpperCase())) {
+        object.current.ownership = {
+          status: "pending",
+          review_id: ref.review_id,
+          review_node_id: ref.review_node_id,
+        };
+        continue;
+      }
+      if (matches.length === 0 && ref.owner_state) {
+        object.current.ownership = {
+          status: "owned",
+          review_id: ref.review_id,
+          review_node_id: ref.review_node_id,
+        };
+        if (ref.owner_reviewed_sha) {
+          object.current.binding_candidates = dedupeBindings([
+            ...object.current.binding_candidates,
+            {
+              tier: 2,
+              basis: "review.owner.submitted_commit",
+              target: ref.owner_reviewed_sha,
+            },
+          ]);
+        }
+        continue;
+      }
       object.current.ownership = {
-        ...object.current.ownership,
-        status: owner.current.state.some((state) =>
-          ["PENDING", "DRAFT"].includes(String(state).toUpperCase()),
-        )
-          ? "pending"
-          : "owned",
-        owner_canonical_id: owner.canonical_id,
+        status: matches.length > 1 ? "ambiguous" : "unknown",
       };
-      object.current.binding_candidates = dedupeCandidates([
+      continue;
+    }
+    const owner = matches[0];
+    const ownerState = owner.current.review_state;
+    if (ownerState === null || ownerState === "AMBIGUOUS") {
+      object.current.ownership = { status: "unknown" };
+      continue;
+    }
+    if (ownerState === "PENDING" || ownerState === "DRAFT") {
+      object.current.ownership = {
+        status: "pending",
+        review_id: owner.identity.database_id,
+        review_node_id: owner.identity.node_id,
+      };
+      continue;
+    }
+    object.current.ownership = {
+      status: "owned",
+      review_id: owner.identity.database_id,
+      review_node_id: owner.identity.node_id,
+      review_canonical_id: owner.canonical_id,
+    };
+    if (
+      owner.current.binding_candidates.some((candidate) => candidate.tier === 2)
+    ) {
+      object.current.binding_candidates = dedupeBindings([
         ...object.current.binding_candidates,
         ...owner.current.binding_candidates
           .filter((candidate) => candidate.tier === 2)
           .map((candidate) => ({
             ...candidate,
             basis: "review.owner.submitted_commit",
-            owner_canonical_id: owner.canonical_id,
           })),
       ]);
-    } else if (
-      object.current.ownership.status === "owned" &&
-      uniqueOwners.length === 0
-    ) {
-      object.current.ownership = {
-        ...object.current.ownership,
-        status: "unknown",
-      };
-    } else if (uniqueOwners.length > 1) {
-      object.current.ownership = {
-        ...object.current.ownership,
-        status: "ambiguous",
-        owner_canonical_ids: uniqueOwners
-          .map((owner) => owner.canonical_id)
-          .sort(),
-      };
     }
   }
-}
-
-function coverageSummary(evidence) {
-  const incompleteSurfaces = [];
-  const observedSurfaces = {};
-  for (const surface of REVIEW_SURFACES) {
-    const fetchStatus =
-      evidence?.surfaces?.[surface]?.fetch_status ?? "missing";
-    observedSurfaces[surface] = fetchStatus;
-    if (fetchStatus !== "fetched")
-      incompleteSurfaces.push({ surface, fetch_status: fetchStatus });
-  }
-  const incompleteFacts = [];
-  const metadataStatus = evidence?.pr_metadata?.fetch_status ?? "missing";
-  if (metadataStatus !== "fetched") incompleteFacts.push("pr_metadata");
-  if (metadataStatus === "fetched" && !evidence.pr_metadata.head_sha)
-    incompleteFacts.push("pr_metadata.head_sha");
-  for (const entry of incompleteSurfaces)
-    incompleteFacts.push(`surface:${entry.surface}`);
-  return {
-    status:
-      incompleteSurfaces.length === 0 &&
-      metadataStatus === "fetched" &&
-      Boolean(evidence.pr_metadata.head_sha)
-        ? "complete"
-        : "incomplete",
-    required_surfaces: [...REVIEW_SURFACES],
-    incomplete_surfaces: incompleteSurfaces,
-    incomplete_facts: incompleteFacts,
-    observed_surfaces: observedSurfaces,
-  };
 }
 
 export function canonicalizeReviewEvidence(
   evidence,
   { capturedAt = evidence?.generated_at ?? null } = {},
 ) {
-  const source = {
-    ...(evidence ?? {}),
-    generated_at: evidence?.generated_at ?? capturedAt,
-  };
-  const observations = flattenObservations(source);
-  const conflictIndices = buildIdentityConflictSet(observations);
-  const groups = groupObservations(observations, conflictIndices);
+  const groups = groupObservations(flattenObservations(evidence ?? {}));
   const objects = groups.map((group) =>
-    buildCanonicalObject(source.repo, source.pull_number, group),
+    buildCanonicalObject(evidence?.repo, evidence?.pull_number, group),
   );
-  attachOwnerBindings(objects);
+  attachOwners(objects);
   objects.sort((left, right) =>
     compareNullable(left.canonical_id, right.canonical_id),
   );
+  const incomplete = [];
+  if (evidence?.pr_metadata?.fetch_status !== "fetched")
+    incomplete.push("pr_metadata");
+  else if (!nonEmpty(evidence.pr_metadata.head_sha))
+    incomplete.push("pr_metadata.head_sha");
+  for (const surface of REVIEW_SURFACES) {
+    if (evidence?.surfaces?.[surface]?.fetch_status !== "fetched")
+      incomplete.push("surface:" + surface);
+  }
   return {
     schema: REVIEW_EVIDENCE_STATE_SCHEMA_ID,
-    repo: source.repo ?? null,
-    pull_number: source.pull_number ?? null,
+    repo: evidence?.repo ?? null,
+    pull_number: evidence?.pull_number ?? null,
     captured_at: capturedAt,
-    coverage: coverageSummary(source),
+    coverage_complete: incomplete.length === 0,
+    incomplete_surfaces: incomplete,
     canonical_objects: objects,
   };
 }
 
 function targetSha(target) {
   if (typeof target === "string") return nonEmpty(target);
-  if (isObject(target))
-    return nonEmpty(
-      firstNonNull(target.sha, target.target_sha, target.commit_sha),
-    );
-  return null;
+  return isObject(target)
+    ? nonEmpty(firstNonNull(target.sha, target.target_sha, target.commit_sha))
+    : null;
 }
 
-function targetMatches(candidate, expected) {
-  const left = nonEmpty(candidate)?.toLowerCase();
-  const right = nonEmpty(expected)?.toLowerCase();
-  if (!left || !right) return false;
-  return (
-    left === right ||
-    (left.length >= 7 && right.startsWith(left)) ||
-    (right.length >= 7 && left.startsWith(right))
-  );
-}
-
-function matchMarker(body, marker) {
+function markerMatch(body, marker) {
   if (!isObject(marker) || typeof body !== "string") return null;
   const anyOf = Array.isArray(marker.any_of)
     ? marker.any_of.filter((value) => typeof value === "string")
@@ -965,142 +798,157 @@ function matchMarker(body, marker) {
   const allOf = Array.isArray(marker.all_of)
     ? marker.all_of.filter((value) => typeof value === "string")
     : [];
-  const anyMatches = anyOf.filter((value) => body.includes(value));
-  const allMatches = allOf.filter((value) => body.includes(value));
-  if (anyOf.length > 0 && anyMatches.length === 0) return null;
-  if (allOf.length > 0 && allMatches.length !== allOf.length) return null;
+  if (anyOf.length > 0 && !anyOf.some((value) => body.includes(value)))
+    return null;
+  if (allOf.some((value) => !body.includes(value))) return null;
   let target = null;
   if (marker.target_pattern) {
     let expression;
     try {
       expression = new RegExp(marker.target_pattern, "i");
     } catch {
-      return { matched: true, target: null, target_pattern_invalid: true };
+      return { target: null, reason_code: "target_marker_invalid" };
     }
     const match = expression.exec(body);
-    if (!match) return { matched: true, target: null, target_missing: true };
-    target = match.slice(1).find((value) => nonEmpty(value)) ?? null;
+    if (match) target = match.slice(1).find((value) => nonEmpty(value)) ?? null;
+    if (!match) return { target: null, reason_code: "target_marker_missing" };
   }
-  return {
-    matched: true,
-    target,
-    any_matches: anyMatches,
-    all_matches: allMatches,
-  };
-}
-
-function reviewerIdentityEntries(reviewer) {
-  return Array.isArray(reviewer?.actor_identities)
-    ? reviewer.actor_identities.filter(isObject)
-    : [];
-}
-
-function attributeActor(object, reviewer, record) {
-  const actor = object.current.actor;
-  const observations = object.observations;
-  if (actor.status === "ambiguous")
-    return { status: "ambiguous", reason_code: "actor_identity_conflict" };
-  if (!actor.logins.length && !actor.database_id && !actor.node_id)
-    return { status: "unknown", reason_code: "actor_unattributed" };
-
-  const identities = reviewerIdentityEntries(reviewer);
-  const isLegacy =
-    record?.schema === "ai-dev-foundation/reviewer-capability-record@1";
-  if (!isLegacy && identities.length > 0) {
-    if (!actor.database_id && !actor.node_id)
-      return {
-        status: "unknown",
-        reason_code: "actor_stable_identity_missing",
-      };
-    const matches = identities.filter((identity) => {
-      const databaseId = stableDatabaseId(identity.database_id);
-      const nodeId = stableNodeId(identity.node_id);
-      return (
-        (databaseId && actor.database_ids.includes(databaseId)) ||
-        (nodeId && actor.node_ids.includes(nodeId))
-      );
-    });
-    if (matches.length === 0)
-      return {
-        status: "not_attributed",
-        reason_code: "actor_identity_not_declared",
-      };
-    return {
-      status: "attributed",
-      reason_code: "stable_actor_identity",
-      identity_count: matches.length,
-    };
-  }
-  if (!isLegacy)
-    return { status: "unknown", reason_code: "actor_stable_identity_missing" };
-
-  const exactLogin =
-    observations.length === 1 &&
-    observations[0].actor.login &&
-    Array.isArray(reviewer?.actors) &&
-    reviewer.actors.includes(observations[0].actor.login);
-  if (exactLogin)
-    return {
-      status: "attributed",
-      reason_code: "legacy_exact_login_single_surface",
-    };
-  return {
-    status: "unknown",
-    reason_code: "legacy_identity_not_self_contained",
-  };
-}
-
-function anchorIdentifiers(object, observation) {
-  return new Set(
-    [
-      object.canonical_id,
-      observation.surface_id,
-      observation.database_id,
-      observation.node_id,
-      observation.locator,
-    ].filter(nonEmpty),
-  );
-}
-
-function anchorMatch(object, observation, runAnchor) {
-  if (!isObject(runAnchor))
-    return { matched: false, reason_code: "run_anchor_missing" };
-  const after = timeValue(runAnchor.after);
-  const identifiers = new Set(
-    (Array.isArray(runAnchor.ids) ? runAnchor.ids : [])
-      .filter(nonEmpty)
-      .map(String),
-  );
-  const idMatched = [...anchorIdentifiers(object, observation)].some(
-    (identifier) => identifiers.has(String(identifier)),
-  );
-  if (after !== null) {
-    const event = timeValue(eventTime(observation));
-    if (event === null)
-      return { matched: false, reason_code: "run_anchor_time_unavailable" };
-    if (event <= after)
-      return { matched: false, reason_code: "evidence_before_run_anchor" };
-    return { matched: true, reason_code: "run_anchor_after_timestamp" };
-  }
-  if (idMatched) return { matched: true, reason_code: "run_anchor_object_id" };
-  return { matched: false, reason_code: "run_anchor_not_matched" };
+  return { target };
 }
 
 function markerSignals(object, reviewer) {
-  const body = object.current.body;
-  const markers = [
+  return [
     ["completion", reviewer?.completion_marker],
     ["rate-limited", reviewer?.rate_limit_marker],
     ["failed", reviewer?.failure_marker],
     ["declined", reviewer?.non_participation_marker],
     ["in-flight", reviewer?.in_flight_marker],
-  ];
-  return markers
+  ]
     .map(([kind, marker]) => {
-      const match = matchMarker(body, marker);
-      return match ? { kind, marker_match: match } : null;
+      const match = markerMatch(object.current.body, marker);
+      return match ? { kind, ...match } : null;
     })
     .filter(Boolean);
+}
+
+function actorIdKey(object) {
+  return [
+    object.current.actor.database_id
+      ? "database:" + object.current.actor.database_id
+      : null,
+    object.current.actor.node_id
+      ? "node:" + object.current.actor.node_id
+      : null,
+  ].filter(Boolean);
+}
+
+function actorClaims(objects, reviewers) {
+  const claims = new Map();
+  for (const object of objects) {
+    if (object.current.actor.status === "ambiguous") continue;
+    const claimants = reviewers
+      .filter((reviewer) =>
+        object.current.actor.logins.some((login) =>
+          Array.isArray(reviewer.actors)
+            ? reviewer.actors.includes(login)
+            : false,
+        ),
+      )
+      .map((reviewer) => reviewer.id);
+    for (const key of actorIdKey(object)) {
+      const ids = claims.get(key) ?? new Set();
+      for (const claimant of claimants) ids.add(claimant);
+      claims.set(key, ids);
+    }
+  }
+  return claims;
+}
+
+function actorSeeds(objects, reviewer, reviewers) {
+  const seeds = new Set();
+  const logins = new Set(
+    Array.isArray(reviewer?.actors) ? reviewer.actors : [],
+  );
+  const claims = actorClaims(objects, reviewers);
+  for (const object of objects) {
+    if (object.current.actor.status === "ambiguous") continue;
+    if (!object.current.actor.logins.some((login) => logins.has(login)))
+      continue;
+    for (const key of actorIdKey(object)) {
+      if (claims.get(key)?.size === 1 && claims.get(key).has(reviewer.id)) {
+        seeds.add(key);
+      }
+    }
+  }
+  return seeds;
+}
+
+function attributeActor(object, reviewer, seeds, reviewers) {
+  const actor = object.current.actor;
+  if (actor.status === "ambiguous") {
+    return { status: "unknown", reason_code: "actor_identity_conflict" };
+  }
+  const exactLogin = actor.logins.some(
+    (login) =>
+      Array.isArray(reviewer?.actors) && reviewer.actors.includes(login),
+  );
+  const exactLoginIsUnique = actor.logins.some(
+    (login) =>
+      Array.isArray(reviewer?.actors) &&
+      reviewer.actors.includes(login) &&
+      reviewers.filter((candidate) =>
+        Array.isArray(candidate.actors)
+          ? candidate.actors.includes(login)
+          : false,
+      ).length === 1,
+  );
+  const ids = actorIdKey(object);
+  if (exactLoginIsUnique && object.sources.length === 1) {
+    return { status: "attributed", reason_code: "exact_login_single_surface" };
+  }
+  if (exactLoginIsUnique && ids.length > 0) {
+    return { status: "attributed", reason_code: "exact_login_stable_id" };
+  }
+  if (ids.some((key) => seeds.has(key))) {
+    return { status: "attributed", reason_code: "snapshot_stable_actor_id" };
+  }
+  return { status: "unknown", reason_code: "actor_unattributed" };
+}
+
+function anchorMatch(object, runAnchor) {
+  if (!isObject(runAnchor))
+    return { matched: false, reason_code: "run_anchor_missing" };
+  const ids = sortedUnique(Array.isArray(runAnchor.ids) ? runAnchor.ids : []);
+  const after = timeValue(runAnchor.after);
+  const idMatched = object.sources.some(
+    (source) =>
+      source.surface_id !== null && ids.includes(String(source.surface_id)),
+  );
+  const observedAt = timeValue(
+    firstNonNull(
+      object.current.updated_at,
+      object.current.created_at,
+      object.current.revision.captured_at,
+    ),
+  );
+  const afterMatched =
+    after !== null && observedAt !== null && observedAt > after;
+  if (ids.length === 0 && after === null)
+    return { matched: false, reason_code: "run_anchor_missing" };
+  if ((ids.length > 0 && !idMatched) || (after !== null && !afterMatched)) {
+    return {
+      matched: false,
+      reason_code:
+        ids.length > 0
+          ? "run_anchor_not_matched"
+          : "evidence_before_run_anchor",
+    };
+  }
+  return {
+    matched: true,
+    reason_code:
+      ids.length > 0 ? "run_anchor_object_id" : "run_anchor_after_timestamp",
+  };
 }
 
 function bindingForObject(object, markerTarget) {
@@ -1108,312 +956,192 @@ function bindingForObject(object, markerTarget) {
   if (markerTarget) {
     candidates.push({
       tier: 3,
-      stability: "stable",
       basis: "body.explicit_target_marker",
       target: markerTarget,
     });
   }
   const usable = candidates.filter((candidate) => nonEmpty(candidate.target));
-  if (usable.length === 0)
+  if (usable.length === 0) {
     return {
       status: "unknown",
       effective: null,
-      candidates: [],
       reason_code: "target_binding_missing",
     };
-  usable.sort(
-    (left, right) =>
-      left.tier - right.tier ||
-      compareNullable(left.target, right.target) ||
-      compareNullable(left.basis, right.basis),
-  );
-  const strongestTier = usable[0].tier;
+  }
+  const strongestTier = Math.min(...usable.map((candidate) => candidate.tier));
   const strongest = usable.filter(
     (candidate) => candidate.tier === strongestTier,
   );
-  const targets = sortStrings(strongest.map((candidate) => candidate.target));
-  if (targets.length > 1)
+  const targets = sortedUnique(strongest.map((candidate) => candidate.target));
+  if (targets.length > 1) {
     return {
       status: "ambiguous",
       effective: null,
-      candidates: usable,
       reason_code: "same_tier_target_conflict",
     };
-  if (strongestTier >= 4)
+  }
+  if (strongestTier >= 4) {
     return {
       status: "unknown",
       effective: strongest[0],
-      candidates: usable,
       reason_code: "moving_or_weak_binding_only",
     };
-  return {
-    status: "candidate",
-    effective: strongest[0],
-    candidates: usable,
-    reason_code: null,
-  };
-}
-
-function stateMeta(state) {
-  switch (state) {
-    case "completed@target":
-      return {
-        terminal: true,
-        polarity: "positive",
-        binding_status: "target-bound",
-      };
-    case "not-bound":
-      return {
-        terminal: true,
-        polarity: "positive",
-        binding_status: "mismatch",
-      };
-    case "rate-limited":
-    case "failed":
-    case "declined":
-      return {
-        terminal: true,
-        polarity: "negative",
-        binding_status: "not-required",
-      };
-    case "in-flight":
-      return {
-        terminal: false,
-        polarity: "indeterminate",
-        binding_status: "unknown",
-      };
-    default:
-      return {
-        terminal: false,
-        polarity: "indeterminate",
-        binding_status: "unknown",
-      };
   }
-}
-
-function signalTime(signal) {
-  return timeValue(signal.event_at) ?? -Infinity;
+  return { status: "bound", effective: strongest[0], reason_code: null };
 }
 
 function chooseSignal(signals) {
-  if (signals.length === 0) return { signal: null, conflict: false };
-  const latestTime = Math.max(...signals.map(signalTime));
-  const latest = signals.filter((signal) => signalTime(signal) === latestTime);
+  if (signals.length === 0)
+    return { signal: null, conflict: false, latest: [] };
+  const time = (signal) => timeValue(signal.event_at) ?? -Infinity;
+  const latestTime = Math.max(...signals.map(time));
+  const latest = signals.filter((signal) => time(signal) === latestTime);
   const kinds = new Set(latest.map((signal) => signal.kind));
-  if (kinds.size > 1) return { signal: null, conflict: true, signals: latest };
+  const targets = new Set(
+    latest.map((signal) => signal.target_claim).filter(Boolean),
+  );
+  if (kinds.size > 1 || targets.size > 1) {
+    return { signal: null, conflict: true, latest };
+  }
   latest.sort((left, right) =>
     compareNullable(left.canonical_id, right.canonical_id),
   );
-  return { signal: latest[latest.length - 1], conflict: false };
+  return { signal: latest[latest.length - 1], conflict: false, latest };
 }
 
-function stateForReviewer(canonical, reviewer, record, target, runAnchor) {
+function evidenceForSignals(signals) {
+  return [
+    ...new Map(
+      signals.map((signal) => [
+        signal.canonical_id,
+        {
+          canonical_id: signal.canonical_id,
+          sources: signal.object.sources,
+          revision: signal.object.current.revision,
+        },
+      ]),
+    ).values(),
+  ].sort((left, right) =>
+    compareNullable(left.canonical_id, right.canonical_id),
+  );
+}
+
+function stateForReviewer(canonical, reviewer, target, runAnchor, reviewers) {
   const targetValue = targetSha(target);
   const reasons = new Set();
-  const signals = [];
-  const observedSignals = [];
+  const accepted = [];
+  const observed = [];
+  const seeds = actorSeeds(canonical.canonical_objects, reviewer, reviewers);
+
   for (const object of canonical.canonical_objects) {
     const markers = markerSignals(object, reviewer);
     if (markers.length === 0) continue;
-    if (object.identity.status === "ambiguous") {
-      for (const marker of markers) {
-        observedSignals.push({
-          kind: marker.kind,
-          canonical_id: object.canonical_id,
-          event_at: object.current.updated_at ?? object.current.created_at,
-          target_claim: marker.marker_match.target ?? null,
-          locator: object.provenance[0]?.locator ?? null,
-          attribution: "blocked",
-          anchor: "unproven",
-          accepted: false,
-          reason_code: "object_identity_ambiguous",
-        });
-      }
-      reasons.add("object_identity_ambiguous");
-      continue;
-    }
-    const attribution = attributeActor(object, reviewer, record);
-    const sourceObservations = object.observations.filter(
-      (observation) =>
-        object.current.body_status !== "ambiguous" &&
-        object.current.body_digest === observation.body_digest,
-    );
+    const attribution = attributeActor(object, reviewer, seeds, reviewers);
+    const anchor = anchorMatch(object, runAnchor);
     for (const marker of markers) {
-      const anchorResults = sourceObservations.map((observation) => ({
-        observation,
-        anchor: anchorMatch(object, observation, runAnchor),
-      }));
-      const anchored = anchorResults.find((entry) => entry.anchor.matched);
       const signal = {
         kind: marker.kind,
         canonical_id: object.canonical_id,
-        event_at: anchored?.observation
-          ? eventTime(anchored.observation)
-          : (object.current.updated_at ?? object.current.created_at),
-        target_claim: marker.marker_match.target ?? null,
-        locator:
-          anchored?.observation?.locator ??
-          object.provenance[0]?.locator ??
-          null,
+        event_at: firstNonNull(
+          object.current.updated_at,
+          object.current.created_at,
+          object.current.revision.captured_at,
+        ),
+        target_claim: marker.target,
         attribution: attribution.status,
-        anchor: anchored ? "matched" : "unproven",
+        anchor: anchor.matched ? "matched" : "unproven",
+        accepted: false,
       };
-      if (attribution.status !== "attributed") {
-        reasons.add(attribution.reason_code);
-        observedSignals.push({
-          ...signal,
-          accepted: false,
-          reason_code: attribution.reason_code,
-        });
-        continue;
+      let reasonCode = null;
+      if (object.identity.status === "ambiguous") {
+        reasonCode = "object_identity_ambiguous";
+      } else if (object.identity.status === "uncanonicalized") {
+        reasonCode = "object_identity_unresolved";
+      } else if (object.current.body_status === "ambiguous") {
+        reasonCode = "body_revision_ambiguous";
+      } else if (attribution.status !== "attributed") {
+        reasonCode = attribution.reason_code;
+      } else if (!anchor.matched) {
+        reasonCode = anchor.reason_code;
       }
-      if (!anchored) {
-        const reason =
-          anchorResults[0]?.anchor.reason_code ?? "run_anchor_missing";
-        reasons.add(reason);
-        observedSignals.push({
-          ...signal,
-          accepted: false,
-          reason_code: reason,
-        });
-        continue;
+      if (reasonCode) {
+        reasons.add(reasonCode);
+        observed.push({ ...signal, reason_code: reasonCode });
+      } else {
+        signal.accepted = true;
+        observed.push(signal);
+        accepted.push({ ...signal, object });
       }
-      observedSignals.push({ ...signal, accepted: true });
-      signals.push({
-        ...signal,
-        object,
-        marker,
-        observation: anchored.observation,
-      });
     }
   }
 
-  const chosen = chooseSignal(signals);
+  const chosen = chooseSignal(accepted);
   let state = "unknown";
-  let binding = {
-    status: "unknown",
-    effective: null,
-    candidates: [],
-    reason_code: "no_current_run_signal",
-  };
-  let evidenceObjects = [];
-
   if (chosen.conflict) {
     reasons.add("conflicting_signals");
   } else if (chosen.signal) {
     const signal = chosen.signal;
-    evidenceObjects = [signal.canonical_id];
     if (signal.kind === "completion") {
-      const reviewIsPending =
+      const ownership = signal.object.current.ownership;
+      const pendingReview =
         signal.object.object_kind === "review" &&
-        signal.object.current.state.some((state) =>
-          ["PENDING", "DRAFT"].includes(String(state).toUpperCase()),
-        );
-      if (
-        signal.object.current.ownership.status === "pending" ||
-        reviewIsPending
-      ) {
+        ["PENDING", "DRAFT"].includes(signal.object.current.review_state);
+      if (pendingReview || ownership.status === "pending") {
         reasons.add("pending_review_owner");
       } else if (
         signal.object.object_kind === "review_comment" &&
-        !["owned", "standalone"].includes(
-          signal.object.current.ownership.status,
-        )
+        !["owned", "standalone"].includes(ownership.status)
       ) {
         reasons.add("ownership_unresolved");
       } else {
-        binding = bindingForObject(signal.object, signal.target_claim);
+        const binding = bindingForObject(signal.object, signal.target_claim);
         if (binding.reason_code) reasons.add(binding.reason_code);
         if (!targetValue) {
           reasons.add("target_missing");
-        } else if (binding.status === "candidate") {
-          if (targetMatches(binding.effective.target, targetValue)) {
-            state =
-              canonical.coverage.status === "complete"
-                ? "completed@target"
-                : "unknown";
-            if (canonical.coverage.status !== "complete")
-              reasons.add("coverage_incomplete");
+        } else if (binding.status === "bound") {
+          if (!canonical.coverage_complete) {
+            reasons.add("coverage_incomplete");
+          } else if (
+            (() => {
+              const candidate = nonEmpty(
+                binding.effective.target,
+              )?.toLowerCase();
+              const expected = targetValue.toLowerCase();
+              return (
+                candidate === expected ||
+                (candidate.length >= 7 && expected.startsWith(candidate)) ||
+                (expected.length >= 7 && candidate.startsWith(expected))
+              );
+            })()
+          ) {
+            state = "completed@target";
           } else {
             state = "not-bound";
             reasons.add("target_mismatch");
           }
-        } else if (binding.status === "ambiguous") {
-          reasons.add("binding_ambiguous");
         } else {
           reasons.add("binding_unresolved");
         }
       }
-    } else {
+    } else if (canonical.coverage_complete) {
       state = signal.kind;
+    } else {
+      reasons.add("coverage_incomplete");
     }
   } else {
-    if (canonical.coverage.status !== "complete")
-      reasons.add("coverage_incomplete");
-    if (observedSignals.length === 0) reasons.add("no_current_run_signal");
+    if (!canonical.coverage_complete) reasons.add("coverage_incomplete");
+    reasons.add("no_current_run_signal");
   }
 
-  if (
-    !chosen.conflict &&
-    state === "unknown" &&
-    observedSignals.some(
-      (signal) => signal.kind === "in-flight" && signal.accepted,
-    )
-  ) {
-    state = "in-flight";
-    reasons.delete("no_current_run_signal");
-  }
-  const meta = stateMeta(state);
-  const fallbackEligible =
-    NEGATIVE_STATES.has(state) &&
-    canonical.coverage.status === "complete" &&
-    Boolean(chosen.signal) &&
-    chosen.signal.anchor === "matched" &&
-    chosen.signal.attribution === "attributed";
-  if (NEGATIVE_STATES.has(state) && canonical.coverage.status !== "complete")
-    reasons.add("fallback_requires_complete_coverage");
-  if (state === "completed@target" && canonical.coverage.status !== "complete")
-    reasons.add("positive_requires_complete_coverage");
-  const bindingMatchesTarget =
-    binding.status === "candidate" &&
-    targetValue &&
-    binding.effective &&
-    targetMatches(binding.effective.target, targetValue);
-  const outputBindingStatus =
-    state === "completed@target"
-      ? "target-bound"
-      : state === "not-bound"
-        ? "mismatch"
-        : state === "unknown"
-          ? binding.status === "ambiguous"
-            ? "ambiguous"
-            : "unknown"
-          : bindingMatchesTarget
-            ? "target-bound"
-            : binding.status === "candidate"
-              ? "unresolved"
-              : binding.status === "ambiguous"
-                ? "ambiguous"
-                : meta.binding_status;
   return {
     reviewer: reviewer?.id ?? null,
     target: targetValue,
     state,
-    terminal: meta.terminal,
-    polarity: meta.polarity,
-    binding_status: outputBindingStatus,
-    effective_binding: binding.effective,
-    coverage: canonical.coverage,
-    fallback_eligible: fallbackEligible,
-    evidence: {
-      canonical_object_ids: evidenceObjects,
-      locators: sortStrings(
-        observedSignals
-          .filter((signal) => signal.accepted && signal.locator)
-          .map((signal) => signal.locator),
-      ),
-    },
-    observed_signals: observedSignals,
+    coverage_complete: canonical.coverage_complete,
+    evidence: evidenceForSignals(
+      chosen.conflict ? chosen.latest : chosen.signal ? [chosen.signal] : [],
+    ),
+    observed_signals: observed,
     reason_codes: [...reasons].sort(),
   };
 }
@@ -1442,11 +1170,12 @@ export function evaluateReviewerTargetStates(
     repo: canonical.repo,
     pull_number: canonical.pull_number,
     captured_at: canonical.captured_at,
+    coverage_complete: canonical.coverage_complete,
+    incomplete_surfaces: canonical.incomplete_surfaces,
     target: { sha: targetSha(target) },
-    coverage: canonical.coverage,
     canonical_objects: canonical.canonical_objects,
     reviewer_states: selected.map((reviewer) =>
-      stateForReviewer(canonical, reviewer, record, target, runAnchor),
+      stateForReviewer(canonical, reviewer, target, runAnchor, reviewers),
     ),
   };
 }

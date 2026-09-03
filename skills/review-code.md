@@ -40,23 +40,19 @@ review でも同じ意味で適用します。
    node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json
    ```
 
-7. 取得した surface を record の marker と突き合わせて次を決める。marker として採用できる
-   のは、record の `actors` に帰属し、かつ current run の anchor 以後に現れた evidence だけ
-   です（帰属と anchor の確定は手順 5）。
-   - record の completion marker を、freeze した target への resolvable な参照とともに
-     観測できた — finding を triage する（手順 6 以降）
-   - rate-limit marker — 復帰を待たない。record の `fallback_order` の次の reviewer へ進み、
-     Selection amendment を記録する
-   - 非参加 marker / failure marker、または何も観測できない — `0 findings` へ変換せず、
-     Failure / retry（`policy/core.md`）に従う。沈黙を completion へ変換しない
-   - advisory member — completion を待たず blocker にしない。ただし到着済みの finding は
-     class に関係なく triage / Resolution の対象
+7. fresh snapshot を state evaluator へ渡して target completion state を読む。
+   `completed@target` は current target に binding があり、coverage が complete な場合だけ
+   required review completion として扱います。`not-bound` は別 target の完了です。
+   `rate-limited` / `failed` / `declined` は明示された signal と complete coverage が
+   必要です。`unknown` と `in-flight` は terminal failure ではなく、沈黙、preamble、
+   acknowledgement、fetch incomplete、marker 不明を positive/negative に変換しません。
+   finding の意味付け、Resolution、fallback の policy は `policy/core.md` に従います。
 8. accepted finding を batch で fix し、target が動いたら targeted closure を回す。
 9. merge-ready fence を評価してから merge-ready を宣言する。merge の実行は authority に従う。
 
 ## reviewer capability record
 
-利用可能な reviewer、その trigger、結果が出る surface、completion / 非参加 / rate-limit /
+利用可能な reviewer、その trigger、completion / 非参加 / rate-limit /
 failure の marker、fallback order は、consumer-owned な reviewer capability record
 （`.ai-dev-foundation/reviewers.json`）が持ちます。本 skill は provider 名も marker も
 持ちません。
@@ -162,81 +158,46 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
      なら fallback order に従います。
      record に宣言されていない reviewer は formal acquisition になりません。
      trigger 方法、実際に渡した target と artifact set、required context を記録します。
-5. **Acquisition & Validity** — reviewer の run ごとに Acquisition & Validity
-   Contract（`policy/core.md`）に従って record schema を埋めます。
-   completion と validity は独立した判定とし、completed な run についてのみ
-   validity を判定します（target SHA / artifact set 等が一致しない completed run
-   は invalid として表現できます）。
-   `none` / `unknown` / `failure` は completion / validity と混同せず、Contract
-   の定義に従って記録します。
-   run record の `status` / `validity` とは別に、各 reviewer の target completion
-   state を Acquisition & Validity Contract に従って判定します。判定に使う positive
-   completion evidence の target-bound 要件、binding へ使う field / surface の安定性
-   要件、binding が成立しない場合の扱い、および `not-bound` な reviewer の evidence 軸 /
-   finding 軸の分離は、いずれも `policy/core.md` が定めます。
-   この skill で行う実務は次です。fresh snapshot と state projection は、次の helper
-   呼び出しで同じ取得結果から作ります（target、record、run anchor は Selection /
-   Execution の記録から渡します）。
-
-   ```text
-   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --target-sha <sha> --record .ai-dev-foundation/reviewers.json --run-after <ISO-8601> --json
-   ```
-
-   `review-evidence-state-lib.mjs` が surface を canonical object へ投影し、
-   `reviewer_states` の `state` / `terminal` / `polarity` / `binding_status` /
-   `coverage` / `fallback_eligible` / `reason_codes` を返します。canonical object は
-   current body、`updated_at`、body digest、`captured_at`、stable ID、provenance を
-   保持します。ここでの projection は finding の意味付けや Resolution を行いません。
-   completion 判定は record の completion marker を fresh 取得で確認します。
-   in-place 編集される surface では、新着 comment ではなく既存 comment の本文変化を
-   見ます。
-   marker evidence として扱ってよいのは、record の `actors` に帰属する item だけです。
-   comment / review 型の surface で actor を確認できない item は、positive completion
-   evidence に使いません。
-   marker は、current run を識別する anchor 以後の evidence にのみ適用します。
-   `comment_command` では、実際に投稿した trigger comment を run anchor とします。
-   `automatic` / `operator_configured` では、Selection / Execution で記録した run
-   開始時点、またはその run に帰属すると確認できる participation evidence を anchor と
-   します。current run への帰属を確定できない marker は、その run の completion /
-   rate-limit / failure / 非参加 のいずれの判定にも使いません。
-   どの surface item を positive completion evidence とし、どの field / surface を安定と
-   判断して binding の根拠にしたかは、state output の `evidence` / `effective_binding`
-   / `reason_codes` とともに記録します。安定性を必要な精度で確認できないまま binding
-   が成立したものとして扱わないでください。
-   `unknown` と `in-flight` は待機・再取得または Failure / retry の判断へ渡し、failure
-   へ変換しません。`not-bound` は current target の completion ではありません。
-   `rate-limited` / `failed` / `declined` の fallback eligibility は state output の
-   `fallback_eligible` が示す explicit terminal negative と complete coverage の組合せ
-   に限ります。fallback の実行は既存 policy に従います。
+5. **Acquisition & state** — reviewer の run ごとに `tooling/review-evidence.mjs` を
+   fresh に実行し、必要なら `--state --target-sha <sha> --run-after <timestamp>`
+   （または `--run-anchor-id <id>`）で state evaluator を実行します。
+   evaluator は `review`、`review_comment`、`conversation_comment` の canonical
+   object と current body / revision / sources を返します。
+   state output の `state`、`coverage_complete`、`evidence`、`reason_codes` を記録します。
+   target-bound completion、run state、coverage、および binding の規範的な扱いは、いずれも
+   `policy/core.md` が定めます。
+   `completed@target` は current target に target-bound evidence があり、coverage が
+   complete な場合だけです。draft / pending ownership、actor attribution 不明、
+   binding 不明、または fetch incomplete は positive completion に使いません。
+   `not-bound` は別 target の完了です。`rate-limited` / `failed` / `declined` は
+   explicit signal と complete coverage が必要です。`in-flight` と `unknown` は
+   terminal failure ではありません。preamble、acknowledgement、silence、空の snapshot
+   を 0 findings や failure に変換しません。
+   同一 object の編集は current body、`updated_at`、body digest の snapshot projection
+   で扱い、履歴を保存しません。record の actor login と exact match する observation
+   から得た stable actor ID は同じ snapshot 内の login drift の補助にだけ使います。
+   completion と validity は独立した判定とし、target SHA / artifact set 等が一致しない
+   completed run は invalid として表現できます。`none` / `unknown` / `failure` は
+   completion / validity と混同せず、Acquisition & Validity Contract に従って記録します。
+6. **Required review gate & aggregate / triage** — state と run record を
+   `policy/core.md` の Acquisition & Validity Contract に照合します。state は finding
+   の有無を表しません。required run が揃った後の finding の集約と Resolution は同
+   Contract に従います。ancestor target の finding も target 移動だけでは discharge
+   しません。Selection Contract で required とした review 数ぶんの `validity: valid` な
+   run が揃うまで triage へ進みません。揃わない run（invalid / unknown / failure）の
+   扱いは Failure / retry（`policy/core.md`）に従います。finding の集約対象は valid な
+   run に限りません。`validity` は evidence 軸の判定であり、finding を捨ててよい根拠
+   ではありません。重大 finding を dismiss する際の確認要否は Resolution Contract に
+   従います。
    rate-limit marker を観測したら復帰を待ちません。record の `fallback_order` で次の
-   reviewer へ進み、Selection amendment を記録します。待つのは in-flight な run の
-   終端だけです。
-   advisory member の completion は待たず、blocker にしません。ただし merge-ready 判定
-   までに review surface へ到着した finding は、class に関係なく triage / Resolution の
-   対象です。
-
-6. **Required review gate & aggregate / triage** — Selection Contract で
-   required とした review 数ぶんの `validity: valid` な run が揃うまで triage
-   へ進みません。
-   揃わない run（invalid / unknown / failure）の扱いは Failure / retry
-   （`policy/core.md`）に従います。
-   required 数の valid run が揃ったら finding を集約し、
-   Resolution Contract（`policy/core.md`）のカテゴリ（fix / false-positive /
-   needs-verification / technical-dispute / intent-question）へ仕分けます。
-   human escalation と technical dispute の扱い、重大 finding を dismiss する
-   際の確認要否は Resolution Contract に従います。
-   finding の集約対象は valid な run に限りません。ancestor target に対する run の
-   ように `validity: valid` でない run であっても、そこで既に発見された finding は
-   Resolution Contract の対象です。`validity` は evidence 軸の判定であり、finding を
-   捨ててよい根拠ではありません。review target が移動したことだけを理由に、既存の
-   finding を discharge しません。
+   reviewer へ進み、Selection amendment を記録します。待つのは in-flight な run の終端
+   だけです。advisory member の completion は待たず、blocker にしません。ただし
+   merge-ready 判定までに review surface へ到着した finding は、class に関係なく
+   triage / Resolution の対象です。
 7. **Batch fix + root-cause** — Resolution Contract に従い、accepted finding が
-   あれば root-cause ごとにまとめて fix します。
-   accepted finding が無ければ candidate SHA は変更されません。
-   fix による変更を超えて target が動いた場合（例えば commit range の
-   一方の endpoint や target artifact set が accepted fix と無関係に
-   変わった場合）、その独立した変更分は手順 2 の non-fix target mutation
-   semantics に従い、targeted closure だけでは扱いません。
+   あれば root-cause ごとにまとめて fix します。fix 後は candidate SHA を re-freeze
+   し、必要な deterministic verify と targeted closure を行います。state evaluator
+   は fallback を実行せず、fallback policy は `policy/core.md` に委ねます。
 8. **Deterministic verify** — 手順 7 の batch fix によって candidate SHA が
    変更された場合のみ、fix 後に手順 1 の verify を再実行します。
 9. **Second full discovery（条件付き）** — Review stopping rules
@@ -267,6 +228,9 @@ run check:fixture` / consumer `verify` / `git diff --check` 等、Task に
       まとめて fix します。
    8. その fix によって target が変わった場合、手順 8 と同じ
       deterministic verify を行います。
+      fix による変更を超えて target が動いた場合（例えば commit range の一方の endpoint や
+      target artifact set が accepted fix と無関係に変わった場合）、その独立した変更分は
+      手順 2 の non-fix target mutation semantics に従い、targeted closure だけでは扱いません。
 
    second discovery の実行中、または completion / validity 確定前後に
    accepted fix 以外の理由で target が変わった場合は、手順 2 と同じ
@@ -435,37 +399,27 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 `collectOutputs()` / `normalizeFindings()` を人手で埋めます。
 
 - `trigger()`: record の `trigger` に従って起動し、どう起動したかを記録します。
-- `pollCompletion()`: completion をどう確認したか（record のどの marker を、どの
-  surface item で観測したか）を記録します。CI/status のみでの判断はしません。判定に
-  使う comment / review submission は、判定するその時点で ID を指定して fresh に
-  再取得した state / body を使います。会話内で既に見た comment の内容や、以前取得した
-  snapshot をそのまま completion 判定の根拠にせず、pending 継続の理由にもしません。
-- `collectOutputs()`: GitHub 上の durable review surface の mechanical
-  acquisition は、ai-dev-foundation checkout を利用できる場合、
-  `tooling/review-evidence.mjs --json`（Issue #62、使い方・現在の
-  coverage は同 tool の README 参照）に置き換えます。fetch が failed /
-  partial な場合、または snapshot が review target に必要な evidence を
-  カバーしない場合は、Review Adapter boundary（`policy/core.md`）に
-  従い不足分を fresh acquisition します。empty や success への変換は
-  しません。Completion / Validity / Resolution / triage の semantic
-  judgment は helper ではなく本 Contract に従い agent が行います。
-  helper を利用できない場合は、この provider で確認できる surface を
-  確認し、内容の有無にかかわらず「どの surface を確認したか」を
-  記録します。この surface から `policy/core.md` の
-  Acquisition & Validity Contract が定義する Completion と Validity の
-  要求事項を後続 session が独立に判定できれば、その surface 自体を同
-  Contract の record の recoverable な representation として result
-  locator に使えます（別途 record を post し直す必要はありません）。
-  それらの要求事項のいずれかを surface から判定できない場合は、
-  reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を
-  残さない場合（例: 実装 session 内で動く subagent review）と同様に扱い、
-  `collectOutputs()` に相当する手段として、`policy/core.md` の record
-  schema の各 field に加え、上記の Completion / Validity 要求事項を独立に
-  判定できる情報（`validity` 等の判定結果の要約だけでなく、その根拠と
-  なる情報）を PR/Issue 上の comment 等へ明示的に persist し、それを
-  result locator とします。
-- `normalizeFindings()`: 集めた出力を record schema と triage category へ変換し、
-  finding ごとに出典 surface と locator を残します。
+- `pollCompletion()`: `tooling/review-evidence.mjs --state` を fresh target と
+  run anchor 付きで実行し、reduced state output と canonical object の sources /
+  current revision を記録します。どの field / surface を安定と判断して binding の根拠に
+  したかを残し、安定性を必要な精度で確認できないまま binding が成立したものとして
+  扱わないでください。`completed@target` だけを target-bound completion として扱い、
+  `unknown` / `in-flight` を terminal failure にしません。
+- `collectOutputs()`: 同じ helper の `--json` output を durable evidence として保存
+  します。fetch incomplete や actor / binding ambiguity は state を positive にせず、
+  追加取得が必要なら Review Adapter boundary（`policy/core.md`）に従います。reviewer
+  mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装
+  session 内で動く subagent review）と同様に扱い、`collectOutputs()` に相当する手段として、
+  `policy/core.md` の record schema の各 field に加え、後続 session が Completion / Validity
+  を独立に判定できる根拠を durable に persist します。
+  この surface から `policy/core.md` の Acquisition & Validity Contract が定義する Completion
+  と Validity の要求事項を後続 session が独立に判定できれば、その surface 自体を同
+  Contract の record の recoverable な representation として result locator に使えます。
+  それらの要求事項のいずれかを surface から判定できない場合は、`policy/core.md` の
+  record schema の各 field に加え、上記の Completion / Validity 要求事項を独立に判定できる
+  情報を persist します。
+- `normalizeFindings()`: finding の意味付けと Resolution はこの skill の機械判定へ
+  複製せず、`policy/core.md` の Resolution Contract に従います。
 
 record が、結果を durable な GitHub surface へ残す trigger 経路を宣言している場合は、
 その経路を preferred route として使います。宣言された経路が unavailable / unsuitable で、

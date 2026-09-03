@@ -18,16 +18,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LEGACY_REVIEWER_RECORD_SCHEMA_ID =
-  "ai-dev-foundation/reviewer-capability-record@1";
-export const REVIEWER_RECORD_SCHEMA_ID =
-  "ai-dev-foundation/reviewer-capability-record@2";
-export const SUPPORTED_REVIEWER_RECORD_SCHEMA_IDS = [
-  REVIEWER_RECORD_SCHEMA_ID,
-  LEGACY_REVIEWER_RECORD_SCHEMA_ID,
-];
-export const REVIEWER_RECORD_RELATIVE_PATH =
-  ".ai-dev-foundation/reviewers.json";
+export const REVIEWER_RECORD_SCHEMA_ID = "ai-dev-foundation/reviewer-capability-record@1";
+export const REVIEWER_RECORD_RELATIVE_PATH = ".ai-dev-foundation/reviewers.json";
 
 // Durable record (Selection / run / fence record) posting convention, decided
 // once here rather than restated as prose in policy or skills: each stage posts
@@ -37,19 +29,12 @@ export const REVIEWER_RECORD_RELATIVE_PATH =
 export const DURABLE_RECORD_POSTING = "new-comment-per-stage";
 
 export const REVIEWER_CLASSES = ["required", "expected", "advisory"];
-export const TRIGGER_KINDS = [
-  "comment_command",
-  "automatic",
-  "operator_configured",
-];
+export const TRIGGER_KINDS = ["comment_command", "automatic", "operator_configured"];
 
 // How the required slot(s) are filled from the record's required-class
 // reviewers. This is the portfolio decision, made once in the record instead of
 // re-derived per Task from prose.
-export const REQUIRED_SELECTION_PREFERENCES = [
-  "different-provider-family-from-implementer",
-  "record-order",
-];
+export const REQUIRED_SELECTION_PREFERENCES = ["different-provider-family-from-implementer", "record-order"];
 
 // A trigger may carry the frozen target into the reviewer's own output, so its
 // completion becomes bindable on surfaces that carry no commit of their own.
@@ -76,134 +61,7 @@ function isNonEmptyString(value) {
 }
 
 function isStringArray(value, { allowEmpty = false } = {}) {
-  return (
-    Array.isArray(value) &&
-    (allowEmpty || value.length > 0) &&
-    value.every(isNonEmptyString)
-  );
-}
-
-function stableDatabaseId(value) {
-  if (typeof value === "number")
-    return Number.isSafeInteger(value) && value >= 0 ? String(value) : null;
-  if (typeof value === "string" && /^\d+$/.test(value.trim()))
-    return value.trim();
-  return null;
-}
-
-function validateActorIdentities(value, { reviewerLabel }) {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value))
-    return [`${reviewerLabel}.actor_identities: must be an array when present`];
-
-  const errors = [];
-  const seenDatabaseIds = new Set();
-  const seenNodeIds = new Set();
-  value.forEach((identity, index) => {
-    const label = `${reviewerLabel}.actor_identities[${index}]`;
-    if (!isPlainObject(identity)) {
-      errors.push(`${label}: must be an object`);
-      return;
-    }
-    const databaseId = stableDatabaseId(identity.database_id);
-    const nodeId = isNonEmptyString(identity.node_id) ? identity.node_id : null;
-    if (
-      identity.database_id !== undefined &&
-      identity.database_id !== null &&
-      databaseId === null
-    ) {
-      errors.push(
-        `${label}.database_id: must be a non-negative integer or numeric string`,
-      );
-    }
-    if (
-      identity.node_id !== undefined &&
-      identity.node_id !== null &&
-      nodeId === null
-    ) {
-      errors.push(`${label}.node_id: must be a non-empty string`);
-    }
-    if (databaseId === null && nodeId === null) {
-      errors.push(`${label}: must contain database_id or node_id`);
-    }
-    if (databaseId !== null) {
-      if (seenDatabaseIds.has(databaseId))
-        errors.push(
-          `${label}.database_id: duplicate stable actor identity "${databaseId}"`,
-        );
-      seenDatabaseIds.add(databaseId);
-    }
-    if (nodeId !== null) {
-      if (seenNodeIds.has(nodeId))
-        errors.push(
-          `${label}.node_id: duplicate stable actor identity "${nodeId}"`,
-        );
-      seenNodeIds.add(nodeId);
-    }
-    if (
-      identity.logins !== undefined &&
-      identity.logins !== null &&
-      !isStringArray(identity.logins)
-    ) {
-      errors.push(
-        `${label}.logins: must be a non-empty array of observed login strings when present`,
-      );
-    }
-  });
-  return errors;
-}
-
-function reviewerLabel(reviewer, index) {
-  return isNonEmptyString(reviewer?.id)
-    ? `reviewers[${index}] (${reviewer.id})`
-    : `reviewers[${index}]`;
-}
-
-function validateCrossReviewerActorIdentities(reviewers) {
-  const errors = [];
-  const databaseOwners = new Map();
-  const nodeOwners = new Map();
-
-  reviewers.forEach((reviewer, reviewerIndex) => {
-    if (!isPlainObject(reviewer) || !Array.isArray(reviewer.actor_identities))
-      return;
-    const ownerLabel = reviewerLabel(reviewer, reviewerIndex);
-    reviewer.actor_identities.forEach((identity, identityIndex) => {
-      if (!isPlainObject(identity)) return;
-      const identityLabel = `${ownerLabel}.actor_identities[${identityIndex}]`;
-      const databaseId = stableDatabaseId(identity.database_id);
-      const nodeId = isNonEmptyString(identity.node_id)
-        ? identity.node_id
-        : null;
-
-      if (databaseId !== null) {
-        const previous = databaseOwners.get(databaseId);
-        if (previous && previous.reviewerIndex !== reviewerIndex) {
-          errors.push(
-            `${identityLabel}.database_id: duplicate stable actor identity "${databaseId}" is also declared by ${previous.label}`,
-          );
-        } else if (!previous) {
-          databaseOwners.set(databaseId, {
-            label: identityLabel,
-            reviewerIndex,
-          });
-        }
-      }
-
-      if (nodeId !== null) {
-        const previous = nodeOwners.get(nodeId);
-        if (previous && previous.reviewerIndex !== reviewerIndex) {
-          errors.push(
-            `${identityLabel}.node_id: duplicate stable actor identity "${nodeId}" is also declared by ${previous.label}`,
-          );
-        } else if (!previous) {
-          nodeOwners.set(nodeId, { label: identityLabel, reviewerIndex });
-        }
-      }
-    });
-  });
-
-  return errors;
+  return Array.isArray(value) && (allowEmpty || value.length > 0) && value.every(isNonEmptyString);
 }
 
 // `new RegExp(source + "|")` always matches the empty string, so the match
@@ -233,32 +91,22 @@ function validateMarker(marker, { reviewerLabel, kind }) {
   }
 
   if (!isStringArray(marker.any_of)) {
-    errors.push(
-      `${label}.any_of: must be a non-empty array of literal marker strings`,
-    );
+    errors.push(`${label}.any_of: must be a non-empty array of literal marker strings`);
   }
   if (marker.all_of !== undefined && !isStringArray(marker.all_of)) {
-    errors.push(
-      `${label}.all_of: must be a non-empty array of literal marker strings when present`,
-    );
+    errors.push(`${label}.all_of: must be a non-empty array of literal marker strings when present`);
   }
 
   if (marker.target_pattern !== undefined && marker.target_pattern !== null) {
     if (!isNonEmptyString(marker.target_pattern)) {
-      errors.push(
-        `${label}.target_pattern: must be a non-empty string when present`,
-      );
+      errors.push(`${label}.target_pattern: must be a non-empty string when present`);
     } else {
       try {
         if (captureGroupCount(marker.target_pattern) < 1) {
-          errors.push(
-            `${label}.target_pattern: must contain at least one capture group for the reviewed target`,
-          );
+          errors.push(`${label}.target_pattern: must contain at least one capture group for the reviewed target`);
         }
       } catch (error) {
-        errors.push(
-          `${label}.target_pattern: invalid regular expression (${error.message})`,
-        );
+        errors.push(`${label}.target_pattern: invalid regular expression (${error.message})`);
       }
     }
   }
@@ -267,35 +115,23 @@ function validateMarker(marker, { reviewerLabel, kind }) {
 }
 
 function validateReviewer(reviewer, index, knownIds) {
-  if (!isPlainObject(reviewer))
-    return [`reviewers[${index}]: must be an object`];
+  if (!isPlainObject(reviewer)) return [`reviewers[${index}]: must be an object`];
 
   const errors = [];
-  const label = reviewerLabel(reviewer, index);
+  const label = isNonEmptyString(reviewer.id) ? `reviewers[${index}] (${reviewer.id})` : `reviewers[${index}]`;
 
-  if (!isNonEmptyString(reviewer.id))
-    errors.push(`${label}.id: must be a non-empty string`);
-  if (!isNonEmptyString(reviewer.display_name))
-    errors.push(`${label}.display_name: must be a non-empty string`);
+  if (!isNonEmptyString(reviewer.id)) errors.push(`${label}.id: must be a non-empty string`);
+  if (!isNonEmptyString(reviewer.display_name)) errors.push(`${label}.display_name: must be a non-empty string`);
 
   if (!REVIEWER_CLASSES.includes(reviewer.default_class)) {
-    errors.push(
-      `${label}.default_class: must be one of ${REVIEWER_CLASSES.join(" / ")}`,
-    );
+    errors.push(`${label}.default_class: must be one of ${REVIEWER_CLASSES.join(" / ")}`);
   }
 
   // Identity, not response shape: which login the reviewer posts as is what
   // attributes a surface item to it, and it does not change with the output.
   if (!isStringArray(reviewer.actors)) {
-    errors.push(
-      `${label}.actors: must be a non-empty array of the login(s) this reviewer posts as`,
-    );
+    errors.push(`${label}.actors: must be a non-empty array of the login(s) this reviewer posts as`);
   }
-  errors.push(
-    ...validateActorIdentities(reviewer.actor_identities, {
-      reviewerLabel: label,
-    }),
-  );
 
   if ("result_surfaces" in reviewer) {
     errors.push(
@@ -307,56 +143,30 @@ function validateReviewer(reviewer, index, knownIds) {
     errors.push(`${label}.trigger: must be an object`);
   } else {
     if (!TRIGGER_KINDS.includes(reviewer.trigger.kind)) {
-      errors.push(
-        `${label}.trigger.kind: must be one of ${TRIGGER_KINDS.join(" / ")}`,
-      );
+      errors.push(`${label}.trigger.kind: must be one of ${TRIGGER_KINDS.join(" / ")}`);
     }
-    if (
-      reviewer.trigger.kind === "comment_command" &&
-      !isNonEmptyString(reviewer.trigger.value)
-    ) {
-      errors.push(
-        `${label}.trigger.value: comment_command needs the literal command to post on the PR`,
-      );
+    if (reviewer.trigger.kind === "comment_command" && !isNonEmptyString(reviewer.trigger.value)) {
+      errors.push(`${label}.trigger.value: comment_command needs the literal command to post on the PR`);
     }
-    if (
-      reviewer.trigger.target_argument !== undefined &&
-      reviewer.trigger.target_argument !== null
-    ) {
+    if (reviewer.trigger.target_argument !== undefined && reviewer.trigger.target_argument !== null) {
       if (!isNonEmptyString(reviewer.trigger.target_argument)) {
-        errors.push(
-          `${label}.trigger.target_argument: must be a non-empty string when present`,
-        );
-      } else if (
-        !reviewer.trigger.target_argument.includes(TARGET_SHA_PLACEHOLDER)
-      ) {
-        errors.push(
-          `${label}.trigger.target_argument: must contain the ${TARGET_SHA_PLACEHOLDER} placeholder`,
-        );
+        errors.push(`${label}.trigger.target_argument: must be a non-empty string when present`);
+      } else if (!reviewer.trigger.target_argument.includes(TARGET_SHA_PLACEHOLDER)) {
+        errors.push(`${label}.trigger.target_argument: must contain the ${TARGET_SHA_PLACEHOLDER} placeholder`);
       }
     }
   }
 
-  if (
-    reviewer.provider_family !== undefined &&
-    !isNonEmptyString(reviewer.provider_family)
-  ) {
-    errors.push(
-      `${label}.provider_family: must be a non-empty string when present`,
-    );
+  if (reviewer.provider_family !== undefined && !isNonEmptyString(reviewer.provider_family)) {
+    errors.push(`${label}.provider_family: must be a non-empty string when present`);
   }
 
   // The completion marker is required: the review procedure reads it to tell a
   // finished review from a progress note, and has no other way to do so. The
   // remaining markers are optional — a reviewer that never declines, never
   // rate-limits and never reports failure simply omits them.
-  if (
-    reviewer.completion_marker === undefined ||
-    reviewer.completion_marker === null
-  ) {
-    errors.push(
-      `${label}.completion_marker: is required so completion can be told from progress`,
-    );
+  if (reviewer.completion_marker === undefined || reviewer.completion_marker === null) {
+    errors.push(`${label}.completion_marker: is required so completion can be told from progress`);
   }
   for (const kind of MARKER_KINDS) {
     const marker = reviewer[kind];
@@ -365,27 +175,16 @@ function validateReviewer(reviewer, index, knownIds) {
   }
 
   if (!isStringArray(reviewer.fallback_order, { allowEmpty: true })) {
-    errors.push(
-      `${label}.fallback_order: must be an array of reviewer ids (may be empty)`,
-    );
+    errors.push(`${label}.fallback_order: must be an array of reviewer ids (may be empty)`);
   } else {
     for (const id of reviewer.fallback_order) {
-      if (id === reviewer.id)
-        errors.push(
-          `${label}.fallback_order: must not list the reviewer itself`,
-        );
-      else if (!knownIds.has(id))
-        errors.push(`${label}.fallback_order: unknown reviewer id "${id}"`);
+      if (id === reviewer.id) errors.push(`${label}.fallback_order: must not list the reviewer itself`);
+      else if (!knownIds.has(id)) errors.push(`${label}.fallback_order: unknown reviewer id "${id}"`);
     }
   }
 
-  if (
-    !isNonEmptyString(reviewer.observed_at) ||
-    !OBSERVED_AT_PATTERN.test(reviewer.observed_at)
-  ) {
-    errors.push(
-      `${label}.observed_at: must be a YYYY-MM-DD date recording when these markers were last observed`,
-    );
+  if (!isNonEmptyString(reviewer.observed_at) || !OBSERVED_AT_PATTERN.test(reviewer.observed_at)) {
+    errors.push(`${label}.observed_at: must be a YYYY-MM-DD date recording when these markers were last observed`);
   }
 
   return errors;
@@ -398,36 +197,25 @@ function validateRequiredSelection(value) {
   // still leaves Selection undecidable, which is the failure the record exists
   // to remove.
   if (selection === undefined || selection === null) {
-    return [
-      "required_selection: is required so Selection can fill the required slot mechanically",
-    ];
+    return ["required_selection: is required so Selection can fill the required slot mechanically"];
   }
-  if (!isPlainObject(selection))
-    return ["required_selection: must be an object"];
+  if (!isPlainObject(selection)) return ["required_selection: must be an object"];
 
   const errors = [];
   if (!Number.isInteger(selection.count) || selection.count < 1) {
     errors.push("required_selection.count: must be an integer of at least 1");
   }
   if (!REQUIRED_SELECTION_PREFERENCES.includes(selection.prefer)) {
-    errors.push(
-      `required_selection.prefer: must be one of ${REQUIRED_SELECTION_PREFERENCES.join(" / ")}`,
-    );
+    errors.push(`required_selection.prefer: must be one of ${REQUIRED_SELECTION_PREFERENCES.join(" / ")}`);
   }
 
   const requiredReviewers = value.reviewers.filter(
-    (reviewer) =>
-      isPlainObject(reviewer) && reviewer.default_class === "required",
+    (reviewer) => isPlainObject(reviewer) && reviewer.default_class === "required",
   );
   if (requiredReviewers.length === 0) {
-    errors.push(
-      'required_selection: the record declares no reviewer with default_class "required" to fill the slot from',
-    );
+    errors.push('required_selection: the record declares no reviewer with default_class "required" to fill the slot from');
   }
-  if (
-    Number.isInteger(selection.count) &&
-    selection.count > requiredReviewers.length
-  ) {
+  if (Number.isInteger(selection.count) && selection.count > requiredReviewers.length) {
     errors.push(
       `required_selection.count: ${selection.count} exceeds the ${requiredReviewers.length} reviewer(s) with default_class "required"`,
     );
@@ -452,22 +240,15 @@ export function validateReviewerRecord(value) {
   if (!isPlainObject(value)) return ["record: must be a JSON object"];
 
   const errors = [];
-  if (!SUPPORTED_REVIEWER_RECORD_SCHEMA_IDS.includes(value.schema)) {
-    errors.push(
-      `schema: must be one of "${REVIEWER_RECORD_SCHEMA_ID}" or "${LEGACY_REVIEWER_RECORD_SCHEMA_ID}"`,
-    );
+  if (value.schema !== REVIEWER_RECORD_SCHEMA_ID) {
+    errors.push(`schema: must be "${REVIEWER_RECORD_SCHEMA_ID}"`);
   }
 
   if (value.durable_record !== undefined && value.durable_record !== null) {
     if (!isPlainObject(value.durable_record)) {
       errors.push("durable_record: must be an object when present");
-    } else if (
-      value.durable_record.posting !== undefined &&
-      value.durable_record.posting !== DURABLE_RECORD_POSTING
-    ) {
-      errors.push(
-        `durable_record.posting: the only supported value is "${DURABLE_RECORD_POSTING}"`,
-      );
+    } else if (value.durable_record.posting !== undefined && value.durable_record.posting !== DURABLE_RECORD_POSTING) {
+      errors.push(`durable_record.posting: the only supported value is "${DURABLE_RECORD_POSTING}"`);
     }
   }
 
@@ -479,31 +260,22 @@ export function validateReviewerRecord(value) {
   errors.push(...validateRequiredSelection(value));
 
   const knownIds = new Set(
-    value.reviewers
-      .filter((reviewer) => isNonEmptyString(reviewer?.id))
-      .map((reviewer) => reviewer.id),
+    value.reviewers.filter((reviewer) => isNonEmptyString(reviewer?.id)).map((reviewer) => reviewer.id),
   );
   const seenIds = new Set();
   value.reviewers.forEach((reviewer, index) => {
     if (isPlainObject(reviewer) && isNonEmptyString(reviewer.id)) {
-      if (seenIds.has(reviewer.id))
-        errors.push(
-          `reviewers[${index}].id: duplicate reviewer id "${reviewer.id}"`,
-        );
+      if (seenIds.has(reviewer.id)) errors.push(`reviewers[${index}].id: duplicate reviewer id "${reviewer.id}"`);
       seenIds.add(reviewer.id);
     }
     errors.push(...validateReviewer(reviewer, index, knownIds));
   });
-  errors.push(...validateCrossReviewerActorIdentities(value.reviewers));
 
   return errors;
 }
 
 export function reviewerRecordPath(consumerDirectory) {
-  return path.join(
-    consumerDirectory,
-    ...REVIEWER_RECORD_RELATIVE_PATH.split("/"),
-  );
+  return path.join(consumerDirectory, ...REVIEWER_RECORD_RELATIVE_PATH.split("/"));
 }
 
 // Loads and validates a record at an explicit path. `status` separates the
@@ -514,8 +286,7 @@ export async function readReviewerRecordFile(filePath) {
   try {
     raw = await readFile(filePath, "utf8");
   } catch (error) {
-    if (error.code === "ENOENT")
-      return { status: "missing", path: filePath, record: null, errors: [] };
+    if (error.code === "ENOENT") return { status: "missing", path: filePath, record: null, errors: [] };
     throw error;
   }
 
@@ -523,17 +294,11 @@ export async function readReviewerRecordFile(filePath) {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    return {
-      status: "unparsable",
-      path: filePath,
-      record: null,
-      errors: [error.message],
-    };
+    return { status: "unparsable", path: filePath, record: null, errors: [error.message] };
   }
 
   const errors = validateReviewerRecord(parsed);
-  if (errors.length > 0)
-    return { status: "invalid", path: filePath, record: parsed, errors };
+  if (errors.length > 0) return { status: "invalid", path: filePath, record: parsed, errors };
   return { status: "ok", path: filePath, record: parsed, errors: [] };
 }
 

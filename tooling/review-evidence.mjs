@@ -5,8 +5,8 @@ import {
   formatHumanSummary,
   parseReviewEvidenceArgs,
 } from "./review-evidence-lib.mjs";
-import { evaluateReviewerTargetStates } from "./review-evidence-state-lib.mjs";
 import { readReviewerRecordFile } from "./reviewer-record-lib.mjs";
+import { evaluateReviewerTargetStates } from "./review-evidence-state-lib.mjs";
 
 // Snapshot tool only (Issue #62): one fresh fetch per invocation, no
 // polling/daemon. Re-run it to get a new snapshot.
@@ -37,35 +37,31 @@ if (!token) {
     pullNumber: Number(args.pr),
     token,
   });
-  if (args.targetSha) {
-    const recordPath =
-      args.recordPath ?? path.join(".ai-dev-foundation", "reviewers.json");
-    const loaded = await readReviewerRecordFile(recordPath);
-    if (loaded.status !== "ok") {
-      console.error(
-        `Reviewer record cannot be used (${loaded.status}): ${loaded.errors.join("; ") || loaded.path}`,
-      );
-      process.exitCode = 2;
-    } else {
-      const state = evaluateReviewerTargetStates(result, {
-        record: loaded.record,
-        target: args.targetSha,
-        reviewerId: args.reviewerId ?? null,
-        runAnchor:
-          args.runAfter || args.runAnchorId
-            ? {
-                after: args.runAfter ?? null,
-                ids: args.runAnchorId ? [args.runAnchorId] : [],
-              }
-            : null,
-      });
-      console.log(JSON.stringify(state, null, 2));
-      process.exitCode = result.fetch_failures > 0 ? 1 : 0;
-    }
-  } else {
+  if (!args.state) {
     console.log(
       args.json ? JSON.stringify(result, null, 2) : formatHumanSummary(result),
     );
     process.exitCode = result.fetch_failures > 0 ? 1 : 0;
+  } else {
+    const recordPath = path.resolve(
+      args.record ?? ".ai-dev-foundation/reviewers.json",
+    );
+    const loaded = await readReviewerRecordFile(recordPath);
+    if (loaded.status !== "ok") {
+      console.error("Reviewer record " + loaded.status + ": " + recordPath);
+      process.exitCode = 2;
+    } else {
+      const state = evaluateReviewerTargetStates(result, {
+        record: loaded.record,
+        reviewerId: args.reviewer ?? null,
+        target: { sha: args.targetSha },
+        runAnchor: {
+          ids: args.runAnchorId ? [args.runAnchorId] : [],
+          after: args.runAfter ?? null,
+        },
+      });
+      console.log(JSON.stringify(state, null, 2));
+      process.exitCode = result.fetch_failures > 0 ? 1 : 0;
+    }
   }
 }
