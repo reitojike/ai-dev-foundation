@@ -285,6 +285,27 @@ test("GraphQL ownership metadata keeps a pending child out of completion", () =>
   assert.ok(state.reason_codes.includes("pending_review_owner"));
 });
 
+test("missing ownership metadata never becomes completion", () => {
+  const absent = inline(719, "DONE Target: " + TARGET);
+  delete absent.ownership_field_present;
+  const states = [
+    stateFor(evidence({ inline: [absent] })),
+    stateFor(
+      evidence({
+        inline: [
+          inline(720, "DONE Target: " + TARGET, {
+            ownership_field_present: false,
+          }),
+        ],
+      }),
+    ),
+  ];
+  for (const state of states) {
+    assert.equal(state.state, "unknown");
+    assert.ok(state.reason_codes.includes("ownership_unresolved"));
+  }
+});
+
 test("GraphQL submitted ownership contributes a stable review binding", () => {
   const state = stateFor(
     evidence({

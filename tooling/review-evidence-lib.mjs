@@ -572,5 +572,7 @@ export function parseReviewEvidenceArgs(argv) {
   if (args.state && !args.runAfter && !args.runAnchorId) {
     throw new Error("State mode requires --run-after or --run-anchor-id");
   }
+  if (args.runAfter !== undefined && Number.isNaN(Date.parse(args.runAfter)))
+    throw new Error("Usage: --run-after needs an ISO-8601 timestamp");
   return args;
 }

@@ -692,6 +692,8 @@ function attachOwners(objects) {
         };
         continue;
       }
+      // Embedded submitted-review metadata remains usable when its separate
+      // review projection is absent; it is still a review-level owner ref.
       if (matches.length === 0 && ref.owner_state) {
         object.current.ownership = {
           status: "owned",
