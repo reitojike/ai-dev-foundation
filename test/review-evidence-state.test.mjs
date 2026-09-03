@@ -528,6 +528,21 @@ test("an observation without an object identity cannot become positive completio
   assert.ok(state.reason_codes.includes("object_identity_unresolved"));
 });
 
+test("a surface-local identity cannot become positive completion", () => {
+  const state = stateFor(
+    evidence({
+      inline: [
+        inline("surface-only", "DONE Target: " + TARGET, {
+          actor_database_id: null,
+          actor_node_id: null,
+        }),
+      ],
+    }),
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("object_identity_surface_local"));
+});
+
 test("database-ID-only and node-ID-only actor observations are usable when exact login is self-contained", () => {
   const databaseOnly = stateFor(
     evidence({

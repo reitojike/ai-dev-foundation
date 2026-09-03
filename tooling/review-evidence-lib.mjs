@@ -569,6 +569,9 @@ export function parseReviewEvidenceArgs(argv) {
   if (args.state && !args.targetSha) {
     throw new Error("State mode requires --target-sha");
   }
+  if (args.state && !/^[0-9a-f]{7,40}$/i.test(args.targetSha)) {
+    throw new Error("State mode requires --target-sha <7-40 hex SHA>");
+  }
   if (args.state && !args.runAfter && !args.runAnchorId) {
     throw new Error("State mode requires --run-after or --run-anchor-id");
   }

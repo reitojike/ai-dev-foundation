@@ -1059,6 +1059,8 @@ function stateForReviewer(canonical, reviewer, target, runAnchor, reviewers) {
         reasonCode = "object_identity_ambiguous";
       } else if (object.identity.status === "uncanonicalized") {
         reasonCode = "object_identity_unresolved";
+      } else if (object.identity.status === "surface-local") {
+        reasonCode = "object_identity_surface_local";
       } else if (object.current.body_status === "ambiguous") {
         reasonCode = "body_revision_ambiguous";
       } else if (attribution.status !== "attributed") {
