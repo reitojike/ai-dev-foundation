@@ -31,9 +31,11 @@ function graphqlVariables(init) {
 
 const PR_META = {
   head: { sha: "abc1234" },
+  base: { sha: "base987", ref: "main" },
   state: "open",
   html_url: "https://github.com/octo/demo/pull/62",
   updated_at: "2026-08-27T00:00:00Z",
+  body: "PR body text",
 };
 
 function prRoute(pr = PR_META) {
@@ -89,6 +91,9 @@ function baseRoutes() {
     emptyReviewThreadsRoute(),
     emptyCommitStatusRoute(),
     emptyCheckRunsRoute(),
+    // Appended last so the positional route indices used by the pagination
+    // tests above stay stable.
+    emptyListRoute("/pulls/62/files"),
   ];
 }
 
@@ -155,12 +160,23 @@ test("collects a representative multi-surface snapshot with independent per-surf
       match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/commits/abc1234/check-runs"),
       handler: () => jsonResponse({ total_count: 1, check_runs: [{ id: 9, name: "test", status: "completed", conclusion: "success" }] }),
     },
+    {
+      match: (url) => url.startsWith("https://api.github.com/repos/octo/demo/pulls/62/files"),
+      handler: () =>
+        jsonResponse([
+          { filename: "a.mjs", status: "modified" },
+          { filename: "docs/new.md", status: "added", previous_filename: undefined },
+        ]),
+    },
   ];
 
   const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
 
   assert.equal(result.pr_metadata.fetch_status, "fetched");
   assert.equal(result.pr_metadata.head_sha, "abc1234");
+  assert.equal(result.pr_metadata.base_sha, "base987");
+  assert.equal(result.pr_metadata.base_ref, "main");
+  assert.equal(result.pr_metadata.body, "PR body text");
   assert.equal(result.fetch_failures, 0);
 
   assert.equal(result.surfaces.conversation_comments.fetch_status, "fetched");
@@ -184,9 +200,48 @@ test("collects a representative multi-surface snapshot with independent per-surf
   assert.equal(result.surfaces.review_threads.items[0].comments[0].actor_database_id, 12);
   assert.equal(result.surfaces.review_threads.items[0].comments[0].review_id, 2);
   assert.equal(result.surfaces.review_threads.items[0].comments[0].owner_state, "APPROVED");
+  assert.equal(result.surfaces.review_threads.items[0].is_resolved, true);
+  assert.equal(result.surfaces.review_threads.items[0].is_outdated, false);
+  assert.equal(result.surfaces.review_threads.items[1].is_resolved, false);
+
+  assert.equal(result.surfaces.pull_request_files.fetch_status, "fetched");
+  assert.equal(result.surfaces.pull_request_files.count, 2);
+  assert.deepEqual(
+    result.surfaces.pull_request_files.items.map((item) => item.path),
+    ["a.mjs", "docs/new.md"],
+  );
+  assert.equal(result.surfaces.pull_request_files.items[1].status, "added");
+  assert.equal(result.surfaces.pull_request_files.items[1].previous_path, null);
 
   assert.equal(result.surfaces.commit_status.status.state, "success");
   assert.equal(result.surfaces.check_runs.count, 1);
+});
+
+// A thread whose resolution state is absent from the response must stay
+// distinguishable from a resolved one; the fence turns that into `unknown`.
+test("a review thread with no resolution state is reported as null, not as resolved", async () => {
+  const routes = baseRoutes();
+  routes[4] = {
+    match: (url, init) => url.endsWith("/graphql") && init.method === "POST",
+    handler: () =>
+      jsonResponse({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [{ id: "th1", comments: { nodes: [] } }],
+              },
+            },
+          },
+        },
+      }),
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.surfaces.review_threads.items[0].is_resolved, null);
+  assert.equal(result.surfaces.review_threads.items[0].is_outdated, null);
 });
 
 test("a surface with genuinely zero items is reported as fetched(0), not conflated with the other surfaces", async () => {
@@ -590,6 +645,9 @@ test("a PR-metadata fetch failure does not crash the run and marks head-dependen
   assert.equal(result.surfaces.check_runs.fetch_status, "not_applicable");
   // Surfaces that don't depend on head SHA are still attempted.
   assert.equal(result.surfaces.conversation_comments.fetch_status, "fetched");
+  assert.equal(result.surfaces.pull_request_files.fetch_status, "fetched");
+  assert.equal(result.pr_metadata.base_sha, null);
+  assert.equal(result.pr_metadata.body, null);
   assert.equal(result.fetch_failures, 1);
 });
 
@@ -603,6 +661,7 @@ test("formatHumanSummary renders a deterministic snapshot summary", async () => 
   assert.match(text, /^Head: abc1234 \(state: open\)$/m);
   assert.match(text, /^Conversation comments: fetched \(0\)$/m);
   assert.match(text, /^Review threads: fetched \(0\)$/m);
+  assert.match(text, /^Changed files: fetched \(0\)$/m);
   assert.match(text, /^Fetch failures: 0$/m);
 });
 
