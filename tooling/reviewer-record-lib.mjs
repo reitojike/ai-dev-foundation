@@ -153,6 +153,59 @@ function validateActorIdentities(value, { reviewerLabel }) {
   return errors;
 }
 
+function reviewerLabel(reviewer, index) {
+  return isNonEmptyString(reviewer?.id)
+    ? `reviewers[${index}] (${reviewer.id})`
+    : `reviewers[${index}]`;
+}
+
+function validateCrossReviewerActorIdentities(reviewers) {
+  const errors = [];
+  const databaseOwners = new Map();
+  const nodeOwners = new Map();
+
+  reviewers.forEach((reviewer, reviewerIndex) => {
+    if (!isPlainObject(reviewer) || !Array.isArray(reviewer.actor_identities))
+      return;
+    const ownerLabel = reviewerLabel(reviewer, reviewerIndex);
+    reviewer.actor_identities.forEach((identity, identityIndex) => {
+      if (!isPlainObject(identity)) return;
+      const identityLabel = `${ownerLabel}.actor_identities[${identityIndex}]`;
+      const databaseId = stableDatabaseId(identity.database_id);
+      const nodeId = isNonEmptyString(identity.node_id)
+        ? identity.node_id
+        : null;
+
+      if (databaseId !== null) {
+        const previous = databaseOwners.get(databaseId);
+        if (previous && previous.reviewerIndex !== reviewerIndex) {
+          errors.push(
+            `${identityLabel}.database_id: duplicate stable actor identity "${databaseId}" is also declared by ${previous.label}`,
+          );
+        } else if (!previous) {
+          databaseOwners.set(databaseId, {
+            label: identityLabel,
+            reviewerIndex,
+          });
+        }
+      }
+
+      if (nodeId !== null) {
+        const previous = nodeOwners.get(nodeId);
+        if (previous && previous.reviewerIndex !== reviewerIndex) {
+          errors.push(
+            `${identityLabel}.node_id: duplicate stable actor identity "${nodeId}" is also declared by ${previous.label}`,
+          );
+        } else if (!previous) {
+          nodeOwners.set(nodeId, { label: identityLabel, reviewerIndex });
+        }
+      }
+    });
+  });
+
+  return errors;
+}
+
 // `new RegExp(source + "|")` always matches the empty string, so the match
 // array's length minus the full match is the capture-group count — enough to
 // reject a target_pattern that compiles but captures nothing to bind against.
@@ -218,9 +271,7 @@ function validateReviewer(reviewer, index, knownIds) {
     return [`reviewers[${index}]: must be an object`];
 
   const errors = [];
-  const label = isNonEmptyString(reviewer.id)
-    ? `reviewers[${index}] (${reviewer.id})`
-    : `reviewers[${index}]`;
+  const label = reviewerLabel(reviewer, index);
 
   if (!isNonEmptyString(reviewer.id))
     errors.push(`${label}.id: must be a non-empty string`);
@@ -443,6 +494,7 @@ export function validateReviewerRecord(value) {
     }
     errors.push(...validateReviewer(reviewer, index, knownIds));
   });
+  errors.push(...validateCrossReviewerActorIdentities(value.reviewers));
 
   return errors;
 }

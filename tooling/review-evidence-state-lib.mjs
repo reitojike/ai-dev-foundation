@@ -29,8 +29,6 @@ const SURFACE_ORDER = [
   "review_submissions",
   "inline_review_comments",
   "review_threads",
-  "commit_status",
-  "check_runs",
 ];
 const KIND_ORDER = [
   "conversation_comment",
@@ -836,7 +834,7 @@ function attachOwnerBindings(objects) {
     const uniqueOwners = [
       ...new Map(owners.map((owner) => [owner.canonical_id, owner])).values(),
     ];
-    if (object.current.ownership.status === "ambiguous") {
+    if (["unknown", "ambiguous"].includes(object.current.ownership.status)) {
       continue;
     }
     if (uniqueOwners.length === 1) {
@@ -1353,16 +1351,10 @@ function stateForReviewer(canonical, reviewer, record, target, runAnchor) {
     if (canonical.coverage.status !== "complete")
       reasons.add("coverage_incomplete");
     if (observedSignals.length === 0) reasons.add("no_current_run_signal");
-    if (
-      observedSignals.some(
-        (signal) =>
-          signal.kind === "in-flight" && signal.reason_code === undefined,
-      )
-    )
-      reasons.add("non_terminal_evidence");
   }
 
   if (
+    !chosen.conflict &&
     state === "unknown" &&
     observedSignals.some(
       (signal) => signal.kind === "in-flight" && signal.accepted,
@@ -1382,21 +1374,27 @@ function stateForReviewer(canonical, reviewer, record, target, runAnchor) {
     reasons.add("fallback_requires_complete_coverage");
   if (state === "completed@target" && canonical.coverage.status !== "complete")
     reasons.add("positive_requires_complete_coverage");
+  const bindingMatchesTarget =
+    binding.status === "candidate" &&
+    targetValue &&
+    binding.effective &&
+    targetMatches(binding.effective.target, targetValue);
   const outputBindingStatus =
     state === "completed@target"
       ? "target-bound"
       : state === "not-bound"
         ? "mismatch"
-        : binding.status === "candidate" &&
-            targetValue &&
-            binding.effective &&
-            targetMatches(binding.effective.target, targetValue)
-          ? "target-bound"
-          : binding.status === "candidate"
-            ? "unresolved"
-            : binding.status === "ambiguous"
-              ? "ambiguous"
-              : meta.binding_status;
+        : state === "unknown"
+          ? binding.status === "ambiguous"
+            ? "ambiguous"
+            : "unknown"
+          : bindingMatchesTarget
+            ? "target-bound"
+            : binding.status === "candidate"
+              ? "unresolved"
+              : binding.status === "ambiguous"
+                ? "ambiguous"
+                : meta.binding_status;
   return {
     reviewer: reviewer?.id ?? null,
     target: targetValue,

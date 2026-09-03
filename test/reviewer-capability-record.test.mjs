@@ -209,6 +209,27 @@ test("legacy @1 records remain readable, while @2 actor identity entries require
   );
 });
 
+test("a stable actor identity cannot be declared by multiple reviewer entries", () => {
+  const errors = validateReviewerRecord(
+    baseRecord({
+      reviewers: [
+        baseReviewer(),
+        baseReviewer({
+          id: "r2",
+          display_name: "Reviewer Two",
+          default_class: "advisory",
+          actor_identities: [{ database_id: 101, node_id: "BOT_r2" }],
+        }),
+      ],
+    }),
+  );
+
+  assert.match(
+    errors.join("\n"),
+    /reviewers\[1\].*database_id: duplicate stable actor identity "101"/,
+  );
+});
+
 test("actor identity fields reject malformed stable IDs and accept display login provenance", () => {
   const errors = validateReviewerRecord(
     baseRecord({

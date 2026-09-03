@@ -1196,6 +1196,44 @@ test("parseReviewEvidenceArgs parses --repo/--pr/--json and rejects malformed in
       parseReviewEvidenceArgs(["--repo", "octo/demo", "--pr", "not-a-number"]),
     /Usage:/,
   );
+  assert.throws(
+    () =>
+      parseReviewEvidenceArgs([
+        "--repo",
+        "octo/demo",
+        "--pr",
+        "62",
+        "--record",
+        "record.json",
+      ]),
+    /--target-sha/,
+  );
+  assert.throws(
+    () =>
+      parseReviewEvidenceArgs([
+        "--repo",
+        "octo/demo",
+        "--pr",
+        "62",
+        "--target-sha",
+        "abc1234",
+      ]),
+    /--run-after|--run-anchor-id/,
+  );
+  assert.throws(
+    () =>
+      parseReviewEvidenceArgs([
+        "--repo",
+        "octo/demo",
+        "--pr",
+        "62",
+        "--target-sha",
+        "abc1234",
+        "--run-after",
+        "not-a-timestamp",
+      ]),
+    /ISO-8601/,
+  );
 });
 
 // Issue #62 boundary: this helper is mechanical acquisition only. It must

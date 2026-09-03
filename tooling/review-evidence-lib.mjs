@@ -735,6 +735,7 @@ export function formatHumanSummary(result) {
 
 export function parseReviewEvidenceArgs(argv) {
   const args = { json: false };
+  let stateOptionUsed = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--repo") {
@@ -749,19 +750,39 @@ export function parseReviewEvidenceArgs(argv) {
     } else if (arg === "--json") {
       args.json = true;
     } else if (arg === "--target-sha") {
-      args.targetSha = argv[index + 1];
+      stateOptionUsed = true;
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--"))
+        throw new Error("Usage: --target-sha needs a value");
+      args.targetSha = value;
       index += 1;
     } else if (arg === "--record") {
-      args.recordPath = argv[index + 1];
+      stateOptionUsed = true;
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--"))
+        throw new Error("Usage: --record needs a value");
+      args.recordPath = value;
       index += 1;
     } else if (arg === "--run-after") {
-      args.runAfter = argv[index + 1];
+      stateOptionUsed = true;
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--"))
+        throw new Error("Usage: --run-after needs a value");
+      args.runAfter = value;
       index += 1;
     } else if (arg === "--run-anchor-id") {
-      args.runAnchorId = argv[index + 1];
+      stateOptionUsed = true;
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--"))
+        throw new Error("Usage: --run-anchor-id needs a value");
+      args.runAnchorId = value;
       index += 1;
     } else if (arg === "--reviewer") {
-      args.reviewerId = argv[index + 1];
+      stateOptionUsed = true;
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--"))
+        throw new Error("Usage: --reviewer needs a value");
+      args.reviewerId = value;
       index += 1;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
@@ -777,5 +798,13 @@ export function parseReviewEvidenceArgs(argv) {
       "Usage: node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json] [--target-sha <sha>] [--record <path>] [--run-after <ISO>] [--run-anchor-id <id>] [--reviewer <id>] [--token <token>]",
     );
   }
+  if (stateOptionUsed && !args.targetSha)
+    throw new Error("Usage: state options require --target-sha <sha>");
+  if (stateOptionUsed && !args.runAfter && !args.runAnchorId)
+    throw new Error(
+      "Usage: state options require --run-after <ISO> or --run-anchor-id <id>",
+    );
+  if (args.runAfter && Number.isNaN(Date.parse(args.runAfter)))
+    throw new Error("Usage: --run-after needs an ISO-8601 timestamp");
   return args;
 }

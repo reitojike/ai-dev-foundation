@@ -388,10 +388,12 @@ test("stable review ownership binding wins over body and moving target claims", 
 test("an inline marker with unresolved ownership is not positive", () => {
   const state = stateFor(
     evidence({
+      submissions: [review({ id: 733, databaseId: "733", state: "COMMENTED" })],
       inline: [
         comment({
           id: 732,
           databaseId: "732",
+          reviewId: "733",
           originalCommitSha: TARGET,
           ownershipFieldPresent: false,
         }),
@@ -511,6 +513,23 @@ test("intermediate text is unknown while explicit in-flight evidence is non-term
   assert.equal(inFlight.fallback_eligible, false);
 });
 
+test("conflicting completion and in-flight signals do not become terminal by order", () => {
+  const state = stateFor(
+    evidence({
+      conversation: [
+        comment({
+          id: 734,
+          databaseId: "734",
+          body: `${completionBody()}\nRUNNING`,
+        }),
+      ],
+    }),
+  );
+  assert.equal(state.state, "unknown");
+  assert.equal(state.terminal, false);
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
+
 test("explicit terminal negative evidence is fallback eligible only with complete acquisition", () => {
   const complete = stateFor(
     evidence({
@@ -548,8 +567,18 @@ test("incomplete acquisition cannot produce completed@target", () => {
     }),
   );
   assert.equal(state.state, "unknown");
+  assert.equal(state.binding_status, "unknown");
   assert.equal(state.fallback_eligible, false);
   assert.ok(state.reason_codes.includes("coverage_incomplete"));
+});
+
+test("empty acquisition is indeterminate rather than an execution failure", () => {
+  const state = stateFor(evidence());
+  assert.equal(state.state, "unknown");
+  assert.equal(state.terminal, false);
+  assert.equal(state.polarity, "indeterminate");
+  assert.equal(state.fallback_eligible, false);
+  assert.ok(state.reason_codes.includes("no_current_run_signal"));
 });
 
 test("a structurally bound completion for another target is not-bound", () => {
