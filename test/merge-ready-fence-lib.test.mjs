@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { evaluateReviewerTargetStates } from "../tooling/review-evidence-state-lib.mjs";
 import {
+  CLASS_REQUIRED_SKILL,
   FENCE_CHECK_IDS,
+  MANDATORY_REVIEW_SKILLS,
   MERGE_READY_FENCE_SCHEMA_ID,
   classifyArtifactPath,
   classifyArtifactPaths,
@@ -12,6 +17,8 @@ import {
   parseAcknowledgedRevisions,
   parseMergeReadyFenceArgs,
 } from "../tooling/merge-ready-fence-lib.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // ---------------------------------------------------------------------------
 // Behavior fixtures for the deterministic merge-ready fence (Issue #76).
@@ -751,4 +758,45 @@ test("a fence pass is not a merge-ready claim: findings can be present and every
   });
   const { fence } = runFence({ snapshot });
   assert.equal(fence.status, "pass");
+});
+
+// The routing table is the single source of "which skills are mandatory".
+test("the mandatory skill set is the routing table's, not a second hand-written list", () => {
+  assert.deepEqual(
+    MANDATORY_REVIEW_SKILLS,
+    [...new Set(Object.values(CLASS_REQUIRED_SKILL).filter(Boolean))].sort(),
+  );
+  // Informational is a class with no mandatory skill, which is why the table's
+  // null entries are dropped rather than treated as a skill name.
+  assert.equal(CLASS_REQUIRED_SKILL.Informational, null);
+  assert.ok(!MANDATORY_REVIEW_SKILLS.includes(null));
+});
+
+// A setup failure must not be reported as a fence verdict: `fail` (exit 1) is a
+// judgment the fence reached, and an unreadable input file is not one. The CLI
+// is spawned here because the exit code is the contract, and it is reached
+// before any network call.
+test("a CLI setup failure exits 2 with no JSON on stdout, never exit 1", async () => {
+  const cli = path.join(root, "tooling", "merge-ready-fence.mjs");
+  const result = spawnSync(
+    process.execPath,
+    [cli, "--repo", "org/repo", "--pr", "1", "--target-sha", "abc1234", "--token", "dummy",
+     "--record", path.join(root, ".ai-dev-foundation", "reviewers.json"),
+     "--artifacts-file", path.join(root, "no-such-artifacts-file.txt")],
+    { encoding: "utf8", cwd: root },
+  );
+  assert.equal(result.status, 2);
+  assert.equal(result.stdout.trim(), "");
+  assert.match(result.stderr, /no-such-artifacts-file/);
+  assert.match(result.stderr, /Usage: node tooling\/merge-ready-fence\.mjs/);
+});
+
+// The same rule for an argument error, which is the other way a caller reaches
+// the CLI without reaching a verdict.
+test("an unrecognized argument exits 2 with usage, not a verdict", () => {
+  const cli = path.join(root, "tooling", "merge-ready-fence.mjs");
+  const result = spawnSync(process.execPath, [cli, "--nope"], { encoding: "utf8", cwd: root });
+  assert.equal(result.status, 2);
+  assert.equal(result.stdout.trim(), "");
+  assert.match(result.stderr, /Unrecognized argument: --nope/);
 });

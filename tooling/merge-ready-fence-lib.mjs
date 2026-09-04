@@ -41,7 +41,10 @@ export const CLASS_REQUIRED_SKILL = {
   Informational: null,
 };
 
-export const MANDATORY_REVIEW_SKILLS = ["review-code", "review-doc"];
+// Derived, not restated: a second hand-written list beside the routing table
+// would silently disagree with it if a class ever gained or lost a mandatory
+// skill, and the disagreement would surface as an under-routing that passes.
+export const MANDATORY_REVIEW_SKILLS = [...new Set(Object.values(CLASS_REQUIRED_SKILL).filter(Boolean))].sort();
 
 // A reviewer state that means "a completed result object exists on this PR".
 // Both are produced only by a completion-kind signal in the #74 evaluator:

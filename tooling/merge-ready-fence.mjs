@@ -60,61 +60,66 @@ async function readAcknowledged(filePath, inline) {
 
 const EXIT_CODE = { pass: 0, fail: 1, unknown: 2 };
 
-let args;
-try {
-  args = parseMergeReadyFenceArgs(process.argv.slice(2));
-} catch (error) {
-  console.error(error.message);
-  console.error(MERGE_READY_FENCE_USAGE);
-  process.exitCode = 2;
-}
+// A setup failure is not a fence verdict. Anything that prevents the fence from
+// being evaluated at all — bad arguments, no token, an unusable reviewer
+// record, an unreadable input file, a failed acquisition — exits 2 with a
+// message on stderr and no JSON on stdout. Letting one of these escape would
+// exit 1, which a caller reads as `fail`: a definite verdict the fence never
+// reached.
+async function main() {
+  const args = parseMergeReadyFenceArgs(process.argv.slice(2));
 
-if (args) {
   const token = resolveToken(args.token);
   if (!token) {
-    console.error("No GitHub token available. Set GH_TOKEN/GITHUB_TOKEN, pass --token, or run `gh auth login`.");
-    process.exitCode = 2;
-  } else {
-    const recordPath = path.resolve(args.record ?? ".ai-dev-foundation/reviewers.json");
-    const loaded = await readReviewerRecordFile(recordPath);
-    if (loaded.status !== "ok") {
-      console.error(`Reviewer record ${loaded.status}: ${recordPath}`);
-      process.exitCode = 2;
-    } else {
-      const [artifacts, acknowledged] = await Promise.all([
-        readPathList(args.artifactsFile, args.artifacts),
-        readAcknowledged(args.acknowledgedFile, args.acknowledged),
-      ]);
-      const [owner, repo] = args.repo.split("/");
-      const evidence = await collectReviewEvidence({
-        owner,
-        repo,
-        pullNumber: Number(args.pr),
-        token,
-      });
-      // Every reviewer in the record is evaluated, not just the required
-      // ones: an advisory reviewer whose result has already arrived still
-      // owes revision coherence (Issue #76 amendment).
-      const state = evaluateReviewerTargetStates(evidence, {
-        record: loaded.record,
-        target: { sha: args.targetSha },
-        runAnchor: { ids: args.runAnchorIds, after: args.runAfter ?? null },
-      });
-      const fence = evaluateMergeReadyFence({
-        evidence,
-        state,
-        inputs: {
-          targetSha: args.targetSha,
-          baseSha: args.baseSha ?? null,
-          artifacts,
-          verifySha: args.verifySha ?? null,
-          requiredReviewers: args.requiredReviewers,
-          declaredSkills: args.declaredSkills.length > 0 ? args.declaredSkills : null,
-          acknowledged,
-        },
-      });
-      console.log(JSON.stringify(fence, null, 2));
-      process.exitCode = EXIT_CODE[fence.status];
-    }
+    throw new Error("No GitHub token available. Set GH_TOKEN/GITHUB_TOKEN, pass --token, or run `gh auth login`.");
   }
+
+  const recordPath = path.resolve(args.record ?? ".ai-dev-foundation/reviewers.json");
+  const loaded = await readReviewerRecordFile(recordPath);
+  if (loaded.status !== "ok") {
+    throw new Error(`Reviewer record ${loaded.status}: ${recordPath}`);
+  }
+
+  const [artifacts, acknowledged] = await Promise.all([
+    readPathList(args.artifactsFile, args.artifacts),
+    readAcknowledged(args.acknowledgedFile, args.acknowledged),
+  ]);
+  const [owner, repo] = args.repo.split("/");
+  const evidence = await collectReviewEvidence({
+    owner,
+    repo,
+    pullNumber: Number(args.pr),
+    token,
+  });
+  // Every reviewer in the record is evaluated, not just the required ones: an
+  // advisory reviewer whose result has already arrived still owes revision
+  // coherence (Issue #76 amendment).
+  const state = evaluateReviewerTargetStates(evidence, {
+    record: loaded.record,
+    target: { sha: args.targetSha },
+    runAnchor: { ids: args.runAnchorIds, after: args.runAfter ?? null },
+  });
+  return evaluateMergeReadyFence({
+    evidence,
+    state,
+    inputs: {
+      targetSha: args.targetSha,
+      baseSha: args.baseSha ?? null,
+      artifacts,
+      verifySha: args.verifySha ?? null,
+      requiredReviewers: args.requiredReviewers,
+      declaredSkills: args.declaredSkills.length > 0 ? args.declaredSkills : null,
+      acknowledged,
+    },
+  });
+}
+
+try {
+  const fence = await main();
+  console.log(JSON.stringify(fence, null, 2));
+  process.exitCode = EXIT_CODE[fence.status];
+} catch (error) {
+  console.error(error?.message ?? String(error));
+  console.error(MERGE_READY_FENCE_USAGE);
+  process.exitCode = 2;
 }

@@ -218,6 +218,11 @@ node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
 見た evidence を渡す経路が存在しないことが、fresh acquisition の構造的な保証です。
 
 JSON を stdout へ出力し、exit code は `pass` = 0、`fail` = 1、`unknown` = 2 です。
+fence の評価そのものへ到達できなかった場合（引数誤り、token 不在、reviewer capability
+record が読めない、`--artifacts-file` / `--acknowledged-file` が読めない、acquisition
+失敗）は setup error として **exit 2** とし、stderr へ message と usage を出力して
+stdout へは何も出しません。setup error を `fail`（= fence が到達した判定）と
+区別するためです。
 集約規則は「1 つでも `fail` があれば `fail`、無ければ 1 つでも `unknown` があれば
 `unknown`、全部 `pass` なら `pass`」です。各 check は独立した `id` / `status` /
 `reason_codes` / `detail` を返します。
