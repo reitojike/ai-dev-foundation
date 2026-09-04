@@ -852,6 +852,65 @@ test("both review skills require the merge-ready fence on the no-fix branch too 
   );
 });
 
+// Issue #80: the skill's own fence command example, followed as written, must
+// not fall into `run_anchor_missing -> actor_unattributed -> no_current_run_signal`.
+// The fix is to (1) define where the run anchor comes from (Execution/trigger
+// time), (2) carry that same value through Acquisition/state or closure, and
+// into the final fence, and (3) never require a first fence run to fail just to
+// harvest the digest for a second, real run — that recovery-only pattern from
+// PR #79 must not become the documented happy path.
+test("both review skills define a run-anchor source and reuse it through to the fence (#80)", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  for (const [name, skill] of [["review-code.md", reviewCode], ["review-doc.md", reviewDoc]]) {
+    // The anchor is recorded at trigger time, not invented later from memory.
+    assert.ok(
+      containsText(skill, "起動した時点で、その run を後から一意に特定できる run anchor"),
+      `${name} must define the run anchor at Execution/trigger time`,
+    );
+
+    // Every merge-ready-fence.mjs example in the skill — the terse Happy path
+    // pointer as well as the detailed procedure block — must carry a run-anchor
+    // flag pointing back at a recorded step, not a bare placeholder. An agent
+    // that copies any one of these examples verbatim must not be able to omit
+    // the anchor.
+    let searchFrom = 0;
+    let blockCount = 0;
+    for (;;) {
+      const start = skill.indexOf("node tooling/merge-ready-fence.mjs", searchFrom);
+      if (start === -1) break;
+      const end = skill.indexOf("```", start);
+      const block = skill.slice(start, end === -1 ? undefined : end);
+      blockCount += 1;
+      assert.ok(
+        block.includes("--run-after") || block.includes("--run-anchor-id"),
+        `${name} fence command example #${blockCount} must include --run-after or --run-anchor-id`,
+      );
+      assert.match(
+        block,
+        /手順\s*\d/,
+        `${name} fence command example #${blockCount} must point the run-anchor value back at a recorded step, not a bare placeholder`,
+      );
+      searchFrom = start + 1;
+    }
+    assert.ok(blockCount > 0, `${name} must contain at least one merge-ready-fence.mjs example`);
+  }
+
+  // The recovery-only "fail once to harvest the digest, then run for real"
+  // sequence documented in Issue #78/#79's evidence must not be codified here.
+  for (const [name, skill] of [["review-code.md", reviewCode], ["review-doc.md", reviewDoc]]) {
+    assert.ok(
+      !containsText(skill, "1 回目") && !containsText(skill, "2 回目"),
+      `${name} must not codify a two-pass (fail-then-confirm) fence procedure`,
+    );
+    assert.ok(
+      !/fence.{0,40}(失敗|fail).{0,80}(採取|harvest)/.test(stripWhitespace(skill)),
+      `${name} must not instruct deliberately failing the fence to harvest a digest`,
+    );
+  }
+});
+
 // #51 Phase 1 contract: routing remains in the Kernel, procedure moved to the
 // skills. This guards both halves at once — a regression that copies the flow
 // back into the Kernel (or into the generated consumer adapter) fails here, and
