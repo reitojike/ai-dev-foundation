@@ -132,13 +132,16 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "この節における review target は、Selection Contract で確定した expected target SHA / commit range と target artifact set の組を指します。どちらか一方でも変われば review target の変更です。",
+      "この節における review target は、Selection Contract で確定した expected target SHA / commit range と target artifact set の組を指します。**どれか 1 つでも変われば review target の変更です。**",
     ),
   );
+  // Detecting that drift is the checker's job now (behavior fixtures in
+  // test/merge-ready-fence-lib.test.mjs cover head, base and artifact-set
+  // moves). The Kernel keeps the definition and the fail-safe consequence.
   assert.ok(
     containsText(
       core,
-      "expected target SHA / commit range が不変でも target artifact set が変わった場合も、review target の変更として同じ scope です。",
+      "precondition evidence、discovery evidence、closure evidence はいずれも target-specific であり、確定した target と一致しない evidence を review / closure / merge の根拠にしません。",
     ),
   );
   assert.ok(
@@ -162,7 +165,7 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(
     containsText(
       core,
-      "precondition evidence だけでなく、discovery / closure evidence も target-specific です。",
+      "precondition evidence、discovery evidence、closure evidence はいずれも target-specific であり、確定した target と一致しない evidence を review / closure / merge の根拠にしません。",
     ),
   );
   assert.ok(
@@ -303,18 +306,30 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     containsText(core, "この場合、record は `status: completed` かつ `validity: invalid` として表現します。"),
   );
 
-  // Reviewed-target evidence consistency: when record.target_sha and the acquired
-  // evidence's reviewed target both exist, they must agree; disagreement is invalid,
-  // and an unconfirmable reviewed target is unknown (not silently valid).
+  // Reviewed-target evidence consistency: reconciling the record's target_sha
+  // against the reviewed target carried by the acquired evidence — and ranking
+  // competing representations of the same object — is executed by the
+  // deterministic evaluator (test/review-evidence-state.test.mjs owns those
+  // cases). The Kernel keeps the two consequences it must never lose: an
+  // unconfirmable reviewed target is unknown, and a confirmed mismatch is
+  // invalid. Neither may be read as valid.
   assert.ok(
     containsText(
       core,
-      "record の `target_sha` と acquired evidence 上の reviewed target が両方存在する場合、両者は一致していなければなりません。",
+      "reviewed target をどの field / surface から確定するか、複数表現の間でどの binding を優先するか、および確定した reviewed target を expected target と照合する手順は、Foundation-owned な deterministic evaluator が所有します。",
     ),
   );
-  assert.ok(containsText(core, "一致しない場合は invalid です。"));
   assert.ok(
-    containsText(core, "reviewed target を Validity 判定に必要な精度で確認できない場合は unknown です。"),
+    containsText(
+      core,
+      "reviewed target を Validity 判定に必要な精度で確認できない場合、その binding は成立しておらず、判定結果は `unknown` です。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "確定した reviewed target が expected target と一致しない場合、completion していても invalid です。",
+    ),
   );
 
   // Resolution Contract
@@ -555,7 +570,13 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewCode,
-      "accepted finding の batch fix によって review target が変更された場合のみ targeted closure を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+      "この review flow で accepted finding の fix によって target が変更された場合のみ（手順 9 の second full discovery を挟んだ場合を含む）行います。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "targeted closure の review run に手順 5 と同じ Acquisition & Validity Contract を適用し、completion / acquisition / validity を確認します。",
     ),
   );
 
@@ -576,7 +597,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewCode,
-      "targeted closure の finding も Resolution Contract の対象とし、Resolution が完了するまで merge しません。",
+      "targeted closure の finding を Resolution Contract（`policy/core.md`）に従って triage します。unresolved の finding がある間は merge しません。",
     ),
   );
 
@@ -617,35 +638,39 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewCode,
-      "targeted closure の finding に accepted fix がある場合も、fix 後の deterministic verify を経て Review stopping rules を再評価します。",
+      "accepted な closure finding があれば、手順 7 と同じ batch fix semantics でまとめて fix し、手順 8 と同じ deterministic verify を行います。その上で Review stopping rules（`policy/core.md`）を再評価します。",
     ),
   );
   assert.ok(
     containsText(
       reviewCode,
-      "2nd full discovery が未使用でなお必要なら 2nd discovery route へ進み、完了後に targeted closure を再実行します。",
+      "この review flow で手順 9 をまだ使っておらず、2nd full discovery が必要と判断される場合は、手順 9 へ進み、完了後に手順 10 へ進みます。",
     ),
   );
   assert.ok(
     containsText(
       reviewCode,
-      "2nd full discovery を使用済みでなお full discovery が必要なら、3rd full discovery は起動せず、merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate します。",
+      "手順 9 を既に使っており、なお追加の full discovery が必要と判断される場合は、3rd full discovery は起動せず merge もせず、upstream task/design の不安定さを疑い、必要に応じて escalate します。",
     ),
   );
   assert.ok(
-    containsText(reviewCode, "追加の full discovery が不要なら、targeted closure を再実行します。"),
+    containsText(reviewCode, "追加の full discovery が不要な場合は、手順 10 へ進みます。"),
   );
   assert.ok(
     containsText(
       reviewCode,
-      "targeted closure の Resolution に加えて、この review flow で実行した discovery stage（2nd full discovery を含む）すべての Resolution が完了していることも merge の条件です。完了順序は問いません。",
+      "手順 6 の discovery Resolution（手順 9 を使った場合はその Resolution も含む）と、Closure Acquisition & Validity・Closure Resolution の完了が必要です。discovery Resolution と closure の完了順序は問いません。",
     ),
   );
-  assert.ok(reviewCode.includes("verify target と freeze target の consistency 確認"));
+  // The verify/freeze SHA comparison the diagram used to spell out is a fence
+  // check now (test/merge-ready-fence-lib.test.mjs fixtures 18-20); the diagram
+  // instead shows the fence as the last step before merge.
+  assert.ok(!reviewCode.includes("verify target と freeze target の consistency 確認"));
+  assert.ok(reviewCode.includes("-> merge-ready fence"));
   assert.ok(
     containsText(
       reviewCode,
-      "accepted fix が無く review target が変更されていない場合は、required review 数の valid discovery と Resolution の完了をもって、新たな closure run を要求せずに merge できます。",
+      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution（手順 6）が完了した時点で semantic な条件が揃います。",
     ),
   );
   assert.ok(reviewCode.includes("-> accepted fix が無く review target が変更されていない場合:"));
@@ -674,7 +699,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewDoc,
-      "closure verification の finding も Resolution Contract の対象とし、Resolution が完了するまで review を完了しません。",
+      "unresolved の finding がある間は review procedure を完了としません。",
     ),
   );
   // Resolve discovery findings before merge, Normative flow: same
@@ -682,16 +707,25 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewDoc,
-      "-> closure finding の Resolution -> semantic discovery の Resolution 完了 -> 完了",
+      "-> closure finding の Resolution -> semantic discovery の Resolution 完了 -> merge-ready fence（merge-ready を宣言する場合） -> 完了",
     ),
   );
   assert.ok(
     containsText(
       reviewDoc,
-      "closure verification の Resolution に加えて、semantic discovery（手順 3）の Resolution が完了していることも review completion の条件です。完了順序は問いません。",
+      "closure Resolution に加えて、手順 5 の semantic discovery Resolution も完了していることが review procedure 完了の条件です。完了順序は問いません。",
     ),
   );
-  assert.ok(reviewDoc.includes("mechanical check target と Selection target の consistency 確認"));
+  // Reconciling the mechanical-check target with the Selection target is no
+  // longer a step in the flow: the fence's `verify-coherence` check compares
+  // them (test/merge-ready-fence-lib.test.mjs, fixtures 18-20). What the skill
+  // keeps is the duty to record the check's SHA and to redo it on a move.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "手順 1 の mechanical check 対象と確定した target の一致、および宣言した routing と changed artifact set の整合は、手順 9 の fence が機械判定します。",
+    ),
+  );
 
   // Normative keeps exactly one semantic discovery round.
   assert.ok(reviewDoc.includes("semantic discovery（1 round）"));
@@ -703,13 +737,19 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewDoc,
-      "accepted finding の fix によって review target が変更された場合のみ、新しい target に対して mechanical check を再実行してから closure verification を行い、その review run も Acquisition & Validity Contract に従って completion / acquisition / validity を確認します。",
+      "accepted finding の fix によって target SHA / range または target artifact set が変わった場合のみ行います。修正後の target に対して手順 1 の mechanical check を再実行し、",
     ),
   );
   assert.ok(
     containsText(
       reviewDoc,
-      "accepted fix が無く review target が変更されていない場合は、required review 数の valid semantic discovery と Resolution の完了をもって、新たな closure run を要求せずに review を完了できます。",
+      "closure verification 自体の completion / acquisition / validity も、この closure target を expected target として Acquisition & Validity Contract に従って確認します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "required review 数の valid semantic discovery と Resolution が完了した時点で review procedure を完了とし、新たな closure run を要求しません。",
     ),
   );
 
@@ -865,13 +905,17 @@ test("core policy defines a provider-neutral skill routing contract", async () =
 test("skill routing contract defines mixed-classification review target routing (Issue #57)", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
-  assert.ok(core.includes("#### Mixed-classification review target"));
+  // The rules live inside the Skill routing contract rather than in a section
+  // of their own; folding them in removed the duplicated framing, not the rules.
+  const routingIndex = core.indexOf("### Skill routing contract");
+  assert.ok(routingIndex !== -1);
+  const routing = core.slice(routingIndex, core.indexOf("## Foundation Change Protocol"));
 
   // MUST load every applicable classification's skill — not just one.
   assert.ok(
     containsText(
-      core,
-      "target に含まれる artifact classification のうち、mandatory review skill を持つ classification（上記 table の Executable および Normative）が複数含まれる場合、該当する classification すべてに対応する skill を load することを MUST とします。",
+      routing,
+      "1 つの review target が、mandatory review skill を持つ classification（Executable と Normative）を複数含む場合（mixed-classification review target）、**該当する classification すべてに対応する skill を load することを MUST とします。**",
     ),
   );
   assert.ok(
@@ -886,13 +930,23 @@ test("skill routing contract defines mixed-classification review target routing 
   assert.ok(
     containsText(
       core,
-      "各 classification の手続き的 obligation（stopping rule、discovery round 数、required review 数、closure / verification 手順を含む）は、その classification に属する artifact subset にのみ適用します。",
+      "各 classification の手続き的 obligation（stopping rule、discovery round 数、required review 数、closure / verification 手順）は、その classification に属する artifact subset にのみ適用し、他の classification へ流用しません。",
+    ),
+  );
+  // Which classifications a target actually contains is derived from the
+  // changed artifact set by the checker, so an under-declared Mixed target
+  // fails rather than depending on the agent noticing
+  // (test/merge-ready-fence-lib.test.mjs, fixtures 15 and 17).
+  assert.ok(
+    containsText(
+      core,
+      "**changed artifact set から required skill を導出する判定は、agent の自己申告だけで決めません。**",
     ),
   );
   assert.ok(
     containsText(
       core,
-      "ある classification の rule を、他の classification に属する artifact へ流用してはいけません",
+      "path から class を確実に導出できない artifact を、checker が勝手に特定の class へ分類することはありません。",
     ),
   );
 
@@ -910,17 +964,7 @@ test("skill routing contract defines mixed-classification review target routing 
   assert.ok(
     containsText(
       core,
-      "複数の skill を load した場合、各 skill が定義する discovery / closure / stopping semantics は、classification ごとに独立した review flow として並行に適用してよく、単一の flow へ統合することを要求しません。",
-    ),
-  );
-
-  // This routing must not replace or restructure the existing 1:1 table for
-  // single-classification targets (Issue #57 explicitly rules out a matrix
-  // redesign as in-scope discretion).
-  assert.ok(
-    containsText(
-      core,
-      "この routing は Skill routing contract の 1:1 table を置き換えません。target が単一の classification のみで構成される場合は、上記 table のとおり単一の skill を load します。",
+      "複数の skill を load した場合、各 skill の discovery / closure / stopping semantics は classification ごとに独立した review flow として並行に適用してよく、単一の flow へ統合することを要求しません。",
     ),
   );
   assert.ok(
@@ -956,6 +1000,9 @@ test("the skill routing contract table stays in sync with the actual skills/ dir
 test("review skills document procedure without duplicating normative rules", async () => {
   const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
   const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+  // Read the Kernel too: several rules the skills used to restate are now
+  // asserted where they actually live.
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
   for (const skill of [reviewCode, reviewDoc]) {
     assert.ok(skill.includes("policy/core.md"), "skill must reference policy/core.md");
@@ -1020,7 +1067,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "reviewer mechanism 自身がそのような外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）と同様に扱い、`collectOutputs()` に相当する手段として、`policy/core.md` の record schema の各 field に加え",
+      "reviewer mechanism 自身が外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、`policy/core.md` の Acquisition & Validity Contract が定める durable evidence の要求を、その手段で満たします。",
     ),
   );
   assert.ok(
@@ -1047,23 +1094,30 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "この surface から `policy/core.md` の Acquisition & Validity Contract が定義する Completion と Validity の要求事項を後続 session が独立に判定できれば、その surface 自体を同 Contract の record の recoverable な representation として result locator に使えます",
+      "`policy/core.md` の Acquisition & Validity Contract が定める durable evidence の要求を、その手段で満たします。何を persist すれば足りるかは同 Contract が定めます。",
+    ),
+  );
+  // Both halves of the rule stay stated — but in the Kernel, once, instead of
+  // being re-enumerated in the skill where the copy could drift. The
+  // no-surface fallback must still demand evidence, not just conformance to
+  // the bare record schema (whose `validity` field is only a self-asserted
+  // conclusion a later session can't independently re-derive).
+  assert.ok(
+    containsText(
+      core,
+      "その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
     ),
   );
   assert.ok(
     containsText(
-      reviewCode,
-      "それらの要求事項のいずれかを surface から判定できない場合は",
+      core,
+      "上記の record schema の各 field に加え、Completion と Validity の要求事項を独立に判定できる情報を、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
     ),
   );
-  // Root-cause fix #2: the no-surface fallback
-  // here must also require evidence for Completion/Validity, not just
-  // conformance to the bare record schema (whose `validity` field is only a
-  // self-asserted conclusion a later session can't independently re-derive).
   assert.ok(
     containsText(
-      reviewCode,
-      "`policy/core.md` の record schema の各 field に加え、上記の Completion / Validity 要求事項を独立に判定できる情報",
+      core,
+      "record schema 自体（特に `validity` field）は判定結果の要約であり、その根拠情報の代わりにはなりません。",
     ),
   );
 
@@ -1080,7 +1134,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "commit range を review target として使う場合は、対象となる range も同時に freeze し、以降 SHA について述べる target mutation semantics を range にも同じ意味で適用します。",
+      "commit range を review target として使う場合は対象 range も、target artifact set も同時に freeze し、以降 SHA について述べる target mutation semantics を range と artifact set にも同じ意味で適用します。",
     ),
   );
   assert.ok(
@@ -1113,7 +1167,13 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "target artifact set を確定した時点から、その artifact set も review target の一部として扱い、手順 2 の target mutation semantics を artifact set にも同じ意味で適用します。",
+      "commit range を review target として使う場合は対象 range も、target artifact set も同時に freeze し、以降 SHA について述べる target mutation semantics を range と artifact set にも同じ意味で適用します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "artifact classification、reviewer / capability、required review 数、target artifact set、expected target SHA / applicable な commit range を決めます。",
     ),
   );
   assert.ok(
@@ -1177,7 +1237,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "手順 6 の discovery Resolution（手順 9 を使った場合はその Resolution も含む）と、Closure Acquisition & Validity・Closure Resolution が完了した時点で merge-ready と判定します。",
+      "手順 6 の discovery Resolution（手順 9 を使った場合はその Resolution も含む）と、Closure Acquisition & Validity・Closure Resolution の完了が必要です。",
     ),
   );
 
@@ -1217,28 +1277,37 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Root cause B, cells E/F (Code): the deterministic verify target captured at
-  // Step 1 must match the frozen candidate SHA at Step 2; a mismatch (a race
-  // between verify start and freeze) re-runs verify against the frozen SHA rather
-  // than carrying over evidence for a different target.
+  // Root cause B, cells E/F (Code): the deterministic verify target must be
+  // recorded at Step 1. Reconciling it with the frozen candidate SHA is no
+  // longer a sentence the agent has to execute — the fence's `verify-coherence`
+  // check compares the two (test/merge-ready-fence-lib.test.mjs, fixtures
+  // 18-20). What the skill still owns is capturing the SHA and the scope.
   assert.ok(containsText(reviewCode, "その時点の candidate SHA"));
   assert.ok(
     containsText(
       reviewCode,
-      "手順 1 で記録した verify 対象の SHA と、ここで freeze する SHA が一致することを確認します。一致しない場合は、freeze した SHA に対して手順 1 の deterministic verify を再実行し、成功してから先へ進みます。",
+      "記録した SHA と freeze した target の一致は手順 13 の fence が機械判定するため、手順の各所で手作業の SHA 照合を繰り返しません。",
     ),
   );
 
-  // SHA-change handling during code review: a pre-validity or post-valid-discovery
-  // non-fix change does not retroactively invalidate the old run's own Validity —
-  // it only stops that run from being used as evidence for the new target,
-  // matching review-doc.md's wording. A post-discovery fix-driven change proceeds
-  // to targeted closure without restarting discovery from scratch.
+  // SHA-change handling during code review. Two cases used to be spelled out in
+  // two near-identical paragraphs; they are one branch now, but the branch must
+  // still cover BOTH triggers — a change before discovery validity is confirmed,
+  // and a non-fix change after it — and must state the consequence as "not
+  // usable as evidence for the new target", never as retroactively invalidating
+  // the prior run's own Validity.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "discovery の completion / validity が確定する前に動いた場合、または **手順 7 の batch fix 以外**の理由で動いた場合",
+    ),
+    "review-code.md must cover both the pre-validity and the post-valid non-fix target move",
+  );
   assert.ok(
     countOccurrences(
       reviewCode,
       "旧 review target / run を現在 target の evidence として扱いません。",
-    ) === 2,
+    ) === 1,
     "review-code.md must not retroactively mark a run's own Validity invalid on a candidate SHA change; it must state the run is no longer usable as evidence for the new target",
   );
   assert.doesNotMatch(
@@ -1246,22 +1315,16 @@ test("review skills document procedure without duplicating normative rules", asy
     /review target \/ run を invalid として扱い/,
     "review-code.md must not conflate a target change with retroactively invalidating the prior run's own Validity",
   );
+  // Both triggers re-run Step 1's deterministic verify against the new SHA
+  // before re-freezing.
   assert.ok(
-    containsText(reviewCode, "valid な discovery の後、手順 7 の batch fix によって SHA が変わった場合は、"),
+    containsText(reviewCode, "新しい SHA に対して手順 1 の verify をやり直し、re-freeze して必要な discovery をやり直します。"),
+  );
+  // A fix-driven change proceeds to targeted closure without restarting discovery.
+  assert.ok(
+    containsText(reviewCode, "valid な discovery の後、**手順 7 の batch fix によって**動いた場合は、"),
   );
   assert.ok(containsText(reviewCode, "re-freeze はしますが手順を最初からやり直さず、"));
-
-  // Gap 1 (same root cause as the canonical invariant, completed): a SHA change
-  // before discovery completion/validity is confirmed must also re-run Step 1's
-  // deterministic verify against the new SHA before re-freezing — not just the
-  // post-valid-discovery non-fix change case.
-  assert.ok(
-    countOccurrences(
-      reviewCode,
-      "新しい SHA に対して手順 1 の deterministic verify を再実行し、成功したら",
-    ) === 2,
-    "review-code.md must re-run deterministic verify on SHA change both before and after discovery validity is confirmed",
-  );
 
   // review-code.md must defer to policy Contracts rather than restating their
   // normative conditions (Fix 2): the specific prohibitions below must not reappear
@@ -1272,6 +1335,9 @@ test("review skills document procedure without duplicating normative rules", asy
   );
   // Completion and validity are independent judgments (not a single enum), and a
   // completed-but-invalid run (e.g. stale/wrong SHA) must remain expressible.
+  // The skill used to restate all three rules; that is the duplication this
+  // test exists to prevent, so it now asserts the skill defers and that the
+  // Kernel is where the distinction is normative.
   assert.ok(
     !containsText(
       reviewCode,
@@ -1279,11 +1345,22 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
     "review-code.md must not collapse completion/validity/none/unknown/failure into a single enum",
   );
-  assert.ok(containsText(reviewCode, "completion と validity は独立した判定とし"));
   assert.ok(
-    containsText(reviewCode, "target SHA / artifact set 等が一致しない completed run は invalid として表現できます"),
+    containsText(
+      reviewCode,
+      "target-bound completion、run state、coverage、および binding の規範的な扱いは、いずれも `policy/core.md` が定めます。",
+    ),
+    "review-code.md must defer the completion/validity distinction to the Contract",
   );
-  assert.ok(containsText(reviewCode, "`none` / `unknown` / `failure` は completion / validity と混同せず"));
+  assert.ok(containsText(core, "Completion は少なくとも次を要求します。"));
+  assert.ok(containsText(core, "Validity はさらに次を要求します。"));
+  assert.ok(
+    containsText(core, "record は `status: completed` かつ `validity: invalid` として表現します"),
+    "a completed-but-invalid run must stay expressible in the Kernel's record schema",
+  );
+  assert.ok(
+    containsText(core, "review run の状態は少なくとも `none` / `unknown` / `failure` を区別し、混同してはいけません。"),
+  );
   assert.ok(
     !containsText(reviewCode, "behavior / blast radius を materially"),
     "review-code.md must not restate the discovery round-limit condition; it must reference Review stopping rules",
@@ -1328,7 +1405,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution（手順 6）が完了した時点で merge-ready と判定します。",
+      "この review flow で accepted finding の fix による target 変更が一度も発生していなければ、required review 数の valid discovery と Resolution（手順 6）が完了した時点で semantic な条件が揃います。",
     ),
   );
 
@@ -1345,7 +1422,7 @@ test("review skills document procedure without duplicating normative rules", asy
   // addition, unrelated commits) routes back through Step 2's invalidate/re-freeze/
   // re-discovery handling instead of a separate SHA-change rule.
   assert.ok(
-    containsText(reviewCode, "手順 7 の batch fix 以外の理由で candidate SHA が変わった場合"),
+    containsText(reviewCode, "**手順 7 の batch fix 以外**の理由で動いた場合"),
   );
   assert.ok(
     containsText(reviewCode, "手順 7 の batch fix によって candidate SHA が変更された場合のみ"),
@@ -1359,13 +1436,16 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "手順 7 の batch fix によって candidate SHA が変更された場合のみ、fix 後に手順 1 の verify を再実行します。",
+      "手順 7 の batch fix によって candidate SHA が変更された場合のみ、fix 後に手順 1 の verify を再実行し、記録した verify SHA を更新します。",
     ),
   );
+  // Reconciling the closure target with the last successful verify target is
+  // the fence's `verify-coherence` check now; the skill states the re-freeze
+  // and the Selection/Execution that follows it.
   assert.ok(
     containsText(
       reviewCode,
-      "最終的な post-fix SHA を closure target として re-freeze し、直近の successful deterministic verify target との consistency を確認します。",
+      "最終的な post-fix SHA を closure target として re-freeze し、Selection Contract に従ってこの closure target を expected target として確定し、",
     ),
   );
   assert.ok(
@@ -1392,13 +1472,16 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Sibling gap A (Step 10): a mismatch between the closure target and the latest
-  // successful deterministic verify target must not carry over stale verify
-  // evidence — it re-runs verify against the confirmed closure target instead.
+  // Sibling gap A (Step 10): a mismatch between the closure target and the
+  // latest successful deterministic verify target must not carry over stale
+  // verify evidence. The SHA comparison itself is the fence's
+  // `verify-coherence` check (test/merge-ready-fence-lib.test.mjs, fixtures
+  // 18-20); what stays with the skill is the artifact-scope coverage the fence
+  // deliberately does not judge.
   assert.ok(
     containsText(
       reviewCode,
-      "一致しない場合は、その verify evidence を使わず、確定した closure target に対して deterministic verify を行い、成功したら re-freeze します。",
+      "確定した closure artifact set まで直近の successful deterministic verify evidence がカバーしているかを確認します。",
     ),
   );
 
@@ -1415,16 +1498,15 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
   // Sibling gap A (Step 9), direction fix: the *current* post-fix SHA is frozen
-  // as the second discovery target, then checked against the latest successful
-  // deterministic verify target (matching Step 10's direction) — not the other
-  // way around, which would freeze a stale verify target and miss a candidate
-  // that advanced further before Step 9 ran. Not entry-point-specific (works
-  // whether Step 9 is reached from Step 8 or looped back into from Step 12); a
-  // mismatch discards the stale verify evidence and re-verifies.
+  // as the second discovery target — not the latest successful verify target,
+  // which would freeze a stale SHA and miss a candidate that advanced further
+  // before Step 9 ran. Comparing the frozen target against the verify target is
+  // the fence's `verify-coherence` check now (test/merge-ready-fence-lib.test.mjs,
+  // fixtures 18-20).
   assert.ok(
     containsText(
       reviewCode,
-      "現在の post-fix SHA を second discovery target として re-freeze し、直近の successful deterministic verify target との consistency を確認します。一致しない場合は、その verify evidence を使わず、確定した second discovery target に対して deterministic verify を行い、成功したら re-freeze して Selection / Execution へ進みます。",
+      "現在の post-fix SHA を second discovery target として re-freeze し、",
     ),
   );
   assert.doesNotMatch(
@@ -1475,7 +1557,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "accepted fix 以外の理由で target が変わった場合は、手順 2 と同じ target-specific evidence の扱いに従います。",
+      "second discovery の実行中、または completion / validity 確定前後に accepted fix 以外の理由で target が変わった場合も同じ扱いです。",
     ),
   );
   // A 3rd full discovery is never triggered; the flow escalates instead, per the
@@ -1562,14 +1644,16 @@ test("review skills document procedure without duplicating normative rules", asy
     ),
   );
 
-  // Root cause B, cells G/H (Normative): the mechanical check target captured at
-  // Step 1 must match the target confirmed at Step 2's Selection; a mismatch
-  // re-runs mechanical check against the confirmed target.
+  // Root cause B, cells G/H (Normative): the mechanical check target must be
+  // captured at Step 1. Matching it against the target confirmed at Step 2 is
+  // the fence's `verify-coherence` check now (test/merge-ready-fence-lib.test.mjs,
+  // fixtures 18-20); the skill keeps capturing the target and redoing the check
+  // when the target moves.
   assert.ok(containsText(reviewDoc, "その時点の target SHA / range"));
   assert.ok(
     containsText(
       reviewDoc,
-      "手順 1 で記録した mechanical check 対象の target と、ここで確定する target が一致することを確認します。一致しない場合は、確定した target に対して手順 1 の mechanical check を再実行してから先へ進みます。",
+      "target が動いたら mechanical check をやり直し、記録した check SHA を更新します。",
     ),
   );
 
@@ -1610,7 +1694,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic discovery を新しい target に対して行います。",
+      "新しい target に対して手順 1 の mechanical check を再実行し、Selection をやり直して、手順 3 の semantic discovery を新しい target に対して行います。",
     ),
   );
 
@@ -1618,23 +1702,27 @@ test("review skills document procedure without duplicating normative rules", asy
   // Normative sibling: the pre-validity mutation clause must cover an
   // artifact-set-only change the same way it covers a SHA/range change, not
   // just the post-validity non-fix clause above.
+  // Two near-identical paragraphs became one branch; it must still cover BOTH
+  // triggers — a move before semantic discovery validity is confirmed, and a
+  // non-fix move after it — and both re-run Step 1's mechanical check against
+  // the new target before Selection is redone.
   assert.ok(
     containsText(
       reviewDoc,
-      "手順 3 の semantic discovery の completion / validity が確定する前に target SHA / range または target artifact set が変わった場合、その review target / run を現在 target の evidence として扱いません。",
+      "手順 3 の semantic discovery の completion / validity が確定する前に動いた場合、または手順 6 の accepted finding batch fix 以外の理由で target SHA / range または target artifact set が変わった場合",
     ),
   );
-
-  // Gap 2 (same root cause as the canonical invariant, completed): a target change
-  // before semantic discovery completion/validity is confirmed must also re-run
-  // Step 1's mechanical check against the new target — not just the
-  // post-valid-discovery non-fix change case (cell D).
   assert.ok(
     countOccurrences(
       reviewDoc,
-      "新しい target に対して手順 1 の mechanical check を再実行し、成功したら",
-    ) === 2,
-    "review-doc.md must re-run mechanical check on target change both before and after semantic discovery validity is confirmed",
+      "旧 review target / run を現在 target の evidence として扱いません。",
+    ) === 1,
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "新しい target に対して手順 1 の mechanical check を再実行し、Selection をやり直して、",
+    ),
   );
   assert.ok(containsText(reviewDoc, "target SHA / range、target artifact set、"));
 

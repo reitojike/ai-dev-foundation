@@ -117,16 +117,20 @@ test("core policy separates merge-readiness from merge execution authority", asy
     /時点でmergeします/,
     "review-code.md Step 13 must not phrase review completion as an unqualified merge instruction",
   );
+  // Both branches must read as a semantic precondition being satisfied, not as
+  // a merge. Since Issue #76 the declaration additionally requires the
+  // deterministic fence to pass; the fence's own behavior is owned by
+  // test/merge-ready-fence-lib.test.mjs.
   assert.ok(
     containsText(
       reviewCode,
-      "required review 数の valid discovery と Resolution（手順 6）が完了した時点で merge-ready と判定します。",
+      "required review 数の valid discovery と Resolution（手順 6）が完了した時点で semantic な条件が揃います。",
     ),
   );
   assert.ok(
     containsText(
       reviewCode,
-      "Closure Acquisition & Validity・Closure Resolution が完了した時点で merge-ready と判定します。",
+      "Closure Acquisition & Validity・Closure Resolution の完了が必要です。",
     ),
   );
 });

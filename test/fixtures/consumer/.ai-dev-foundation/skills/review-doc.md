@@ -51,29 +51,24 @@ record」節および「Adapter boundary」節に従います。この skill で
    および expected review set を確定します。expected review set は自分が
    trigger した reviewer だけでは閉じません。閉じ方と、member とした根拠の
    記録は Selection Contract（`policy/core.md`）に従います。
-   手順 1 で記録した mechanical check 対象の target と、ここで確定する
-   target が一致することを確認します。一致しない場合は、確定した target に
-   対して手順 1 の mechanical check を再実行してから先へ進みます。
-   target artifact set を確定したら、直近の successful mechanical-check
-   evidence が、確定した target SHA / range と target artifact set の
-   両方をカバーしているかを確認します。selected artifact set をその
-   mechanical check evidence がカバーしていると確認できない場合は、
-   確定した target に対して手順 1 の mechanical check を再実行してから
-   手順 3（semantic discovery）へ進みます。
-   手順 3 の semantic discovery の completion / validity が確定する前に
-   target SHA / range または target artifact set が変わった場合、その
-   review target / run を現在 target の evidence として扱いません。
-   新しい target に対して手順 1 の mechanical check を再実行し、成功したら
-   Selection をやり直し、手順 3 の semantic discovery を新しい target に
-   対して行います。
-   valid な semantic discovery（手順 3）の後、手順 6 の accepted finding
-   batch fix 以外の理由で target SHA / range または target artifact set が
-   変わった場合（並行作業や scope 追加、finding 対応ではない文書変更、
-   無関係な commit 等）は、
-   旧 review target / run を現在 target の evidence として扱いません。
-   新しい target に対して手順 1 の mechanical check を再実行し、成功したら
-   re-freeze して手順 2（Selection）からやり直し、手順 3 の semantic
-   discovery を新しい target に対して行います。
+   **Mixed classification の場合は、required な review skill をすべて宣言します。**
+   手順 1 の mechanical check 対象と確定した target の一致、および宣言した routing と
+   changed artifact set の整合は、手順 9 の fence が機械判定します。手順の各所で
+   手作業の照合を繰り返しません。target が動いたら mechanical check をやり直し、
+   記録した check SHA を更新します。
+   check evidence がどの artifact scope をカバーしたかは fence の対象外です。
+   target artifact set を確定したら、直近の successful mechanical-check evidence が、
+   確定した target SHA / range と target artifact set の両方をカバーしているかを
+   確認します。selected artifact set をその mechanical check evidence がカバーして
+   いると確認できない場合は、確定した target に対して手順 1 の mechanical check を
+   再実行してから手順 3（semantic discovery）へ進みます。
+   target が動いたときにどう扱うかは、その動いた理由で決まります。手順 3 の semantic
+   discovery の completion / validity が確定する前に動いた場合、または手順 6 の accepted
+   finding batch fix 以外の理由で target SHA / range または target artifact set が
+   変わった場合（並行作業、scope 追加、finding 対応ではない文書変更、無関係な commit
+   等）は、旧 review target / run を現在 target の evidence として扱いません。新しい
+   target に対して手順 1 の mechanical check を再実行し、Selection をやり直して、
+   手順 3 の semantic discovery を新しい target に対して行います。
 3. **Execution & Semantic discovery（1 round）** — Execution Contract に従い、
    Selection で確定した target SHA / range と target artifact set を
    reviewer の trigger へ渡して起動します。trigger 方法、実際に渡した
@@ -98,6 +93,9 @@ record」節および「Adapter boundary」節に従います。この skill で
    いずれも Acquisition & Validity Contract（`policy/core.md`）が定めます。
    この skill で行う実務は、どの surface item を positive completion evidence とし、
    どの field / surface を安定と判断して binding の根拠にしたかを記録することです。
+   **あわせて、triage の対象にする result の `canonical_id` と
+   `evidence[].revision.body_digest` を記録します。** review result は in-place で編集
+   され得るため、この revision は手順 9 の fence が current revision と照合します。
    GitHub 上の durable review surface の取得は、Foundation リポジトリの
    `skills/review-code.md`（consumer には
    `.ai-dev-foundation/skills/review-code.md` として配布）の Adapter
@@ -109,13 +107,13 @@ record」節および「Adapter boundary」節に従います。この skill で
    fix します。
 7. **Closure** — accepted finding の fix によって target SHA / range または
    target artifact set が変わった場合のみ行います。修正後の target に
-   対して手順 1 の mechanical check を再実行し、成功したらその SHA /
-   range を closure target として re-freeze し、Selection Contract
-   （`policy/core.md`）をこの closure review run に適用します。確定した
-   closure artifact set を、直近の mechanical-check evidence がカバー
-   していることを確認します。確認できない場合は、確定した closure
-   target に対して mechanical check を再実行してから、Execution
-   Contract（`policy/core.md`）を closure review run に適用します。
+   対して手順 1 の mechanical check を再実行し、成功したらその SHA / range を
+   closure target として re-freeze し、Selection Contract（`policy/core.md`）を
+   この closure review run に適用します。
+   確定した closure artifact set を、直近の mechanical-check evidence が
+   カバーしていることを確認します。確認できない場合は、確定した closure target に
+   対して mechanical check を再実行してから、Execution Contract（`policy/core.md`）を
+   closure review run に適用します。
    その上で、triage した finding に対応しているかの closure verification
    のみを行い、full な再 discovery はしません。
    closure verification 自体の completion / acquisition / validity も、
@@ -144,12 +142,21 @@ record」節および「Adapter boundary」節に従います。この skill で
    SHA / range も target artifact set も変更されていない場合）、この
    手順は不要です。
 9. **Merge-ready fence** — この review 対象を含む変更について merge-ready を
-   宣言する場合は、宣言の直前の最後の action として、Merge-ready completion
-   fence（`policy/core.md`）を評価します。会話内で既に見た snapshot をこの
-   判定の根拠にせず、expected review set と各 member の target completion
-   state を fresh acquisition で判定し直します。merge-ready の成立条件と、
-   review-relevant な state 変化による fence の無効化は `policy/core.md` に
-   従います。
+   宣言する場合は、宣言の直前の最後の action として merge-ready fence を実行します。
+
+   ```text
+   node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
+     --target-sha <frozen target> --base-sha <frozen base> \
+     --artifacts-file <frozen artifact set> --verify-sha <手順 1 の check SHA> \
+     --required <reviewer-id> --declared-skill review-doc \
+     --acknowledged-file <手順 4 で記録した canonical_id=body_digest>
+   ```
+
+   Mixed classification の target では、`--declared-skill` に該当する skill を
+   すべて渡します。`pass`（exit 0）の場合にのみ merge-ready を宣言できます。
+   `fail`（exit 1）と `unknown`（exit 2）はどちらも merge-ready ではありません。
+   merge-ready の成立条件と、review-relevant な state 変化による fence の無効化は
+   `policy/core.md` の Merge-ready completion fence に従います。
 
 ## 停止条件
 
@@ -166,7 +173,6 @@ Normative artifact の review flow を、`policy/core.md` の Review stopping ru
 
 ```text
 mechanical check
-  -> mechanical check target と Selection target の consistency 確認
   -> semantic discovery（1 round）
   -> triage / fix
   -> accepted finding の fix で review target が変更された場合:
@@ -176,21 +182,9 @@ mechanical check
        -> closure completion / acquisition / validity 確認
        -> closure finding の Resolution
        -> semantic discovery の Resolution 完了
+       -> merge-ready fence（merge-ready を宣言する場合）
        -> 完了
   -> accepted fix が無く review target が変更されていない場合:
        required review 数の valid semantic discovery と Resolution の完了
        -> 完了
 ```
-
-accepted finding の fix によって review target が変更された場合のみ、
-新しい target に対して mechanical check を再実行してから closure
-verification を行い、その review run も Acquisition & Validity Contract
-に従って completion / acquisition / validity を確認します。closure
-verification の finding も Resolution Contract の対象とし、Resolution が
-完了するまで review を完了しません。
-closure verification の Resolution に加えて、semantic discovery（手順 3）
-の Resolution が完了していることも review completion の条件です。完了
-順序は問いません。
-accepted fix が無く review target が変更されていない場合は、
-required review 数の valid semantic discovery と Resolution の完了をもって、
-新たな closure run を要求せずに review を完了できます。
