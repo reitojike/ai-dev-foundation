@@ -62,10 +62,15 @@ const EXIT_CODE = { pass: 0, fail: 1, unknown: 2 };
 
 // A setup failure is not a fence verdict. Anything that prevents the fence from
 // being evaluated at all — bad arguments, no token, an unusable reviewer
-// record, an unreadable input file, a failed acquisition — exits 2 with a
-// message on stderr and no JSON on stdout. Letting one of these escape would
-// exit 1, which a caller reads as `fail`: a definite verdict the fence never
-// reached.
+// record, an unreadable input file — exits 2 with a message on stderr and no
+// JSON on stdout. Letting one of these escape would exit 1, which a caller
+// reads as `fail`: a definite verdict the fence never reached.
+//
+// An ordinary acquisition failure is NOT one of these. collectReviewEvidence()
+// reports a GitHub API failure as that surface's own `fetch_status` and does
+// not throw, so the fence is still evaluated and reports `unknown` through
+// `acquisition-coverage`. Both paths exit 2; only a setup failure writes
+// nothing to stdout.
 async function main() {
   const args = parseMergeReadyFenceArgs(process.argv.slice(2));
 

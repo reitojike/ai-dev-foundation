@@ -219,10 +219,16 @@ node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
 
 JSON を stdout へ出力し、exit code は `pass` = 0、`fail` = 1、`unknown` = 2 です。
 fence の評価そのものへ到達できなかった場合（引数誤り、token 不在、reviewer capability
-record が読めない、`--artifacts-file` / `--acknowledged-file` が読めない、acquisition
-失敗）は setup error として **exit 2** とし、stderr へ message と usage を出力して
-stdout へは何も出しません。setup error を `fail`（= fence が到達した判定）と
+record が読めない、`--artifacts-file` / `--acknowledged-file` が読めない、acquisition が
+例外を送出した）は setup error として **exit 2** とし、stderr へ message と usage を
+出力して stdout へは何も出しません。setup error を `fail`（= fence が到達した判定）と
 区別するためです。
+
+**通常の acquisition failure は setup error ではありません。** GitHub API の失敗は
+`collectReviewEvidence()` が surface ごとの `fetch_status`（`failed` / `partial`）として
+返し、例外を送出しません。この場合 fence は評価へ到達し、`acquisition-coverage` が
+`unknown`（`coverage_incomplete`）となる JSON を stdout へ出力して exit 2 になります。
+exit 2 の 2 つの経路は stdout の有無で区別できます。
 集約規則は「1 つでも `fail` があれば `fail`、無ければ 1 つでも `unknown` があれば
 `unknown`、全部 `pass` なら `pass`」です。各 check は独立した `id` / `status` /
 `reason_codes` / `detail` を返します。

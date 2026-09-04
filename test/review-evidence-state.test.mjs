@@ -713,3 +713,58 @@ test("legacy reviewer-capability-record@1 remains the compatibility input", () =
   );
   assert.equal(state.state, "completed@target");
 });
+
+const FULL_TARGET = "adf82cbc071f432987801ff6457937f12c693b85";
+const SHORT_TARGET = "adf82cbc07";
+
+// Observed on a real run: a reviewer that reports findings posts a review
+// submission AND inline comments in the same instant, repeats its completion
+// marker on each, and abbreviates the SHA in one of them. Comparing the two
+// claims as raw strings made that look like two different targets, so a run
+// that had plainly completed at the frozen target came out `unknown` — and a
+// merge-ready fence built on this state could never pass whenever the reviewer
+// actually had something to say.
+test("one completion claim repeated across objects, abbreviated differently, is not a conflict", () => {
+  const state = stateFor(
+    evidence({
+      reviews: [
+        review(801, "DONE Target: " + SHORT_TARGET, {
+          reviewed_sha: FULL_TARGET,
+        }),
+      ],
+      inline: [
+        inline(802, "DONE Target: " + FULL_TARGET, {
+          review_id: 801,
+          node_id: "COMMENT-802",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET },
+  );
+  assert.equal(state.state, "completed@target");
+  assert.ok(!state.reason_codes.includes("conflicting_signals"));
+});
+
+// The tolerance is abbreviation only. Two claims that name different commits at
+// the same instant stay a conflict, and a prefix shorter than an abbreviated
+// SHA is not a match.
+test("two different targets claimed at the same instant remain a conflict", () => {
+  const state = stateFor(
+    evidence({
+      reviews: [
+        review(803, "DONE Target: " + FULL_TARGET, {
+          reviewed_sha: FULL_TARGET,
+        }),
+      ],
+      inline: [
+        inline(804, "DONE Target: " + "0123456789abcdef0123456789abcdef01234567", {
+          review_id: 803,
+          node_id: "COMMENT-804",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
