@@ -404,19 +404,17 @@ Validity はさらに次を要求します。
 - required context へアクセスできた
 - execution / acquisition が途中で欠落していない
 
-Validity の判定は、reviewed target を確定させた上で、Selection Contract の
-expected target と比較して行います。reviewed target は次のように確定します。
+reviewed target をどの field / surface から確定するか、複数表現の間でどの binding を
+優先するか、および確定した reviewed target を expected target と照合する手順は、
+Foundation-owned な deterministic evaluator が所有します。その手順を本節に置きません。
+本節が定めるのは次の invariant です。
 
-- record の `target_sha` と acquired evidence 上の reviewed target が
-  両方存在する場合、両者は一致していなければなりません。
-  一致しない場合は invalid です。
-- reviewed target を Validity 判定に必要な精度で確認できない場合は unknown
-  です。
-
-確定した reviewed target が expected target と一致しない場合、
-completion していても invalid です。この場合、record は `status: completed`
-かつ `validity: invalid` として表現します。
-intended artifact set が review されていない場合も invalid です。
+- **reviewed target を Validity 判定に必要な精度で確認できない場合、その binding は
+  成立しておらず、判定結果は `unknown` です。** review target の移動に追随して値が
+  変化する field / surface を binding の根拠にしてはいけません。
+- 確定した reviewed target が expected target と一致しない場合、completion していても
+  invalid です。この場合、record は `status: completed` かつ `validity: invalid` として
+  表現します。intended artifact set が review されていない場合も invalid です。
 
 **acquisition の record は、後続 session から独立に recoverable な場所へ
 persist されて初めて durable evidence です。** review を行った
@@ -430,9 +428,7 @@ agent/session が終了した後、別の後続 session が session の記憶に
 別途 record を post し直す必要はありません。含まれていない場合
 （reviewer mechanism 自身がそのような surface へ結果を残さない場合、
 例えば実装 session 内で動く subagent review を含む）は、上記の record
-schema の各 field に加え、Completion と Validity の要求事項（reviewed
-target の一致、target artifact set の coverage、required context への
-アクセス可否、finding 内容、completion 状態を含む）を独立に判定できる
+schema の各 field に加え、Completion と Validity の要求事項を独立に判定できる
 情報を、そのような場所へ明示的に persist しない限り、session 終了後には
 recoverable な evidence として扱いません。record schema 自体（特に
 `validity` field）は判定結果の要約であり、その根拠情報の代わりには
@@ -443,35 +439,35 @@ parser 0 件、status success のみを `no findings` へ変換してはいけ�
 completion evidence のない empty output は `unknown` として扱います。
 
 **run record state と target completion state は別の対象です。** 上記の record schema の
-`status` / `validity` は、**個々の review run** の状態を表します。`unknown` / `failure`
-の語は本 Contract 内で複数の対象について現れるため、どちらの対象について述べているかを
-必ず明示します。これとは別に、
+`status` / `validity` は、**個々の review run** の状態を表します。これとは別に、
 **ある reviewer が、確定した review target について現在どこまで完了しているか**を
-**target completion state** と呼び、`completed@target` / `not-bound` / `declined` /
-`failed` / `unknown` で表現します。両者は同じ語で呼ばず、混同してはいけません。
+**target completion state** と呼びます。両者は同じ語で呼ばず、混同してはいけません。
 ancestor target に対する run は、run record としては `status: completed` かつ
 `validity: invalid` であり、同時にその reviewer の current target に対する target
 completion state は `not-bound` です。この 2 つは矛盾しません。
 
 **positive completion evidence は target-bound です。** ある reviewer の target
-completion state を `completed@target` とできるのは、取得済み surface item のうち、
-その target への resolvable な参照を持つ positive completion evidence が存在する場合に
-限ります。そのような evidence が無い場合、その state は `unknown`（または、reviewed
-target を確定できた上で一致しない場合は `not-bound`）であり、`0 findings` へ変換しては
-いけません。
+completion state を「current target について完了した」とできるのは、取得済み surface
+item のうち、その target への resolvable な参照を持つ positive completion evidence が
+存在する場合に限ります。そのような evidence が無い場合、その state は `unknown`
+（または、reviewed target を確定できた上で一致しない場合は `not-bound`）であり、
+`0 findings` へ変換してはいけません。
 
-reviewed target を確定させる evidence には、**その review run が実際に review した
-target を安定して表す field / surface** を使います。review target の移動に追随して
-値が変化する field / surface を binding の根拠にしてはいけません。どの field / surface
-が安定であるかの識別は Review Adapter boundary の責務であり、Kernel は安定性の要求と、
-**binding の根拠を記録すること**を定めます。**どちらが安定かを必要な精度で確認できない
-場合、その binding は成立しておらず、target completion state は `unknown` です。**
+**triage した review result の revision は、判断の対象です。** review result は
+in-place で編集され得ます。completion evidence を保ったまま内容だけが変わった場合、
+その reviewer の target completion state は変わりません。したがって、ある run を
+merge / review completion の根拠とするには、triage / Resolution の対象とした result の
+revision が、判断時点の current revision と同一であることを確認します。この確認は
+deterministic な同一性の照合であり、finding の意味を読み直すことを要求しません。
+current revision が異なる場合、その result はまだ triage されていない result として
+扱います。
 
 本 Contract および Selection Contract が「記録すること」を要求する事項——各 actor の
-membership class とその根拠、target completion state とその binding の根拠、および
-current target の clean / discovery evidence として採用した run——は、個々の run record
-schema ではなく、その review stage の Selection / fence 記録として persist します。
-これらは run 単位ではなく reviewer 単位・stage 単位の情報であるためです。
+membership class とその根拠、target completion state とその binding の根拠、triage の
+対象とした result の revision、および current target の clean / discovery evidence として
+採用した run——は、個々の run record schema ではなく、その review stage の Selection /
+fence 記録として persist します。これらは run 単位ではなく reviewer 単位・stage 単位の
+情報であるためです。
 
 target completion state が `not-bound` である reviewer（reviewed target が expected
 target と一致しない completed run を持つ reviewer）は、次の 2 軸で扱いを分けます。
@@ -529,24 +525,32 @@ merge authority が明示されていない場合、または別 authority の�
 
 #### Merge-ready completion fence
 
-merge-ready を宣言する前に、次を最後の action として評価します。この fence は Review
-stopping rules を置き換えず、参照します。
+merge-ready を宣言する前に、次の fence を最後の action として評価します。この fence は
+Review stopping rules を置き換えず、参照します。fence は 2 つの部分からなります。
 
-1. 確定した final candidate target を freeze する。
-2. Selection Contract に従って expected review set を閉じる。observed review
-   participation は、この評価時点の fresh acquisition で判定する。
-3. set の各 member について、fresh acquisition で target completion state を判定する。
-   positive completion evidence が無い member を `0 findings` へ変換しない。
-4. 各 member の finding を収集し、それぞれを安定 evidence 由来の reviewed target へ
-   帰属させる。
-5. finding を Resolution Contract に従って triage する。ancestor target で発見された
-   finding も対象とする。
-6. triage されていない finding が review surface 上に残っていないことを確認する。
-7. merge-ready は、**expected review set の各 member（optional / advisory を含む）の
-   review obligation が satisfied している**ことをもって成立する。
+**1. machine-checkable な precondition。** 確定した target / base / target artifact set
+が現在も同じであること、required reviewer の target completion state、acquisition の
+coverage、triage した review result の revision が現在も同じであること、review surface 上に
+未解決として残っている review conversation の有無、deterministic verification target との
+一致、changed artifact set が要求する skill routing、および merge 前に機械判定できる
+repository hygiene。これらは Foundation-owned な deterministic checker が
+**1 回の fresh acquisition** に対して評価します。どの surface がこれらを表すかの識別は
+Review Adapter boundary の責務であり、Kernel は provider 固有の surface 名を持ちません。
+判定手順は checker が canonical source であり、本節には置きません。checker は finding の
+意味、Resolution の完了、merge authority を判断しません。
 
-**review obligation** は、member の class ごとに次を指します。この定義が、手順 7 の
-判定対象です。
+**2. semantic judgment。** finding の意味と triage、Resolution の完了、および expected
+review set の各 member の review obligation が満たされたかどうか。これは agent が
+所有します。
+
+**checker の pass は merge-ready の成立ではありません。** checker が述べるのは
+machine-checkable な precondition が成立していることだけです。merge-ready は、それに
+加えて **expected review set の各 member（optional / advisory を含む）の review
+obligation が satisfied している**ことをもって成立します。checker が `pass` 以外
+（`fail` / `unknown` のいずれか）を返す間は merge-ready ではありません。`unknown` を
+`pass` として扱ってはいけません。
+
+**review obligation** は、member の class ごとに次を指します。
 
 - **required member**: Selection Contract の required review 数を満たす valid な run が
   揃っていること、およびその finding の Resolution が完了していること。ここでの
@@ -570,11 +574,10 @@ stopping rules を置き換えず、参照します。
 この例外が免除するのは、その member から**新たな** completion evidence を取得しに行く
 義務だけです。**既に走っている run の終端を待つ義務と、その member の初回 completion
 義務は免除しません。** current target に対する run が observed で in-flight なら、
-その run が terminate する（run record が `status` の終端値として確定する）まで
-待ちます。ここで待つ対象は run record state であり、target completion state では
-ありません。run が終端した結果 `validity: invalid` であっても、待機義務としては
-充足です。一度も `completed@target` になっていない member へこの例外を適用しては
-いけません。この例外に依拠する場合、上記 3 点の充足を記録します。
+その run が terminate するまで待ちます。ここで待つ対象は run record state であり、
+target completion state ではありません。run が終端した結果 `validity: invalid` で
+あっても、待機義務としては充足です。一度も `completed@target` になっていない member へ
+この例外を適用してはいけません。この例外に依拠する場合、上記 3 点の充足を記録します。
 
 expected member の条件 2 を、agent の内心の申告（「この member の沈黙には依拠して
 いない」等）で満たしたことにしてはいけません。判定は observable な target completion
@@ -589,7 +592,7 @@ bounded retry でも解消しない恒久的な `unknown` である場合、条�
 形だけ行って恒久 failure と宣言したり、待機を避けるために class を再宣言したりする
 ことは、この route の用途ではありません。
 
-手順 7 は、accepted fix による target 変更のたびに、全 member へ final target の
+merge-ready は、accepted fix による target 変更のたびに、全 member へ final target の
 full re-review を新たに要求するものではありません。どこまで再 review が必要かは
 Review stopping rules に従い、上記の例外がその範囲を定めます。
 
@@ -654,42 +657,39 @@ precondition の evidence は自動的に持ち越しません。target 変更�
 review / closure / merge の根拠とする前に、artifact classification が要求する
 precondition check（Executable の deterministic verify、Normative の mechanical
 check）を新しい target に対して再成立させます。
-review / closure / merge の根拠として使う precondition evidence は、review 対象
-として確定した（freeze / Selection された）target と一致していなければなりません。
-一致しない場合はその evidence を根拠にせず、確定した target に対して precondition
-check を再実行します。
 
-この一致確認は SHA / range だけでなく、selected target artifact set にも
-及びます。Selection で確定した target artifact set が、その precondition
-check の対象 scope に含まれることを確認します。precondition check を
-Selection より前に実行した場合は、Selection 後にこの binding を確認し
-ます。selected artifact set を precondition evidence がカバーしていると
-確認できない場合は、確定した target に対して precondition check を
-再実行してから先へ進みます。
+この節における review target は、Selection Contract で確定した expected target
+SHA / commit range と target artifact set の組を指します。**どれか 1 つでも変われば
+review target の変更です。**
+head SHA が不変でも commit range の endpoint が変わった場合、また expected target
+SHA / commit range が不変でも target artifact set が変わった場合も、review target の
+変更として同じ scope です。
+precondition evidence、discovery evidence、closure
+evidence はいずれも target-specific であり、確定した target と一致しない evidence を
+review / closure / merge の根拠にしません。
+target / range / artifact set の drift と、precondition evidence が確定した target SHA
+を指しているかは deterministic であり、Merge-ready completion fence が参照する checker
+が機械判定します。照合手順を本節に置きません。
 
-precondition evidence だけでなく、discovery / closure evidence も target-specific
-です。valid な discovery の後、accepted-fix による closure target の変更以外の
-理由で review target が変わった場合、その discovery を新しい target の
-merge / completion evidence として使いません。新しい target について artifact
-classification が要求する precondition check を再成立させ、Selection / Execution
-を再確立した上で、その target に必要な discovery を行います。accepted fix による
-target 変更は、既存の targeted closure（Executable）/ closure verification
+checker が判定しないのは、precondition check がどの artifact scope を対象としたかです。
+これは check ごとに異なるため、Selection で確定した target artifact set がその scope に
+含まれることの確認は agent が行います。precondition check を Selection より前に実行した
+場合は、Selection 後にこの binding を確認します。selected artifact set を precondition
+evidence がカバーしていると確認できない場合は、確定した target に対して precondition
+check を再実行してから先へ進みます。
+
+valid な discovery の後、accepted-fix による closure target の変更以外の理由で review
+target が変わった場合、その discovery を新しい target の merge / completion evidence
+として使いません。新しい target について precondition check を再成立させ、Selection /
+Execution を再確立した上で、その target に必要な discovery を行います。accepted fix に
+よる target 変更は、既存の targeted closure（Executable）/ closure verification
 （Normative）の扱いに従います。
 
-この節における review target は、Selection Contract で確定した expected
-target SHA / commit range と target artifact set の組を指します。どちらか
-一方でも変われば review target の変更です。head SHA が不変でも commit
-range の endpoint が変わった場合、また expected target SHA / commit range
-が不変でも target artifact set が変わった場合も、review target の変更と
-して同じ scope です。この場合も、old discovery / closure evidence を
-新しい target の merge / completion evidence として使いません。
-
-closure Resolution で accepted fix が生じ、その fix を closure review で
-確認する cycle（Executable の targeted closure、Normative の closure
-verification のいずれも）が繰り返し発生する場合、無制限に継続せず、
-upstream task/design または policy/document 自体の instability を疑い、
-必要に応じて escalate します。これは Failure / retry の retry count とは
-別の stopping semantics です。
+closure Resolution で accepted fix が生じ、その fix を closure review で確認する
+cycle（Executable の targeted closure、Normative の closure verification のいずれも）が
+繰り返し発生する場合、無制限に継続せず、upstream task/design または policy/document
+自体の instability を疑い、必要に応じて escalate します。これは Failure / retry の
+retry count とは別の stopping semantics です。
 
 full discovery は原則 1 round です。fix が behavior / blast radius を materially
 変えた場合のみ 2 round 目を許容します。それ以上必要な場合は review loop を増やさず、
@@ -731,35 +731,26 @@ provider 名や provider 固有の skill 機構（特定 CLI の skill directory
 することは **MUST** です。skill は本節の規範的なルールを複製せず、手順を説明します。
 skill を load せずに review 手順を進めることは、この routing contract への違反です。
 
-#### Mixed-classification review target
+1 つの review target が、mandatory review skill を持つ classification（Executable と
+Normative）を複数含む場合（mixed-classification review target）、**該当する
+classification すべてに対応する skill を load することを MUST とします。** いずれか
+1 つの classification の skill だけを load し、他の classification に属する artifact も
+それで代替したことにしてはいけません。各 classification の手続き的 obligation
+（stopping rule、discovery round 数、required review 数、closure / verification 手順）
+は、その classification に属する artifact subset にのみ適用し、他の classification へ
+流用しません。複数の skill を load した場合、各 skill の discovery / closure /
+stopping semantics は classification ごとに独立した review flow として並行に適用して
+よく、単一の flow へ統合することを要求しません。
 
-1 つの review target が、異なる artifact classification に属する artifact を同時に
-含む場合（mixed-classification review target）、上記の table は 1 つの skill だけを
-選べば足りるという意味ではありません。
+target に Informational な artifact が同時に含まれていても、Informational に mandatory
+review skill が無いという Artifact classification の定義は変わりません。
 
-- target に含まれる artifact classification のうち、mandatory review skill を持つ
-  classification（上記 table の Executable および Normative）が複数含まれる場合、
-  該当する classification すべてに対応する skill を load することを MUST とします。
-  いずれか 1 つの classification の skill だけを load し、他の classification に
-  属する artifact もそれで代替したことにしてはいけません。
-- 各 classification の手続き的 obligation（stopping rule、discovery round 数、
-  required review 数、closure / verification 手順を含む）は、その classification に
-  属する artifact subset にのみ適用します。ある classification の rule を、他の
-  classification に属する artifact へ流用してはいけません（例: Normative の
-  1 round discovery を Executable の artifact へ適用しない、Executable の
-  discovery -> triage -> batch fix -> verify -> targeted closure を Normative の
-  artifact へ適用しない）。
-- target に Informational な artifact が同時に含まれていても、Informational に
-  mandatory review skill が無いという Artifact classification の定義は変わりません。
-  Informational の artifact subset は、他の classification の skill が定義する
-  手続きの対象に含めません。
-- 複数の skill を load した場合、各 skill が定義する discovery / closure /
-  stopping semantics は、classification ごとに独立した review flow として並行に
-  適用してよく、単一の flow へ統合することを要求しません。
-
-この routing は Skill routing contract の 1:1 table を置き換えません。target が
-単一の classification のみで構成される場合は、上記 table のとおり単一の skill を
-load します。
+**changed artifact set から required skill を導出する判定は、agent の自己申告だけで
+決めません。** Foundation-owned な deterministic checker が changed artifact set から
+required skill を導出し、Selection が宣言した routing がそれを満たしているかを照合
+します。path から class を確実に導出できない artifact を、checker が勝手に特定の class
+へ分類することはありません。その場合の扱いは checker の出力に従い、classification の
+確定そのものは Selection Contract が所有します。
 
 `.ai-dev-foundation/skills/` は Foundation-owned な配布物です。consumer はこの path
 を編集しません。canonical source は Foundation リポジトリの `skills/` であり、

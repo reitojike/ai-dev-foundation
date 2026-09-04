@@ -713,3 +713,169 @@ test("legacy reviewer-capability-record@1 remains the compatibility input", () =
   );
   assert.equal(state.state, "completed@target");
 });
+
+const FULL_TARGET = "adf82cbc071f432987801ff6457937f12c693b85";
+const SHORT_TARGET = "adf82cbc07";
+
+// Observed on a real run: a reviewer that reports findings posts a review
+// submission AND inline comments in the same instant, repeats its completion
+// marker on each, and abbreviates the SHA in one of them. Comparing the two
+// claims as raw strings made that look like two different targets, so a run
+// that had plainly completed at the frozen target came out `unknown` — and a
+// merge-ready fence built on this state could never pass whenever the reviewer
+// actually had something to say.
+test("one completion claim repeated across objects, abbreviated differently, is not a conflict", () => {
+  const state = stateFor(
+    evidence({
+      reviews: [
+        review(801, "DONE Target: " + SHORT_TARGET, {
+          reviewed_sha: FULL_TARGET,
+        }),
+      ],
+      inline: [
+        inline(802, "DONE Target: " + FULL_TARGET, {
+          review_id: 801,
+          node_id: "COMMENT-802",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET },
+  );
+  assert.equal(state.state, "completed@target");
+  assert.ok(!state.reason_codes.includes("conflicting_signals"));
+});
+
+// The tolerance is abbreviation only. Two claims that name different commits at
+// the same instant stay a conflict, and a prefix shorter than an abbreviated
+// SHA is not a match.
+test("two different targets claimed at the same instant remain a conflict", () => {
+  const state = stateFor(
+    evidence({
+      reviews: [
+        review(803, "DONE Target: " + FULL_TARGET, {
+          reviewed_sha: FULL_TARGET,
+        }),
+      ],
+      inline: [
+        inline(804, "DONE Target: " + "0123456789abcdef0123456789abcdef01234567", {
+          review_id: 803,
+          node_id: "COMMENT-804",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
+
+// `sameTargetClaim` is not transitive: two different full SHAs can both be
+// abbreviations-compatible with one short claim. Comparing every claim against
+// an arbitrary representative would let that set pass as one claim, and the
+// signal chosen from it could bind to the expected target — a merge-ready fence
+// reading that state would pass on a reviewed target that was never determined.
+test("a short claim does not bridge two different full SHAs into one claim", () => {
+  const OTHER_FULL = "adf82cbc0722222222222222222222222222222f";
+  const state = stateFor(
+    evidence({
+      // The short claim is first, so a comparison against `targets[0]` would
+      // find every claim compatible.
+      conversation: [conversation(901, "DONE Target: " + SHORT_TARGET)],
+      reviews: [
+        review(902, "DONE Target: " + FULL_TARGET, { reviewed_sha: FULL_TARGET }),
+      ],
+      inline: [
+        inline(903, "DONE Target: " + OTHER_FULL, {
+          review_id: 902,
+          node_id: "COMMENT-903",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
+
+// A claim too short to stand for a commit is not an abbreviation of anything.
+// A record whose target_pattern already requires 7+ characters never produces
+// such a claim, so this uses one that permits a shorter capture — the guard is
+// what stops a 6-character prefix from merging with a full SHA.
+test("a prefix shorter than an abbreviated SHA is not treated as the same claim", () => {
+  const state = stateFor(
+    evidence({
+      conversation: [conversation(904, "DONE Target: abcdef")],
+      reviews: [
+        review(905, "DONE Target: " + FULL_TARGET, { reviewed_sha: FULL_TARGET }),
+      ],
+    }),
+    {
+      target: FULL_TARGET,
+      record: record({
+        completion_marker: {
+          any_of: ["DONE"],
+          target_pattern: "Target:[^0-9a-fA-F]*([0-9a-fA-F]{3,40})",
+        },
+      }),
+    },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
+
+// A target_pattern may capture surrounding whitespace, and the record validator
+// permits it. Measuring a claim's length on the raw capture while comparing it
+// on the trimmed one lets a padded short claim become the longest claim — and a
+// short claim as representative is exactly what the transitivity guard above
+// exists to prevent. One normalization, used for both.
+test("a whitespace-padded short claim cannot become the representative claim", () => {
+  const OTHER_FULL = "adf82cbc0722222222222222222222222222222f";
+  const paddingRecord = record({
+    completion_marker: {
+      any_of: ["DONE"],
+      // Captures the leading whitespace along with the SHA.
+      target_pattern: "Target:([ ]*[0-9a-fA-F]{7,40})",
+    },
+  });
+  const state = stateFor(
+    evidence({
+      // The padding has to make the RAW capture longer than either full SHA
+      // (40) for the bug to be reachable at all: with raw lengths, this short
+      // claim becomes the representative every other claim is measured against.
+      conversation: [
+        conversation(906, "DONE Target:" + " ".repeat(35) + SHORT_TARGET),
+      ],
+      reviews: [
+        review(907, "DONE Target: " + FULL_TARGET, { reviewed_sha: FULL_TARGET }),
+      ],
+      inline: [
+        inline(908, "DONE Target: " + OTHER_FULL, {
+          review_id: 907,
+          node_id: "COMMENT-908",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET, record: paddingRecord },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
+
+// The same normalization must reach the claim that is reported and bound, not
+// only the one that is compared.
+test("a claim captured with surrounding whitespace is reported trimmed", () => {
+  const paddingRecord = record({
+    completion_marker: {
+      any_of: ["DONE"],
+      target_pattern: "Target:([ ]*[0-9a-fA-F]{7,40})",
+    },
+  });
+  const state = stateFor(
+    evidence({
+      conversation: [conversation(909, "DONE Target:    " + FULL_TARGET)],
+    }),
+    { target: FULL_TARGET, record: paddingRecord },
+  );
+  assert.equal(state.state, "completed@target");
+  assert.equal(state.observed_signals[0].target_claim, FULL_TARGET);
+});

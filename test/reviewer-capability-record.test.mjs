@@ -320,13 +320,10 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
     containsText(skill, "actor attribution 不明、binding 不明、または fetch incomplete は positive completion に使いません"),
     "marker evidence must be attributable to the record's declared actors",
   );
-  assert.ok(
-    containsText(
-      skill,
-      "record の actor login と exact match する observation から得た stable actor ID は同じ snapshot 内の login drift の補助にだけ使います",
-    ),
-    "stable actor identity must remain snapshot-local",
-  );
+  // Snapshot-locality of a stable actor ID is decided by the evaluator, not by
+  // the skill restating it: test/review-evidence-state.test.mjs owns the cases
+  // where a stable ID carries attribution across login drift inside one
+  // snapshot, and where a conflicting or shared ID blocks attribution instead.
 
   assert.ok(
     containsText(
@@ -347,9 +344,11 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
   assert.ok(containsText(skill, "5. record の `trigger.kind` に従って reviewer を起動する（分岐の詳細は手順 4）。"));
 
   // Mutable evidence is represented by the snapshot revision, not a second
-  // history model in the skill.
+  // history model in the skill. Since Issue #76 the skill's duty is narrower
+  // still: record the revision that was triaged, and let the fence compare it
+  // with the current one (test/merge-ready-fence-lib.test.mjs, fixture 10).
   assert.ok(
-    containsText(skill, "同一 object の編集は current body、`updated_at`、body digest の snapshot projection"),
+    containsText(skill, "`canonical_id` と `evidence[].revision.body_digest` を記録します"),
   );
   assert.ok(
     containsText(skill, "state output の `state`、`coverage_complete`、`evidence`、`reason_codes` を記録します。"),

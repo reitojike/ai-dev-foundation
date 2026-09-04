@@ -17,11 +17,30 @@ function containsText(haystack, needle) {
 // ---------------------------------------------------------------------------
 // Decision model
 //
-// TEST-ONLY executable encoding of the Merge-ready completion fence
-// (policy/core.md, Merge readiness and merge authority). Not a production
-// mechanism; nothing in tooling/ depends on it. Its purpose is to prove that
-// the normative rules, as written, yield the intended verdict for the failure
-// modes recorded in Issue #45 — rather than only asserting that prose exists.
+// TEST-ONLY executable encoding of the SEMANTIC half of the Merge-ready
+// completion fence (policy/core.md, Merge readiness and merge authority). Not a
+// production mechanism; nothing in tooling/ depends on it. Its purpose is to
+// prove that the normative rules, as written, yield the intended verdict for
+// the failure modes recorded in Issue #45 — rather than only asserting that
+// prose exists.
+//
+// Issue #76 moved the machine-checkable half into production
+// (tooling/merge-ready-fence-lib.mjs). The rules below were re-examined one by
+// one against it:
+//   - R2's "which field stably represents the reviewed target, and how
+//     competing representations rank" is owned by the #74 evaluator, proved by
+//     test/review-evidence-state.test.mjs. What survives here is the abstract
+//     precondition (`reviewedTargetIsStable`), taken as an input rather than
+//     re-derived, because R3/R4 need it to state their own claims.
+//   - R6's *state* gate for a required member is now also machine-checked
+//     (test/merge-ready-fence-lib.test.mjs, fixture 23). What survives here is
+//     the part the fence does not judge: that a Selection amendment is the only
+//     other discharge, and that declining never discharges a finding already
+//     produced.
+//   - R1, R3, R4 and R5 are NOT productionized. Issue #76 decided that expected
+//     and optional membership closure, the finding axis, and per-class review
+//     obligation stay with the agent. Deleting them here would delete the only
+//     regression proof those Kernel invariants have.
 //
 // Encoded rules, and only these:
 //   R1 expected review set = required | expected(declared automatic, or observed
@@ -785,18 +804,18 @@ test("core policy requires target-bound positive completion evidence on stable f
   assert.ok(containsText(core, "その target への resolvable な参照を持つ positive completion evidence"));
   assert.ok(containsText(core, "`0 findings` へ変換してはいけません"));
 
-  assert.ok(containsText(core, "target を安定して表す field / surface"));
+  // Which field/surface stably represents the reviewed target, and how competing
+  // representations are ranked, is decided by the #74 evaluator
+  // (test/review-evidence-state.test.mjs owns those cases). What stays normative
+  // is the requirement, the recording duty, and the fail-safe fallback.
   assert.ok(
     containsText(core, "review target の移動に追随して値が変化する field / surface を binding の根拠にしてはいけません"),
   );
-  assert.ok(containsText(core, "binding の根拠を記録すること"));
-
-  // The fallback when stability cannot be confirmed is normative and must live
-  // in the Kernel, not only in the Executable-only skill.
+  assert.ok(containsText(core, "target completion state とその binding の根拠"));
   assert.ok(
     containsText(
       core,
-      "どちらが安定かを必要な精度で確認できない場合、その binding は成立しておらず、target completion state は `unknown` です",
+      "reviewed target を Validity 判定に必要な精度で確認できない場合、その binding は成立しておらず、判定結果は `unknown` です",
     ),
   );
 
@@ -823,17 +842,39 @@ test("core policy defines the merge-ready completion fence without overriding st
     "the fence must sit inside Merge readiness and merge authority",
   );
 
-  assert.ok(containsText(core, "merge-ready を宣言する前に、次を最後の action として評価します"));
+  assert.ok(containsText(core, "merge-ready を宣言する前に、次の fence を最後の action として評価します"));
   assert.ok(containsText(core, "この fence は Review stopping rules を置き換えず、参照します"));
-  assert.ok(containsText(core, "Selection Contract に従って expected review set を閉じる"));
-  assert.ok(containsText(core, "positive completion evidence が無い member を `0 findings` へ変換しない"));
-  assert.ok(containsText(core, "安定 evidence 由来の reviewed target へ帰属させる"));
-  assert.ok(containsText(core, "ancestor target で発見された finding も対象とする"));
 
-  // Step 6 must be provider-neutral: tied to triage, not to a provider's thread
-  // concept, and not stricter than the Resolution Contract.
-  assert.ok(containsText(core, "triage されていない finding が review surface 上に残っていないことを確認する"));
+  // The step-by-step comparisons this section used to enumerate (re-closing the
+  // set from a fresh acquisition, reading each member's completion state,
+  // attributing findings to a stable reviewed target, checking unresolved
+  // conversations) are executed by the checker; the behavior fixtures in
+  // test/merge-ready-fence-lib.test.mjs own them. What the Kernel keeps is the
+  // split between the two halves, and the rule that the checker's verdict is a
+  // precondition rather than the conclusion.
+  assert.ok(containsText(core, "**1. machine-checkable な precondition。**"));
+  assert.ok(containsText(core, "**2. semantic judgment。**"));
+  assert.ok(containsText(core, "**checker の pass は merge-ready の成立ではありません。**"));
+  assert.ok(containsText(core, "`unknown` を `pass` として扱ってはいけません"));
+  assert.ok(containsText(core, "checker は finding の意味、Resolution の完了、merge authority を判断しません"));
+
+  // Un-triaged findings still block; that rule stays with the Resolution
+  // Contract instead of being restated as a fence step.
+  assert.ok(
+    containsText(
+      core,
+      "unresolved の finding（未解決の needs-verification / technical-dispute / intent-question 等を含む）が残る間は",
+    ),
+  );
+  // Naming a provider's surface here would make the fence provider-shaped; the
+  // Kernel names the obligation and defers surface identification to the adapter.
   assert.ok(!core.includes("unresolved review thread"), "the Kernel must not name a provider thread concept");
+  assert.ok(
+    containsText(
+      core,
+      "どの surface がこれらを表すかの識別は Review Adapter boundary の責務であり、Kernel は provider 固有の surface 名を持ちません",
+    ),
+  );
 
   // R4: obligation satisfaction. Step 7 must span the WHOLE expected review
   // set — scoping it to `required ∪ expected` would leave the optional
@@ -986,7 +1027,11 @@ test("the Normative review procedure reaches the fence and the expected review s
   assert.ok(containsText(doc, "expected review set を確定します"));
   assert.ok(containsText(doc, "expected review set は自分が trigger した reviewer だけでは閉じません"));
   assert.ok(containsText(doc, "Merge-ready completion fence"));
-  assert.ok(containsText(doc, "会話内で既に見た snapshot をこの判定の根拠にせず"));
+  // Freshness is no longer a sentence the agent has to remember: the fence CLI
+  // accepts no snapshot argument, so a remembered snapshot cannot reach it.
+  // test/merge-ready-fence-lib.test.mjs owns that property.
+  assert.ok(containsText(doc, "node tooling/merge-ready-fence.mjs"));
+  assert.ok(containsText(doc, "`fail`（exit 1）と `unknown`（exit 2）はどちらも merge-ready ではありません"));
   assert.ok(containsText(doc, "target completion state"));
 });
 
@@ -998,14 +1043,17 @@ test("review-code skill carries the procedural detail for the fence", async () =
   assert.ok(containsText(skill, "自分が trigger した reviewer だけを set に入れて終わりにしません"));
   assert.ok(containsText(skill, "どの surface item を review participation とみなしたか"));
 
-  // Acquisition: record which evidence and which field backed the binding.
-  assert.ok(containsText(skill, "どの field / surface を安定と判断して binding の根拠にしたか"));
-  assert.ok(containsText(skill, "安定性を必要な精度で確認できないまま binding が成立したものとして扱わないでください"));
+  // Acquisition: the binding decision itself is the evaluator's; the skill's
+  // duty is to record its output, and to record the result revision it triaged
+  // so an in-place edit afterwards is detectable.
+  assert.ok(containsText(skill, "state output の `state`、`coverage_complete`、`evidence`、`reason_codes` を記録します"));
+  assert.ok(containsText(skill, "`canonical_id` と `evidence[].revision.body_digest` を記録します"));
 
-  // Merge-ready: fence evaluated last, from fresh acquisition.
-  assert.ok(containsText(skill, "merge-ready を宣言する直前の最後の action として"));
-  assert.ok(containsText(skill, "会話内で既に見た snapshot をこの判定の根拠にしません"));
-  assert.ok(containsText(skill, "triage されていない finding が review surface 上に残っていないことを確認します"));
+  // Merge-ready: the fence runs last, and neither of its non-pass states is
+  // merge-ready.
+  assert.ok(containsText(skill, "宣言の直前の最後の action として merge-ready fence を実行します"));
+  assert.ok(containsText(skill, "node tooling/merge-ready-fence.mjs"));
+  assert.ok(containsText(skill, "`unknown` を `pass` として扱わないでください"));
 
   // Provider observations stay observations — and, since Issue #72 Phase 1,
   // they live in the reviewer capability record rather than in the skill, with
@@ -1067,7 +1115,7 @@ test("both skills reference the Kernel rules rather than restating them", async 
   }
 
   assert.ok(containsText(code, "は、いずれも `policy/core.md` が定めます"));
-  assert.ok(containsText(code, "merge-ready の成立条件、review obligation の定義"));
+  assert.ok(containsText(code, "`policy/core.md` の Merge-ready completion fence が定めます"));
   assert.ok(
     containsText(doc, "いずれも Acquisition & Validity Contract（`policy/core.md`）が定めます"),
   );

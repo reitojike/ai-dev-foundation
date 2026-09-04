@@ -129,6 +129,20 @@ async function fetchGraphQL(fetchImpl, token, query, variables) {
   return body?.data ?? null;
 }
 
+// `author` is typed as the `Actor` interface, which declares only `login`.
+// Selecting `databaseId` / `id` on it directly is a schema error that fails the
+// whole query, so the ids are selected through the concrete types that carry
+// them. An actor type not listed here still yields its `login`; the ids stay
+// null and the caller treats identity as unconfirmed rather than absent.
+const ACTOR_IDS_FRAGMENT = `
+fragment ActorIds on Actor {
+  ... on User { databaseId id }
+  ... on Bot { databaseId id }
+  ... on Organization { databaseId id }
+  ... on Mannequin { databaseId id }
+  ... on EnterpriseUserAccount { id }
+}`;
+
 const REVIEW_THREADS_QUERY = `
 query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
@@ -137,6 +151,8 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
+          isResolved
+          isOutdated
           comments(first: 50) {
             pageInfo { hasNextPage endCursor }
             nodes {
@@ -145,7 +161,7 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
               url
               createdAt
               updatedAt
-              author { login databaseId id }
+              author { login ...ActorIds }
               commit { oid }
               originalCommit { oid }
               pullRequestReview {
@@ -162,7 +178,8 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
       }
     }
   }
-}`;
+}
+${ACTOR_IDS_FRAGMENT}`;
 
 const THREAD_COMMENTS_QUERY = `
 query($id: ID!, $cursor: String) {
@@ -176,7 +193,7 @@ query($id: ID!, $cursor: String) {
           url
           createdAt
           updatedAt
-          author { login databaseId id }
+          author { login ...ActorIds }
           commit { oid }
           originalCommit { oid }
           pullRequestReview {
@@ -191,7 +208,8 @@ query($id: ID!, $cursor: String) {
       }
     }
   }
-}`;
+}
+${ACTOR_IDS_FRAGMENT}`;
 
 // A thread's own `comments` connection can exceed the first page fetched by
 // REVIEW_THREADS_QUERY (>50 replies on one thread). This follows that
@@ -323,9 +341,15 @@ function normalizeInlineReviewComment(item) {
   };
 }
 
+// `is_resolved` is the thread's own GitHub resolution state, kept separate
+// from anything the canonical review_comment projection derives from the
+// child comments. `null` means the field was absent from the response, and is
+// reported as such rather than being read as resolved.
 function normalizeReviewThread(node) {
   return {
     id: node.id ?? null,
+    is_resolved: typeof node.isResolved === "boolean" ? node.isResolved : null,
+    is_outdated: typeof node.isOutdated === "boolean" ? node.isOutdated : null,
     comments: (node.comments?.nodes ?? []).map((comment) => ({
       id: comment.id ?? null,
       database_id: comment.databaseId ?? null,
@@ -377,6 +401,18 @@ function normalizeStatus(status) {
   };
 }
 
+// Which artifacts the PR currently changes. `status` is kept so an added or
+// removed file stays distinguishable from a modified one; patch content is
+// deliberately not retained — this surface reports the changed path set and
+// nothing about the change's meaning.
+function normalizePullRequestFile(item) {
+  return {
+    path: item.filename ?? null,
+    status: item.status ?? null,
+    previous_path: item.previous_filename ?? null,
+  };
+}
+
 function notApplicableSurface(note) {
   return { fetch_status: "not_applicable", count: null, pages_fetched: 0, items: [], failure: null, note };
 }
@@ -401,11 +437,12 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
   }
   const headSha = prBody?.head?.sha ?? null;
 
-  const [conversationComments, reviewSubmissions, inlineReviewComments, reviewThreads] = await Promise.all([
+  const [conversationComments, reviewSubmissions, inlineReviewComments, reviewThreads, pullRequestFiles] = await Promise.all([
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/issues/${pullNumber}/comments?per_page=100`),
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/reviews?per_page=100`),
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/comments?per_page=100`),
     fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber),
+    fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/files?per_page=100`),
   ]);
 
   // commit_status/check_runs are fetched for this snapshot's headSha only —
@@ -441,6 +478,7 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     review_submissions: { ...reviewSubmissions, items: reviewSubmissions.items.map(normalizeReviewSubmission) },
     inline_review_comments: { ...inlineReviewComments, items: inlineReviewComments.items.map(normalizeInlineReviewComment) },
     review_threads: { ...reviewThreads, items: reviewThreads.items.map(normalizeReviewThread) },
+    pull_request_files: { ...pullRequestFiles, items: pullRequestFiles.items.map(normalizePullRequestFile) },
     commit_status:
       commitStatus.fetch_status === "not_applicable"
         ? { fetch_status: "not_applicable", failure: null, status: null, note: commitStatus.note }
@@ -464,9 +502,33 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     repo: `${owner}/${repo}`,
     pull_number: pullNumber,
     generated_at: new Date().toISOString(),
+    // base_sha/base_ref/body are retained so a caller can compare the PR's
+    // current base against a recorded one and scan the current body text.
+    // Both were previously only reachable by reading the PR by hand; keeping
+    // them here adds acquisition coverage, not judgment.
     pr_metadata: prBody
-      ? { fetch_status: "fetched", failure: null, head_sha: headSha, state: prBody.state ?? null, html_url: prBody.html_url ?? null, updated_at: prBody.updated_at ?? null }
-      : { fetch_status: "failed", failure: prMetadataFailure, head_sha: null, state: null, html_url: null, updated_at: null },
+      ? {
+          fetch_status: "fetched",
+          failure: null,
+          head_sha: headSha,
+          base_sha: prBody.base?.sha ?? null,
+          base_ref: prBody.base?.ref ?? null,
+          state: prBody.state ?? null,
+          html_url: prBody.html_url ?? null,
+          updated_at: prBody.updated_at ?? null,
+          body: prBody.body ?? null,
+        }
+      : {
+          fetch_status: "failed",
+          failure: prMetadataFailure,
+          head_sha: null,
+          base_sha: null,
+          base_ref: null,
+          state: null,
+          html_url: null,
+          updated_at: null,
+          body: null,
+        },
     surfaces,
     fetch_failures: fetchFailures,
   };
@@ -477,6 +539,7 @@ const SURFACE_LABELS = [
   ["review_submissions", "Review submissions"],
   ["inline_review_comments", "Inline review comments"],
   ["review_threads", "Review threads"],
+  ["pull_request_files", "Changed files"],
   ["commit_status", "Commit status (combined)"],
   ["check_runs", "Check runs"],
 ];

@@ -812,7 +812,11 @@ function markerMatch(body, marker) {
       return { target: null, reason_code: "target_marker_invalid" };
     }
     const match = expression.exec(body);
-    if (match) target = match.slice(1).find((value) => nonEmpty(value)) ?? null;
+    // Normalized at the source, so every later comparison and every length
+    // measurement sees the same value. A target_pattern is free to capture
+    // surrounding whitespace, and a claim that is padded in one place but
+    // trimmed in another is what lets a short claim masquerade as a long one.
+    if (match) target = nonEmpty(match.slice(1).find((value) => nonEmpty(value)));
     if (!match) return { target: null, reason_code: "target_marker_missing" };
   }
   return { target };
@@ -992,6 +996,25 @@ function bindingForObject(object, markerTarget) {
   return { status: "bound", effective: strongest[0], reason_code: null };
 }
 
+// The shortest abbreviation that may stand for a commit. Below this, a prefix
+// match is not evidence that two claims name the same target.
+const MIN_ABBREVIATED_TARGET_LENGTH = 7;
+
+// Two target claims describe the same commit when they are equal, or when one
+// is an abbreviation of the other. This is the same tolerance the target
+// comparison below applies, and it is the only comparison that may be used
+// between two claimed targets: comparing them as raw strings makes a short SHA
+// and its full form look like two different targets.
+function sameTargetClaim(left, right) {
+  const a = nonEmpty(left)?.toLowerCase();
+  const b = nonEmpty(right)?.toLowerCase();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length >= MIN_ABBREVIATED_TARGET_LENGTH && b.startsWith(a)) return true;
+  if (b.length >= MIN_ABBREVIATED_TARGET_LENGTH && a.startsWith(b)) return true;
+  return false;
+}
+
 function chooseSignal(signals) {
   if (signals.length === 0)
     return { signal: null, conflict: false, latest: [] };
@@ -999,15 +1022,40 @@ function chooseSignal(signals) {
   const latestTime = Math.max(...signals.map(time));
   const latest = signals.filter((signal) => time(signal) === latestTime);
   const kinds = new Set(latest.map((signal) => signal.kind));
-  const targets = new Set(
-    latest.map((signal) => signal.target_claim).filter(Boolean),
+  // Normalized here as well as at extraction: the length that picks the
+  // representative and the value that is compared against it must be the same
+  // string, or a padded short claim becomes the `longest` one.
+  const targets = latest.map((signal) => nonEmpty(signal.target_claim)).filter(Boolean);
+  // A reviewer that posts its result across several objects at once (a review
+  // submission plus its inline comments, say) repeats its completion marker on
+  // each of them, and may abbreviate the SHA differently between them. That is
+  // one claim expressed more than once, not two claims in conflict.
+  //
+  // Every claim is compared against the LONGEST one, never against an arbitrary
+  // representative: `sameTargetClaim` is not transitive, so `abcdef0…111` and
+  // `abcdef0…222` are both compatible with the abbreviation `abcdef0` while
+  // naming different commits. Requiring each claim to be an abbreviation of one
+  // longest claim makes them pairwise compatible — prefixes of a common string
+  // are ordered by length — so two full SHAs that disagree are still a conflict.
+  const longest = targets.reduce(
+    (best, candidate) => (candidate.length > (best?.length ?? -1) ? candidate : best),
+    null,
   );
-  if (kinds.size > 1 || targets.size > 1) {
+  const targetsDisagree = targets.some(
+    (candidate) => !sameTargetClaim(candidate, longest),
+  );
+  if (kinds.size > 1 || targetsDisagree) {
     return { signal: null, conflict: true, latest };
   }
-  latest.sort((left, right) =>
-    compareNullable(left.canonical_id, right.canonical_id),
-  );
+  // Prefer the most specific claim, so the binding downstream compares the
+  // longest SHA the reviewer actually stated. `canonical_id` breaks ties so the
+  // choice stays deterministic across snapshots.
+  latest.sort((left, right) => {
+    const byLength =
+      (nonEmpty(left.target_claim)?.length ?? 0) -
+      (nonEmpty(right.target_claim)?.length ?? 0);
+    return byLength !== 0 ? byLength : compareNullable(left.canonical_id, right.canonical_id);
+  });
   return { signal: latest[latest.length - 1], conflict: false, latest };
 }
 
@@ -1107,15 +1155,7 @@ function stateForReviewer(canonical, reviewer, target, runAnchor, reviewers) {
             reasons.add("coverage_incomplete");
           } else if (
             (() => {
-              const candidate = nonEmpty(
-                binding.effective.target,
-              )?.toLowerCase();
-              const expected = targetValue.toLowerCase();
-              return (
-                candidate === expected ||
-                (candidate.length >= 7 && expected.startsWith(candidate)) ||
-                (expected.length >= 7 && candidate.startsWith(expected))
-              );
+              return sameTargetClaim(binding.effective.target, targetValue);
             })()
           ) {
             state = "completed@target";
