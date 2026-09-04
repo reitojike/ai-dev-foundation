@@ -775,6 +775,66 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   );
 });
 
+// Issue #78: review-doc.md's no-fix branch (0 findings, or findings all resolved
+// as false-positive) used to fall straight from Resolution to 完了, while the
+// same file's step 9 requires the deterministic merge-ready fence as the last
+// action before any merge-ready declaration. A consumer smoke (stage-tracker PR
+// #298) hit the contradiction: the branch reads as permission to declare
+// merge-ready without the fence, and review-code.md's sibling branch — which
+// does carry the fence — made the asymmetry look intentional. The fence's
+// necessity keys on whether merge-ready is declared, never on whether an
+// accepted fix moved the target.
+test("both review skills require the merge-ready fence on the no-fix branch too (#78)", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  // The Normative no-fix branch reaches the fence before it terminates.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "-> accepted fix が無く review target が変更されていない場合: required review 数の valid semantic discovery と Resolution の完了 -> merge-ready fence（merge-ready を宣言する場合） -> 完了",
+    ),
+    "the Normative no-fix branch must pass through the merge-ready fence before 完了",
+  );
+  assert.ok(
+    !containsText(
+      reviewDoc,
+      "required review 数の valid semantic discovery と Resolution の完了 -> 完了",
+    ),
+    "the Normative no-fix branch must not short-circuit from Resolution straight to 完了",
+  );
+
+  // Step 7's prose ends the *closure* obligation for this branch, not the
+  // fence obligation — the sentence that ends the procedure must be adjacent to
+  // the one that keeps step 9 in force, or the branch reads as fence-exempt again.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "procedure を完了とし、新たな closure run を要求しません。この branch でも、merge-ready を宣言する場合は手順 9 の merge-ready fence を省略できません。fence の要否は accepted fix の有無ではなく、merge-ready を宣言するかどうかで決まります。",
+    ),
+    "review-doc step 7 must state that ending the closure obligation does not waive the step 9 fence",
+  );
+
+  // Step 9 itself is unconditional on the fix branch: it keys on the merge-ready
+  // declaration alone.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "この review 対象を含む変更について merge-ready を宣言する場合は、宣言の直前の最後の action として merge-ready fence を実行します。",
+    ),
+  );
+
+  // The Executable sibling keeps the same shape, so the two classes cannot drift
+  // into disagreeing about whether a fix-free review needs the fence.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "-> accepted fix が無く review target が変更されていない場合: required review 数の valid discovery と Resolution の完了 -> merge-ready fence",
+    ),
+    "the Executable no-fix branch must pass through the merge-ready fence too",
+  );
+});
+
 // #51 Phase 1 contract: routing remains in the Kernel, procedure moved to the
 // skills. This guards both halves at once — a regression that copies the flow
 // back into the Kernel (or into the generated consumer adapter) fails here, and
