@@ -822,3 +822,60 @@ test("a prefix shorter than an abbreviated SHA is not treated as the same claim"
   assert.equal(state.state, "unknown");
   assert.ok(state.reason_codes.includes("conflicting_signals"));
 });
+
+// A target_pattern may capture surrounding whitespace, and the record validator
+// permits it. Measuring a claim's length on the raw capture while comparing it
+// on the trimmed one lets a padded short claim become the longest claim — and a
+// short claim as representative is exactly what the transitivity guard above
+// exists to prevent. One normalization, used for both.
+test("a whitespace-padded short claim cannot become the representative claim", () => {
+  const OTHER_FULL = "adf82cbc0722222222222222222222222222222f";
+  const paddingRecord = record({
+    completion_marker: {
+      any_of: ["DONE"],
+      // Captures the leading whitespace along with the SHA.
+      target_pattern: "Target:([ ]*[0-9a-fA-F]{7,40})",
+    },
+  });
+  const state = stateFor(
+    evidence({
+      // The padding has to make the RAW capture longer than either full SHA
+      // (40) for the bug to be reachable at all: with raw lengths, this short
+      // claim becomes the representative every other claim is measured against.
+      conversation: [
+        conversation(906, "DONE Target:" + " ".repeat(35) + SHORT_TARGET),
+      ],
+      reviews: [
+        review(907, "DONE Target: " + FULL_TARGET, { reviewed_sha: FULL_TARGET }),
+      ],
+      inline: [
+        inline(908, "DONE Target: " + OTHER_FULL, {
+          review_id: 907,
+          node_id: "COMMENT-908",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET, record: paddingRecord },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
+
+// The same normalization must reach the claim that is reported and bound, not
+// only the one that is compared.
+test("a claim captured with surrounding whitespace is reported trimmed", () => {
+  const paddingRecord = record({
+    completion_marker: {
+      any_of: ["DONE"],
+      target_pattern: "Target:([ ]*[0-9a-fA-F]{7,40})",
+    },
+  });
+  const state = stateFor(
+    evidence({
+      conversation: [conversation(909, "DONE Target:    " + FULL_TARGET)],
+    }),
+    { target: FULL_TARGET, record: paddingRecord },
+  );
+  assert.equal(state.state, "completed@target");
+  assert.equal(state.observed_signals[0].target_claim, FULL_TARGET);
+});

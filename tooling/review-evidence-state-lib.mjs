@@ -812,7 +812,11 @@ function markerMatch(body, marker) {
       return { target: null, reason_code: "target_marker_invalid" };
     }
     const match = expression.exec(body);
-    if (match) target = match.slice(1).find((value) => nonEmpty(value)) ?? null;
+    // Normalized at the source, so every later comparison and every length
+    // measurement sees the same value. A target_pattern is free to capture
+    // surrounding whitespace, and a claim that is padded in one place but
+    // trimmed in another is what lets a short claim masquerade as a long one.
+    if (match) target = nonEmpty(match.slice(1).find((value) => nonEmpty(value)));
     if (!match) return { target: null, reason_code: "target_marker_missing" };
   }
   return { target };
@@ -1018,7 +1022,10 @@ function chooseSignal(signals) {
   const latestTime = Math.max(...signals.map(time));
   const latest = signals.filter((signal) => time(signal) === latestTime);
   const kinds = new Set(latest.map((signal) => signal.kind));
-  const targets = latest.map((signal) => signal.target_claim).filter(Boolean);
+  // Normalized here as well as at extraction: the length that picks the
+  // representative and the value that is compared against it must be the same
+  // string, or a padded short claim becomes the `longest` one.
+  const targets = latest.map((signal) => nonEmpty(signal.target_claim)).filter(Boolean);
   // A reviewer that posts its result across several objects at once (a review
   // submission plus its inline comments, say) repeats its completion marker on
   // each of them, and may abbreviate the SHA differently between them. That is
@@ -1047,9 +1054,7 @@ function chooseSignal(signals) {
     const byLength =
       (nonEmpty(left.target_claim)?.length ?? 0) -
       (nonEmpty(right.target_claim)?.length ?? 0);
-    return byLength !== 0
-      ? byLength
-      : compareNullable(left.canonical_id, right.canonical_id);
+    return byLength !== 0 ? byLength : compareNullable(left.canonical_id, right.canonical_id);
   });
   return { signal: latest[latest.length - 1], conflict: false, latest };
 }
