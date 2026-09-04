@@ -125,8 +125,15 @@ record」節および「Adapter boundary」節に従います。この skill で
    accepted finding の fix が無く target SHA / range も target artifact
    set も変更されていない場合（例えば 0 findings の場合や、finding を
    false-positive 等として Resolution した場合）は、required review 数の
-   valid semantic discovery と Resolution が完了した時点で review
-   procedure を完了とし、新たな closure run を要求しません。
+   valid semantic discovery と Resolution が完了した時点で closure の
+   obligation が解除され、新たな closure run を要求しません。
+   解除されるのは closure の obligation だけであり、この時点で review
+   procedure が完了したことにはなりません。review completion と merge-ready
+   の関係は `policy/core.md` の Merge readiness and merge authority が定めて
+   おり、review completion の宣言は merge-ready の宣言にあたります。したがって
+   この branch でも、手順 9 の merge-ready fence を通る前に review completion /
+   merge-ready を宣言しません。fence の要否は accepted fix の有無ではなく、
+   その宣言を行うかどうかで決まります。
 8. **Closure Resolution** — closure verification（手順 7）の finding を
    Resolution Contract（`policy/core.md`）に従って triage します。
    unresolved の finding がある間は review procedure を完了としません。
@@ -186,5 +193,6 @@ mechanical check
        -> 完了
   -> accepted fix が無く review target が変更されていない場合:
        required review 数の valid semantic discovery と Resolution の完了
+       -> merge-ready fence（merge-ready を宣言する場合）
        -> 完了
 ```

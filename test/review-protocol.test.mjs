@@ -752,7 +752,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewDoc,
-      "required review 数の valid semantic discovery と Resolution が完了した時点で review procedure を完了とし、新たな closure run を要求しません。",
+      "required review 数の valid semantic discovery と Resolution が完了した時点で closure の obligation が解除され、新たな closure run を要求しません。",
     ),
   );
 
@@ -772,6 +772,83 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
       reviewDoc,
       "mechanical check -> closure target の Selection / Execution -> closure verification",
     ),
+  );
+});
+
+// Issue #78: review-doc.md's no-fix branch (0 findings, or findings all resolved
+// as false-positive) used to fall straight from Resolution to 完了, while the
+// same file's step 9 requires the deterministic merge-ready fence as the last
+// action before any merge-ready declaration. A consumer smoke (stage-tracker PR
+// #298) hit the contradiction: the branch reads as permission to declare
+// merge-ready without the fence, and review-code.md's sibling branch — which
+// does carry the fence — made the asymmetry look intentional. The fence's
+// necessity keys on whether merge-ready is declared, never on whether an
+// accepted fix moved the target.
+test("both review skills require the merge-ready fence on the no-fix branch too (#78)", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  // The Normative no-fix branch reaches the fence before it terminates.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "-> accepted fix が無く review target が変更されていない場合: required review 数の valid semantic discovery と Resolution の完了 -> merge-ready fence（merge-ready を宣言する場合） -> 完了",
+    ),
+    "the Normative no-fix branch must pass through the merge-ready fence before 完了",
+  );
+  assert.ok(
+    !containsText(
+      reviewDoc,
+      "required review 数の valid semantic discovery と Resolution の完了 -> 完了",
+    ),
+    "the Normative no-fix branch must not short-circuit from Resolution straight to 完了",
+  );
+
+  // Step 7's prose ends the *closure* obligation for this branch and nothing
+  // more. It must not also declare the review procedure complete: policy/core.md
+  // ("Merge readiness and merge authority") defines review completion itself as
+  // merge-ready, so a pre-fence completion sentence reopens the same escape
+  // hatch under a different word — an agent reports "review 完了" without ever
+  // saying "merge-ready" and step 9 never runs.
+  // Whitespace-agnostic on purpose: the forbidden sentence wraps across lines in
+  // the source, and a hand-escaped regex for that is easy to get wrong in a way
+  // that silently passes. containsText() strips whitespace on both sides.
+  assert.ok(
+    !containsText(reviewDoc, "Resolution が完了した時点で review procedure を完了とし"),
+    "the no-fix branch must not declare the review procedure complete before the fence; review completion is itself merge-ready",
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "closure の obligation が解除され、新たな closure run を要求しません。解除されるのは closure の obligation だけであり、この時点で review procedure が完了したことにはなりません。",
+    ),
+    "review-doc step 7 must scope its release to the closure obligation, not to review completion",
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "この branch でも、手順 9 の merge-ready fence を通る前に review completion / merge-ready を宣言しません。fence の要否は accepted fix の有無ではなく、その宣言を行うかどうかで決まります。",
+    ),
+    "review-doc step 7 must keep the step 9 fence in force for review completion as well as for merge-ready",
+  );
+
+  // Step 9 itself is unconditional on the fix branch: it keys on the merge-ready
+  // declaration alone.
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "この review 対象を含む変更について merge-ready を宣言する場合は、宣言の直前の最後の action として merge-ready fence を実行します。",
+    ),
+  );
+
+  // The Executable sibling keeps the same shape, so the two classes cannot drift
+  // into disagreeing about whether a fix-free review needs the fence.
+  assert.ok(
+    containsText(
+      reviewCode,
+      "-> accepted fix が無く review target が変更されていない場合: required review 数の valid discovery と Resolution の完了 -> merge-ready fence",
+    ),
+    "the Executable no-fix branch must pass through the merge-ready fence too",
   );
 });
 
@@ -1836,7 +1913,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "required review 数の valid semantic discovery と Resolution が完了した時点で review procedure を完了とし、新たな closure run を要求しません。",
+      "required review 数の valid semantic discovery と Resolution が完了した時点で closure の obligation が解除され、新たな closure run を要求しません。",
     ),
   );
 
