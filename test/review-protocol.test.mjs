@@ -403,11 +403,13 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
 
   // Root cause B (precondition target-binding): precondition evidence used as
   // review/closure/merge grounds must match the confirmed (frozen/Selected)
-  // target, not just "not stale after a later mutation."
+  // target, not just "not stale after a later mutation." Comparing the two SHAs
+  // is the fence's `verify-coherence` check now, so the Kernel states where the
+  // judgment lives instead of restating the comparison.
   assert.ok(
     containsText(
       core,
-      "review / closure / merge の根拠として使う precondition evidence は、review 対象として確定した（freeze / Selection された）target と一致していなければなりません。",
+      "precondition evidence が確定した target SHA を指しているかは deterministic であり、Merge-ready completion fence が参照する checker が機械判定します。照合手順を本節に置きません。",
     ),
   );
 
@@ -415,11 +417,12 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   // SHA/range: a SHA-only match is not enough — the selected target artifact
   // set must also be within the precondition check's covered scope, checked
   // after Selection when the check ran before it, with a rerun required
-  // whenever coverage can't be positively confirmed.
+  // whenever coverage can't be positively confirmed. This half is explicitly
+  // NOT machine-judged, so it stays normative here.
   assert.ok(
     containsText(
       core,
-      "この一致確認は SHA / range だけでなく、selected target artifact set にも及びます。",
+      "checker が判定しないのは、precondition check がどの artifact scope を対象としたかです。",
     ),
   );
   assert.ok(

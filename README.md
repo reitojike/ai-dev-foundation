@@ -126,10 +126,11 @@ blocking checkで検知します。
 ## Review evidence helper
 
 `tooling/review-evidence.mjs` は、指定した GitHub PR について durable review
-surface（PR metadata / head SHA、Conversation comments、review submissions、
-inline review comments、review-thread comments、combined commit status、check
-runs）を fresh に取得し、pagination を完了した上で human-readable summary または
-`--json` machine-readable output を返す snapshot tool です。
+surface（PR metadata / head SHA / base SHA / body、Conversation comments、review
+submissions、inline review comments、review-thread comments とその resolution
+state、changed files、combined commit status、check runs）を fresh に取得し、
+pagination を完了した上で human-readable summary または `--json` machine-readable
+output を返す snapshot tool です。
 
 ```text
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json]
@@ -195,6 +196,56 @@ binding candidates、および `{surface, surface_id}` の sources を持ちま�
 helper の acquisition と state projection はそれぞれ mechanical な取得と Issue #74 の
 target completion 判定だけを行います。finding の意味付け、Resolution、Selection、
 merge-ready 判定は `policy/core.md` と review skills が引き続き所有します。
+
+## Merge-ready fence
+
+`tooling/merge-ready-fence.mjs` は、merge-ready を宣言する直前に 1 回実行する
+deterministic checker です。CLI 引数として渡された frozen 宣言と、1 回の fresh
+acquisition で得た fact だけを照合します。
+
+```text
+node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
+  --target-sha <frozen head SHA> [--base-sha <frozen base SHA>] \
+  [--artifacts-file <path list>] [--artifact <path>]... \
+  [--verify-sha <deterministic verify を実行した SHA>] \
+  [--required <reviewer-id>]... [--declared-skill review-code]... \
+  [--acknowledged-file <path>] [--acknowledged <canonical_id>=<body_digest>]... \
+  [--run-after <ISO timestamp>] [--run-anchor-id <id>] [--record <path>] [--token <token>]
+```
+
+`--artifacts-file` と `--acknowledged-file` はいずれも改行区切りの plain text です
+（`#` 始まりの行と空行は無視します）。**snapshot file を引数に取りません。** 会話内で
+見た evidence を渡す経路が存在しないことが、fresh acquisition の構造的な保証です。
+
+JSON を stdout へ出力し、exit code は `pass` = 0、`fail` = 1、`unknown` = 2 です。
+集約規則は「1 つでも `fail` があれば `fail`、無ければ 1 つでも `unknown` があれば
+`unknown`、全部 `pass` なら `pass`」です。各 check は独立した `id` / `status` /
+`reason_codes` / `detail` を返します。
+
+| check id | pass | fail | unknown |
+| --- | --- | --- | --- |
+| `target-head` | current head == `--target-sha` | 不一致 | 取得失敗 / 宣言なし |
+| `target-base` | current base == `--base-sha` | 不一致 | 取得失敗 / 宣言なし |
+| `artifact-set` | changed path 集合が frozen 集合と厳密一致 | 追加・削除いずれも | files surface 取得失敗 / 宣言なし |
+| `skill-routing` | derived required skills ⊆ declared skills | derived ⊄ declared | 分類不能 path（declared が mandatory skill を網羅していれば pass）/ 宣言なし |
+| `reviewer-completion` | required reviewer がすべて `completed@target` | `not-bound` / `rate-limited` / `failed` / `declined` | `in-flight` / `unknown` / record に無い id |
+| `result-revision-coherence` | 到着済み result の current `body_digest` が acknowledged と一致 | 未 acknowledge / digest 変化 | coverage incomplete / identity 不明 |
+| `acquisition-coverage` | `coverage_complete == true` | — | `false` |
+| `review-threads` | unresolved thread 0 件 | 1 件以上（outdated でも同じ） | resolution state 未取得 |
+| `verify-coherence` | `--verify-sha == --target-sha` | 不一致 | `--verify-sha` 未指定 |
+| `autoclose-hygiene` | current PR body に closing keyword 無し | 有り | metadata 取得失敗 |
+
+`reviewer-completion` は Issue #74 の `evaluateReviewerTargetStates()` の出力を消費
+するだけで、provider marker parser を持ちません。`result-revision-coherence` は
+「triage 対象にした版と現在版が同じか」だけを判定し、finding の意味や Resolution の
+完了は判断しません。対象は required reviewer の current completed result と、fresh
+acquisition 時点で既に到着している advisory / optional reviewer の result です
+（未到着の advisory reviewer は block しません）。
+
+fence output は tool output であり、validation される durable record schema では
+ありません。`pass` は machine-checkable な precondition の成立のみを述べ、merge-ready
+の成立そのものではありません。merge-ready の成立条件と merge execution authority は
+`policy/core.md` の Merge readiness and merge authority が定めます。
 
 ## Next.js + Supabase quality profile
 

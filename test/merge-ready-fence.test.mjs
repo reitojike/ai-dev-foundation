@@ -17,11 +17,30 @@ function containsText(haystack, needle) {
 // ---------------------------------------------------------------------------
 // Decision model
 //
-// TEST-ONLY executable encoding of the Merge-ready completion fence
-// (policy/core.md, Merge readiness and merge authority). Not a production
-// mechanism; nothing in tooling/ depends on it. Its purpose is to prove that
-// the normative rules, as written, yield the intended verdict for the failure
-// modes recorded in Issue #45 — rather than only asserting that prose exists.
+// TEST-ONLY executable encoding of the SEMANTIC half of the Merge-ready
+// completion fence (policy/core.md, Merge readiness and merge authority). Not a
+// production mechanism; nothing in tooling/ depends on it. Its purpose is to
+// prove that the normative rules, as written, yield the intended verdict for
+// the failure modes recorded in Issue #45 — rather than only asserting that
+// prose exists.
+//
+// Issue #76 moved the machine-checkable half into production
+// (tooling/merge-ready-fence-lib.mjs). The rules below were re-examined one by
+// one against it:
+//   - R2's "which field stably represents the reviewed target, and how
+//     competing representations rank" is owned by the #74 evaluator, proved by
+//     test/review-evidence-state.test.mjs. What survives here is the abstract
+//     precondition (`reviewedTargetIsStable`), taken as an input rather than
+//     re-derived, because R3/R4 need it to state their own claims.
+//   - R6's *state* gate for a required member is now also machine-checked
+//     (test/merge-ready-fence-lib.test.mjs, fixture 23). What survives here is
+//     the part the fence does not judge: that a Selection amendment is the only
+//     other discharge, and that declining never discharges a finding already
+//     produced.
+//   - R1, R3, R4 and R5 are NOT productionized. Issue #76 decided that expected
+//     and optional membership closure, the finding axis, and per-class review
+//     obligation stay with the agent. Deleting them here would delete the only
+//     regression proof those Kernel invariants have.
 //
 // Encoded rules, and only these:
 //   R1 expected review set = required | expected(declared automatic, or observed

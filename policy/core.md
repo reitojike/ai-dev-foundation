@@ -667,23 +667,16 @@ SHA / commit range が不変でも target artifact set が変わった場合も�
 precondition evidence、discovery evidence、closure
 evidence はいずれも target-specific であり、確定した target と一致しない evidence を
 review / closure / merge の根拠にしません。
-review / closure / merge の根拠として使う precondition evidence は、review 対象
-として確定した（freeze / Selection された）target と一致していなければなりません。
-一致しない場合はその evidence を根拠にせず、確定した target に対して precondition
-check を再実行します。
+target / range / artifact set の drift と、precondition evidence が確定した target SHA
+を指しているかは deterministic であり、Merge-ready completion fence が参照する checker
+が機械判定します。照合手順を本節に置きません。
 
-この一致確認は SHA / range だけでなく、selected target artifact set にも及びます。
-Selection で確定した target artifact set が、その precondition check の対象 scope に
-含まれることを確認します。precondition check を Selection より前に実行した場合は、
-Selection 後にこの binding を確認します。selected artifact set を precondition
+checker が判定しないのは、precondition check がどの artifact scope を対象としたかです。
+これは check ごとに異なるため、Selection で確定した target artifact set がその scope に
+含まれることの確認は agent が行います。precondition check を Selection より前に実行した
+場合は、Selection 後にこの binding を確認します。selected artifact set を precondition
 evidence がカバーしていると確認できない場合は、確定した target に対して precondition
 check を再実行してから先へ進みます。
-
-このうち target / range / artifact set の drift と、precondition evidence が確定した
-target SHA を指しているかは deterministic であり、Merge-ready completion fence が
-参照する checker が機械判定します。照合手順を本節に置きません。precondition check が
-どの artifact scope を対象としたかは check ごとに異なるため、その scope が selected
-artifact set をカバーしているかの確認は引き続き agent が行います。
 
 valid な discovery の後、accepted-fix による closure target の変更以外の理由で review
 target が変わった場合、その discovery を新しい target の merge / completion evidence
