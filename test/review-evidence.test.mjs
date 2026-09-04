@@ -735,3 +735,55 @@ test("the helper's source stays free of Review Protocol judgment vocabulary", as
     }
   }
 });
+
+// The GraphQL surface is the one surface whose shape the mocked routes cannot
+// falsify: a query that GitHub rejects still "works" against a stub. Every
+// review-thread fetch had in fact been failing with
+// `Field 'databaseId' doesn't exist on type 'Actor'`, because `author` is typed
+// as the Actor interface, which declares only `login`. The consequence was not
+// a visible error but a permanently `failed` review_threads surface — which the
+// merge-ready fence can only report as `unknown`, never as "no unresolved
+// threads". These assertions read the query text actually sent.
+test("the review-thread query selects actor ids through concrete types, not off the Actor interface", async () => {
+  const sent = [];
+  const routes = baseRoutes();
+  routes[4] = {
+    match: (url, init) => url.endsWith("/graphql") && init.method === "POST",
+    handler: (url, init) => {
+      sent.push(JSON.parse(init.body).query);
+      return jsonResponse({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+            },
+          },
+        },
+      });
+    },
+  };
+
+  await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(sent.length, 1);
+  const query = sent[0];
+  // The exact failure: an id selected directly inside an `author { ... }` block.
+  assert.doesNotMatch(
+    query,
+    /author\s*\{[^}]*\b(databaseId|id)\b/,
+    "author is an Actor; selecting databaseId/id on it directly is a schema error that fails the whole query",
+  );
+  assert.match(query, /fragment ActorIds on Actor/);
+  assert.match(query, /\.\.\. on User \{ databaseId id \}/);
+  assert.match(query, /\.\.\. on Bot \{ databaseId id \}/);
+  // The resolution state the fence reads must be part of the same request, so
+  // an unresolved thread cannot be missed by a surface that fetched cleanly.
+  assert.match(query, /isResolved/);
+  assert.match(query, /isOutdated/);
+
+  // The thread-comment follow-up query has the same author selection and is
+  // only sent when one thread exceeds a page of comments, so it is checked at
+  // the source rather than waiting for that case to occur.
+  const source = await readFile(path.join(root, "tooling", "review-evidence-lib.mjs"), "utf8");
+  assert.doesNotMatch(source, /author\s*\{[^}]*\b(databaseId|id)\b/);
+});

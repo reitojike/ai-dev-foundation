@@ -129,6 +129,20 @@ async function fetchGraphQL(fetchImpl, token, query, variables) {
   return body?.data ?? null;
 }
 
+// `author` is typed as the `Actor` interface, which declares only `login`.
+// Selecting `databaseId` / `id` on it directly is a schema error that fails the
+// whole query, so the ids are selected through the concrete types that carry
+// them. An actor type not listed here still yields its `login`; the ids stay
+// null and the caller treats identity as unconfirmed rather than absent.
+const ACTOR_IDS_FRAGMENT = `
+fragment ActorIds on Actor {
+  ... on User { databaseId id }
+  ... on Bot { databaseId id }
+  ... on Organization { databaseId id }
+  ... on Mannequin { databaseId id }
+  ... on EnterpriseUserAccount { id }
+}`;
+
 const REVIEW_THREADS_QUERY = `
 query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
@@ -147,7 +161,7 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
               url
               createdAt
               updatedAt
-              author { login databaseId id }
+              author { login ...ActorIds }
               commit { oid }
               originalCommit { oid }
               pullRequestReview {
@@ -164,7 +178,8 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
       }
     }
   }
-}`;
+}
+${ACTOR_IDS_FRAGMENT}`;
 
 const THREAD_COMMENTS_QUERY = `
 query($id: ID!, $cursor: String) {
@@ -178,7 +193,7 @@ query($id: ID!, $cursor: String) {
           url
           createdAt
           updatedAt
-          author { login databaseId id }
+          author { login ...ActorIds }
           commit { oid }
           originalCommit { oid }
           pullRequestReview {
@@ -193,7 +208,8 @@ query($id: ID!, $cursor: String) {
       }
     }
   }
-}`;
+}
+${ACTOR_IDS_FRAGMENT}`;
 
 // A thread's own `comments` connection can exceed the first page fetched by
 // REVIEW_THREADS_QUERY (>50 replies on one thread). This follows that
