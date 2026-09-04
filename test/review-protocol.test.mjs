@@ -810,9 +810,11 @@ test("both review skills require the merge-ready fence on the no-fix branch too 
   // merge-ready, so a pre-fence completion sentence reopens the same escape
   // hatch under a different word — an agent reports "review 完了" without ever
   // saying "merge-ready" and step 9 never runs.
-  assert.doesNotMatch(
-    reviewDoc,
-    /Resolution が完了した時点で reviews*procedure を完了とし/,
+  // Whitespace-agnostic on purpose: the forbidden sentence wraps across lines in
+  // the source, and a hand-escaped regex for that is easy to get wrong in a way
+  // that silently passes. containsText() strips whitespace on both sides.
+  assert.ok(
+    !containsText(reviewDoc, "Resolution が完了した時点で review procedure を完了とし"),
     "the no-fix branch must not declare the review procedure complete before the fence; review completion is itself merge-ready",
   );
   assert.ok(
