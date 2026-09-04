@@ -1023,8 +1023,19 @@ function chooseSignal(signals) {
   // submission plus its inline comments, say) repeats its completion marker on
   // each of them, and may abbreviate the SHA differently between them. That is
   // one claim expressed more than once, not two claims in conflict.
+  //
+  // Every claim is compared against the LONGEST one, never against an arbitrary
+  // representative: `sameTargetClaim` is not transitive, so `abcdef0…111` and
+  // `abcdef0…222` are both compatible with the abbreviation `abcdef0` while
+  // naming different commits. Requiring each claim to be an abbreviation of one
+  // longest claim makes them pairwise compatible — prefixes of a common string
+  // are ordered by length — so two full SHAs that disagree are still a conflict.
+  const longest = targets.reduce(
+    (best, candidate) => (candidate.length > (best?.length ?? -1) ? candidate : best),
+    null,
+  );
   const targetsDisagree = targets.some(
-    (candidate) => !sameTargetClaim(candidate, targets[0]),
+    (candidate) => !sameTargetClaim(candidate, longest),
   );
   if (kinds.size > 1 || targetsDisagree) {
     return { signal: null, conflict: true, latest };

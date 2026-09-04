@@ -768,3 +768,57 @@ test("two different targets claimed at the same instant remain a conflict", () =
   assert.equal(state.state, "unknown");
   assert.ok(state.reason_codes.includes("conflicting_signals"));
 });
+
+// `sameTargetClaim` is not transitive: two different full SHAs can both be
+// abbreviations-compatible with one short claim. Comparing every claim against
+// an arbitrary representative would let that set pass as one claim, and the
+// signal chosen from it could bind to the expected target — a merge-ready fence
+// reading that state would pass on a reviewed target that was never determined.
+test("a short claim does not bridge two different full SHAs into one claim", () => {
+  const OTHER_FULL = "adf82cbc0722222222222222222222222222222f";
+  const state = stateFor(
+    evidence({
+      // The short claim is first, so a comparison against `targets[0]` would
+      // find every claim compatible.
+      conversation: [conversation(901, "DONE Target: " + SHORT_TARGET)],
+      reviews: [
+        review(902, "DONE Target: " + FULL_TARGET, { reviewed_sha: FULL_TARGET }),
+      ],
+      inline: [
+        inline(903, "DONE Target: " + OTHER_FULL, {
+          review_id: 902,
+          node_id: "COMMENT-903",
+        }),
+      ],
+    }),
+    { target: FULL_TARGET },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
+
+// A claim too short to stand for a commit is not an abbreviation of anything.
+// A record whose target_pattern already requires 7+ characters never produces
+// such a claim, so this uses one that permits a shorter capture — the guard is
+// what stops a 6-character prefix from merging with a full SHA.
+test("a prefix shorter than an abbreviated SHA is not treated as the same claim", () => {
+  const state = stateFor(
+    evidence({
+      conversation: [conversation(904, "DONE Target: abcdef")],
+      reviews: [
+        review(905, "DONE Target: " + FULL_TARGET, { reviewed_sha: FULL_TARGET }),
+      ],
+    }),
+    {
+      target: FULL_TARGET,
+      record: record({
+        completion_marker: {
+          any_of: ["DONE"],
+          target_pattern: "Target:[^0-9a-fA-F]*([0-9a-fA-F]{3,40})",
+        },
+      }),
+    },
+  );
+  assert.equal(state.state, "unknown");
+  assert.ok(state.reason_codes.includes("conflicting_signals"));
+});
