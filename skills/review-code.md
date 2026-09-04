@@ -35,9 +35,11 @@ review でも同じ意味で適用します。
 4. record の `required_selection` に従って required slot を埋め、expected review set と
    required review skill を確定して Selection を記録する。
 5. record の `trigger.kind` に従って reviewer を起動する（分岐の詳細は手順 4）。
-   起動した時点で run anchor（ISO-8601 timestamp または run 固有の ID）を記録する。
+   起動した時点で run anchor（起動直前の ISO-8601 timestamp）を記録する。
+   `--run-anchor-id` はこの時点では値を持たない（reviewer の result 自身の ID が
+   必要なため）ので使わない。
 6. 状態は会話内の記憶ではなく、fresh 取得で確認する。手順 5 で記録した run anchor を
-   `--run-after`（または `--run-anchor-id`）として渡す。
+   `--run-after` として渡す。
 
    ```text
    node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --state \
@@ -52,16 +54,19 @@ review でも同じ意味で適用します。
    positive/negative に変換しません。finding の意味付け、Resolution、fallback の policy
    は `policy/core.md` に従います。
 8. accepted finding を batch で fix し、target が動いたら targeted closure を回す
-   （closure でも同じく起動時点で run anchor を記録し直す）。
+   （closure でも同じく起動時点で run anchor（timestamp）を記録し直し、triage 対象の
+   `canonical_id` と `body_digest` を再取得する）。
 9. merge-ready fence を実行し、`pass` の場合だけ merge-ready を宣言する。merge の実行は
-   authority に従う。run anchor と acknowledged revision は、手順 7（closure を
-   回した場合はその closure 版）で記録したものを再利用する。
+   authority に従う。run anchor は手順 5（closure を回した場合は手順 8）で、
+   acknowledged revision は手順 7（closure を回した場合はその closure 時の再取得分）で
+   記録したものを再利用する。
 
    ```text
    node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
      --target-sha <sha> --base-sha <sha> --artifacts-file <path> \
      --verify-sha <sha> --required <reviewer-id> --declared-skill review-code \
-     --acknowledged-file <path> --run-after <手順 5 で記録した run anchor>
+     --acknowledged-file <path> \
+     --run-after <手順 5（または closure 時は手順 8）で記録した run anchor>
    ```
 
 ## reviewer capability record
@@ -168,20 +173,21 @@ required/expected review の消化根拠にしてはいけません。この区�
      record に宣言されていない reviewer は formal acquisition になりません。
      trigger 方法、実際に渡した target と artifact set、required context を記録します。
 
-   起動した時点で、その run を後から一意に特定できる run anchor（起動直前の
-   ISO-8601 timestamp、または trigger 経路から得られる run 固有の ID）を記録します。
-   この anchor は手順 5 の state evaluator と手順 13 の merge-ready fence の両方で
-   同じ値を再利用します。session の記憶や再計算ではなく、この時点で記録した値を
-   そのまま運びます。手順 9 の second full discovery、手順 10 の targeted closure も
-   同様に、それぞれの起動時点で新しい run anchor を記録し、そのラウンド自身の
-   Acquisition & Validity 確認に使います。closure を経由した場合、手順 13 の
-   merge-ready fence が使う run anchor は手順 4 のものではなく、手順 10 で記録した
+   起動した時点で、その run を後から一意に特定できる run anchor として、起動直前の
+   ISO-8601 timestamp を記録します。`--run-anchor-id` はこの時点では値を持ちません
+   （state evaluator は reviewer の result 自身の `sources[].surface_id` と照合するため、
+   その result が届く前の trigger comment の ID 等を渡しても一致しません）。この
+   timestamp anchor は手順 5 の state evaluator と手順 13 の merge-ready fence の両方で
+   `--run-after` として同じ値を再利用します。session の記憶や再計算ではなく、この時点で
+   記録した値をそのまま運びます。手順 9 の second full discovery、手順 10 の targeted
+   closure も同様に、それぞれの起動時点で新しい run anchor（timestamp）を記録し、その
+   ラウンド自身の Acquisition & Validity 確認に使います。closure を経由した場合、手順 13
+   の merge-ready fence が使う run anchor は手順 4 のものではなく、手順 10 で記録した
    closure run の anchor です。
 
 5. **Acquisition & state** — reviewer の run ごとに `tooling/review-evidence.mjs` を
    fresh に実行し、`--state --target-sha <sha>` に加えて手順 4 で記録した run anchor を
-   `--run-after <timestamp>`（または `--run-anchor-id <id>`）として渡し、state
-   evaluator を実行します。
+   `--run-after <timestamp>` として渡し、state evaluator を実行します。
    state output の `state`、`coverage_complete`、`evidence`、`reason_codes` を記録します。
    **あわせて、triage の対象にする result の `canonical_id` と
    `evidence[].revision.body_digest` を記録します。** review result は in-place で編集
@@ -301,10 +307,11 @@ required/expected review の消化根拠にしてはいけません。この区�
     discovery Resolution と closure の完了順序は問いません。
 
     そのうえで、宣言の直前の最後の action として merge-ready fence を実行します。
-    run anchor と acknowledged revision は、この review flow で最後に使った
-    Acquisition & Validity 確認（closure を経由していなければ手順 5、経由していれば
-    手順 11）で記録したものを再利用します。手順 5 / 11 で `--run-anchor-id` を
-    使った場合は、ここでも `--run-after` の代わりに同じ `--run-anchor-id` を使います。
+    run anchor は、この review flow で最後に起動した run の trigger 時点
+    （closure を経由していなければ手順 4、経由していれば手順 10）で記録した
+    timestamp を再利用します。acknowledged revision は、対応する Acquisition &
+    Validity 確認（closure を経由していなければ手順 5、経由していれば手順 11）で
+    記録したものを再利用します。
 
     ```text
     node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \

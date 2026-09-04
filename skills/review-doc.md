@@ -75,14 +75,16 @@ record」節および「Adapter boundary」節に従います。この skill で
    target と artifact set、required context を記録した上で、独立
    reviewer による意味的な discovery を 1 回行います。round 数の扱いは
    Artifact classification / Review stopping rules（`policy/core.md`）に従います。
-   起動した時点で、その run を後から一意に特定できる run anchor（起動直前の
-   ISO-8601 timestamp、または trigger 経路から得られる run 固有の ID）を記録します。
-   この anchor は手順 4 の Acquisition & Validity 確認と手順 9 の merge-ready fence の
-   両方で同じ値を再利用します。session の記憶や再計算ではなく、この時点で記録した
-   値をそのまま運びます。手順 7 の closure を実行する場合、その closure run の
-   trigger 時点でも新しい run anchor を記録し（この手順 3 の anchor をそのまま
-   使い回しません）、closure verification と手順 9 の fence ではその closure run の
-   anchor を使います。
+   起動した時点で、その run を後から一意に特定できる run anchor として、起動直前の
+   ISO-8601 timestamp を記録します。`--run-anchor-id` はこの時点では値を持ちません
+   （state evaluator は reviewer の result 自身の `sources[].surface_id` と照合するため、
+   その result が届く前の trigger comment の ID 等を渡しても一致しません）。この
+   timestamp anchor は手順 4 の Acquisition & Validity 確認と手順 9 の merge-ready
+   fence の両方で `--run-after` として同じ値を再利用します。session の記憶や再計算
+   ではなく、この時点で記録した値をそのまま運びます。手順 7 の closure を実行する場合、
+   その closure run の trigger 時点でも新しい run anchor（timestamp）を記録し（この
+   手順 3 の anchor をそのまま使い回しません）、closure verification と手順 9 の fence
+   ではその closure run の anchor を使います。
 4. **Acquisition & Validity 確認** — Acquisition & Validity Contract
    （`policy/core.md`）に従い、target SHA / range、target artifact set、
    completion、acquisition、validity を確認します。
@@ -108,7 +110,7 @@ record」節および「Adapter boundary」節に従います。この skill で
    `skills/review-code.md`（consumer には
    `.ai-dev-foundation/skills/review-code.md` として配布）の Adapter
    boundary（`collectOutputs()`）に従います。その際、手順 3 で記録した run
-   anchor を `--run-after`（または `--run-anchor-id`）として渡します。
+   anchor を `--run-after` として渡します。
 5. **Triage** — 出た finding を Resolution Contract のカテゴリ（fix /
    false-positive / needs-verification / technical-dispute / intent-question）へ
    仕分けます。
@@ -162,10 +164,10 @@ record」節および「Adapter boundary」節に従います。この skill で
    手順は不要です。
 9. **Merge-ready fence** — この review 対象を含む変更について merge-ready を
    宣言する場合は、宣言の直前の最後の action として merge-ready fence を実行します。
-   run anchor と acknowledged revision は、この review flow で最後に使った
-   Acquisition & Validity 確認（closure を経由していなければ手順 4、経由していれば
-   手順 7）で記録したものを再利用します。手順 4 / 7 で `--run-anchor-id` を
-   使った場合は、ここでも `--run-after` の代わりに同じ `--run-anchor-id` を使います。
+   run anchor は、この review flow で最後に起動した run の trigger 時点（closure を
+   経由していなければ手順 3、経由していれば手順 7）で記録した timestamp を再利用
+   します。acknowledged revision は、対応する Acquisition & Validity 確認（closure
+   を経由していなければ手順 4、経由していれば手順 7）で記録したものを再利用します。
 
    ```text
    node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
