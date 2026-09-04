@@ -35,10 +35,15 @@ review でも同じ意味で適用します。
 4. record の `required_selection` に従って required slot を埋め、expected review set と
    required review skill を確定して Selection を記録する。
 5. record の `trigger.kind` に従って reviewer を起動する（分岐の詳細は手順 4）。
-6. 状態は会話内の記憶ではなく、fresh 取得で確認する。
+   起動した時点で run anchor（起動直前の ISO-8601 timestamp）を記録する。
+   `--run-anchor-id` はこの時点では値を持たない（reviewer の result 自身の ID が
+   必要なため）ので使わない。
+6. 状態は会話内の記憶ではなく、fresh 取得で確認する。手順 5 で記録した run anchor を
+   `--run-after` として渡す。
 
    ```text
-   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --json
+   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --state \
+     --target-sha <sha> --run-after <手順 5 で記録した run anchor> --json
    ```
 
 7. fresh snapshot を state evaluator へ渡して target completion state を読み、
@@ -48,15 +53,20 @@ review でも同じ意味で適用します。
    failure ではなく、沈黙、preamble、acknowledgement、fetch incomplete、marker 不明を
    positive/negative に変換しません。finding の意味付け、Resolution、fallback の policy
    は `policy/core.md` に従います。
-8. accepted finding を batch で fix し、target が動いたら targeted closure を回す。
+8. accepted finding を batch で fix し、target が動いたら targeted closure を回す
+   （closure でも同じく起動時点で run anchor（timestamp）を記録し直し、triage 対象の
+   `canonical_id` と `body_digest` を再取得する）。
 9. merge-ready fence を実行し、`pass` の場合だけ merge-ready を宣言する。merge の実行は
-   authority に従う。
+   authority に従う。run anchor は手順 5（closure を回した場合は手順 8）で、
+   acknowledged revision は手順 7（closure を回した場合はその closure 時の再取得分）で
+   記録したものを再利用する。
 
    ```text
    node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
      --target-sha <sha> --base-sha <sha> --artifacts-file <path> \
      --verify-sha <sha> --required <reviewer-id> --declared-skill review-code \
-     --acknowledged-file <path>
+     --acknowledged-file <path> \
+     --run-after <手順 5（または closure 時は手順 8）で記録した run anchor>
    ```
 
 ## reviewer capability record
@@ -162,9 +172,22 @@ required/expected review の消化根拠にしてはいけません。この区�
      なら fallback order に従います。
      record に宣言されていない reviewer は formal acquisition になりません。
      trigger 方法、実際に渡した target と artifact set、required context を記録します。
+
+   起動した時点で、その run を後から一意に特定できる run anchor として、起動直前の
+   ISO-8601 timestamp を記録します。`--run-anchor-id` はこの時点では値を持ちません
+   （state evaluator は reviewer の result 自身の `sources[].surface_id` と照合するため、
+   その result が届く前の trigger comment の ID 等を渡しても一致しません）。この
+   timestamp anchor は手順 5 の state evaluator と手順 13 の merge-ready fence の両方で
+   `--run-after` として同じ値を再利用します。session の記憶や再計算ではなく、この時点で
+   記録した値をそのまま運びます。手順 9 の second full discovery、手順 10 の targeted
+   closure も同様に、それぞれの起動時点で新しい run anchor（timestamp）を記録し、その
+   ラウンド自身の Acquisition & Validity 確認に使います。closure を経由した場合、手順 13
+   の merge-ready fence が使う run anchor は手順 4 のものではなく、手順 10 で記録した
+   closure run の anchor です。
+
 5. **Acquisition & state** — reviewer の run ごとに `tooling/review-evidence.mjs` を
-   fresh に実行し、必要なら `--state --target-sha <sha> --run-after <timestamp>`
-   （または `--run-anchor-id <id>`）で state evaluator を実行します。
+   fresh に実行し、`--state --target-sha <sha>` に加えて手順 4 で記録した run anchor を
+   `--run-after <timestamp>` として渡し、state evaluator を実行します。
    state output の `state`、`coverage_complete`、`evidence`、`reason_codes` を記録します。
    **あわせて、triage の対象にする result の `canonical_id` と
    `evidence[].revision.body_digest` を記録します。** review result は in-place で編集
@@ -232,15 +255,18 @@ required/expected review の消化根拠にしてはいけません。この区�
     successful deterministic verify evidence がカバーしているかを確認します。
     カバーしていると確認できない場合は、確定した closure target に対して
     deterministic verify を再実行し、成功してから Execution Contract に従って
-    closure run を起動します。
+    closure run を起動します。起動した時点で、この closure run 専用の run anchor を
+    新たに記録します（手順 4 の anchor をそのまま使い回しません）。
     Review stopping rules（`policy/core.md`）に従い、fix した箇所に対応
     する範囲のみ再確認します。
 11. **Closure Acquisition & Validity** — この review flow で accepted
     finding の fix によって target が変更された場合のみ（手順 9 を
     挟んだ場合を含む）、この closure target を expected target として、
-    targeted closure の review run に手順 5 と同じ Acquisition &
-    Validity Contract を適用し、completion / acquisition / validity を
-    確認します。
+    targeted closure の review run に手順 5 と同じ Acquisition & Validity
+    Contract を適用し、completion / acquisition / validity を確認します。
+    手順 10 で記録した run anchor を使います。手順 5 と同様に、triage の対象に
+    する result の `canonical_id` と `evidence[].revision.body_digest` を
+    記録します。
     確認できなければ merge せず、その後の扱いは Failure / retry
     （`policy/core.md`）に従います。
     closure 用 Selection Contract で required とした review 数ぶんの valid
@@ -281,13 +307,19 @@ required/expected review の消化根拠にしてはいけません。この区�
     discovery Resolution と closure の完了順序は問いません。
 
     そのうえで、宣言の直前の最後の action として merge-ready fence を実行します。
+    run anchor は、この review flow で最後に起動した run の trigger 時点
+    （closure を経由していなければ手順 4、経由していれば手順 10）で記録した
+    timestamp を再利用します。acknowledged revision は、対応する Acquisition &
+    Validity 確認（closure を経由していなければ手順 5、経由していれば手順 11）で
+    記録したものを再利用します。
 
     ```text
     node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
       --target-sha <frozen target> --base-sha <frozen base> \
       --artifacts-file <frozen artifact set> --verify-sha <手順 1/8 の verify SHA> \
       --required <reviewer-id> --declared-skill review-code \
-      --acknowledged-file <手順 5 で記録した canonical_id=body_digest>
+      --acknowledged-file <手順 5（または closure 時は手順 11）で記録した canonical_id=body_digest> \
+      --run-after <手順 4（または closure 時は手順 10）で記録した run anchor>
     ```
 
     fence は machine-checkable な precondition だけを評価します。`pass`（exit 0）の
