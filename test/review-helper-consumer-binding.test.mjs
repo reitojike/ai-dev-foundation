@@ -269,6 +269,16 @@ test("both review skills document a helper path that does not depend on a consum
     }
   }
 
+  // The drift check narrows which checkout is in use; it does not compare
+  // tooling/, which is neither distributed nor diffed. Stating only the half
+  // that holds would let a reader treat a passing check as proof that the
+  // helper revision matches the one the consumer was synced from.
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  assert.ok(
+    reviewCode.includes("helper revision の同一性証明として"),
+    "review-code.md must state that the drift check is not proof of helper-revision identity",
+  );
+
   // review-doc defers rather than duplicating, in the consumer-resolvable form.
   const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
   assert.ok(reviewDoc.includes("## Foundation helper の実行（consumer cwd）"));

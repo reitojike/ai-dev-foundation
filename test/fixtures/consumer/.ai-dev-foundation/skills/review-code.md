@@ -36,13 +36,21 @@ consumer へは配布されません（`sync` が materialize するのは `AGEN
 - consumer-owned な path 引数（`--record` / `--artifacts-file` /
   `--acknowledged-file`）は、その consumer repository root を基準に明示的に渡します。
 
-`<foundation-checkout>` が実際にこの consumer を sync している checkout かどうかは、
-新しい discovery 機構を作らず、既存の drift check で確認します。skill bundle が
-drift していれば、その checkout はこの consumer が現在使っているものではありません。
+実行される helper 実装は、command で addressing した checkout のものそのものです。
+残る問いは「その checkout が、この consumer を sync した checkout と同じか」だけで、
+これは新しい discovery 機構を作らず、既存の drift check で狭めます。
 
 ```text
 node <foundation-checkout>/tooling/check.mjs --consumer .
 ```
+
+この check が比較するのは、consumer へ配布済みの Foundation-owned artifact
+（generated `AGENTS.md` / `CLAUDE.md`、`.ai-dev-foundation/skills/`、quality profile）と、
+この checkout 側の canonical source です。drift があれば、その checkout はこの consumer が
+現在使っているものではありません。**逆は成り立ちません。** `tooling/` は比較対象ではなく
+consumer へ配布もされないため、配布 artifact が同一で `tooling/` だけが異なる checkout は
+この check を通過します。したがってこの check を helper revision の同一性証明として
+扱わず、どの checkout を addressing したかは review evidence として記録します。
 
 helper を起動するために Foundation checkout へ `cd` しないでください。`--record` の
 既定値は cwd 相対の `.ai-dev-foundation/reviewers.json` であり、Foundation checkout を
