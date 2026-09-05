@@ -33,7 +33,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TARGET = "abcdef1234567890abcdef1234567890abcdef12";
 const OTHER_TARGET = "1234567890abcdef1234567890abcdef12345678";
 const BASE = "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f";
-const OTHER_BASE = "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e";
+const ADVANCED_BASE = "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d";
 const ANCHOR = "2026-09-03T00:00:00.000Z";
 const OBSERVED = "2026-09-03T01:00:00.000Z";
 
@@ -99,9 +99,28 @@ function file(path, status = "modified") {
   return { path, status, previous_path: null };
 }
 
+// The base branch tip fact of one acquisition (Issue #82), in its three
+// observable shapes.
+function baseBranch(fetchStatus, tipSha) {
+  if (fetchStatus === "fetched") {
+    return { fetch_status: "fetched", failure: null, repo: "org/repo", ref: "main", tip_sha: tipSha };
+  }
+  if (fetchStatus === "not_applicable") {
+    return { fetch_status: "not_applicable", failure: null, repo: null, ref: null, tip_sha: null, note: "base ref unavailable" };
+  }
+  return { fetch_status: "failed", failure: { status: 404, message: "Branch not found" }, repo: "org/repo", ref: "main", tip_sha: null };
+}
+
 function evidence({
   headSha = TARGET,
   baseSha = BASE,
+  // The base branch tip is acquired separately from the PR object's base
+  // commit (Issue #82). It defaults to `baseSha` only so unrelated fixtures
+  // stay on the clean path; every base fixture sets it explicitly.
+  baseTipSha = baseSha,
+  // Defaults to the acquisition's own coupling: with no PR object there is no
+  // base ref to read, so the tip is not_applicable rather than fetched.
+  baseBranchStatus = null,
   body = "Refs #76",
   metadataStatus = "fetched",
   comments = [completionComment(1, "primary-bot", TARGET), completionComment(2, "advisor-bot", TARGET)],
@@ -119,6 +138,7 @@ function evidence({
       metadataStatus === "fetched"
         ? { fetch_status: "fetched", failure: null, head_sha: headSha, base_sha: baseSha, base_ref: "main", state: "open", html_url: null, updated_at: OBSERVED, body }
         : { fetch_status: "failed", failure: { status: 500, message: "boom" }, head_sha: null, base_sha: null, base_ref: null, state: null, html_url: null, updated_at: null, body: null },
+    base_branch: baseBranch(baseBranchStatus ?? (metadataStatus === "fetched" ? "fetched" : "not_applicable"), baseTipSha),
     surfaces: {
       conversation_comments: surface(comments),
       review_submissions: surface([], reviewSubmissionsStatus),
@@ -239,11 +259,73 @@ test("an abbreviated frozen SHA still matches the full current head", () => {
   assert.equal(checkOf(fence, "target-head").status, "pass");
 });
 
-test("fixture 3: base moved under the frozen range -> fail", () => {
-  const { fence } = runFence({ snapshot: evidence({ baseSha: OTHER_BASE }) });
+// The authority for target-base is where the base branch points now, not the
+// base commit the PR object carries (Issue #82). The PR's `base.sha` does not
+// advance when the base branch alone moves, so a check that reads it reports
+// `pass` for exactly the ordinary case this check exists to catch.
+
+test("fixture 3: the base branch advanced while the PR head stood still -> fail", () => {
+  // The PR object still reports the base commit it was opened against, which
+  // is also the frozen one. Only the live tip has moved.
+  const { fence } = runFence({ snapshot: evidence({ baseSha: BASE, baseTipSha: ADVANCED_BASE }) });
   const check = checkOf(fence, "target-base");
   assert.equal(check.status, "fail");
   assert.deepEqual(check.reason_codes, ["target_base_moved"]);
+  assert.equal(check.detail.frozen_base_sha, BASE);
+  assert.equal(check.detail.current_base_tip_sha, ADVANCED_BASE);
+  // The PR snapshot's agreeing base commit is reported as a diagnostic fact
+  // and did not produce the verdict.
+  assert.equal(check.detail.pr_base_sha, BASE);
+  assert.equal(fence.status, "fail");
+});
+
+test("fixture 3b: a PR sync that refreshed the PR's base commit does not clear a stale frozen base", () => {
+  // After the base advanced, a push synced the PR, so the PR object's base
+  // commit now matches the live tip. The frozen base is still the old one.
+  const { fence } = runFence({
+    snapshot: evidence({ baseSha: ADVANCED_BASE, baseTipSha: ADVANCED_BASE }),
+    inputs: { baseSha: BASE },
+  });
+  const check = checkOf(fence, "target-base");
+  assert.equal(check.status, "fail");
+  assert.deepEqual(check.reason_codes, ["target_base_moved"]);
+  assert.equal(fence.status, "fail");
+});
+
+test("fixture 3c: re-freezing against the integrated base passes", () => {
+  const { fence } = runFence({
+    snapshot: evidence({ baseSha: BASE, baseTipSha: ADVANCED_BASE }),
+    inputs: { baseSha: ADVANCED_BASE },
+  });
+  const check = checkOf(fence, "target-base");
+  assert.equal(check.status, "pass");
+  assert.deepEqual(check.reason_codes, []);
+  assert.equal(fence.status, "pass");
+});
+
+test("fixture 3d: an unreadable base ref is unknown, never a pass borrowed from the PR's base commit", () => {
+  const { fence } = runFence({ snapshot: evidence({ baseSha: BASE, baseBranchStatus: "failed" }) });
+  const check = checkOf(fence, "target-base");
+  assert.equal(check.status, "unknown");
+  assert.deepEqual(check.reason_codes, ["base_branch_tip_unavailable"]);
+  assert.equal(check.detail.current_base_tip_sha, null);
+  // The PR object's base commit matches the frozen one and still yields no pass.
+  assert.equal(check.detail.pr_base_sha, BASE);
+  assert.equal(fence.status, "unknown");
+});
+
+test("a base branch fact that is absent altogether is unknown, not a pass", () => {
+  const snapshot = evidence();
+  delete snapshot.base_branch;
+  const { fence } = runFence({ snapshot });
+  const check = checkOf(fence, "target-base");
+  assert.equal(check.status, "unknown");
+  assert.deepEqual(check.reason_codes, ["base_branch_tip_unavailable"]);
+});
+
+test("an abbreviated frozen base still matches the full current base branch tip", () => {
+  const { fence } = runFence({ inputs: { baseSha: BASE.slice(0, 7) } });
+  assert.equal(checkOf(fence, "target-base").status, "pass");
 });
 
 test("a frozen base that was never recorded is unknown, never a silent pass", () => {
