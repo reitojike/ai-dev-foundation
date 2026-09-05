@@ -153,8 +153,20 @@ record と run anchor を指定します。
 
 ```text
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --state \
-  --target-sha <sha> --run-after <ISO timestamp> --reviewer <reviewer-id> --json
+  --target-sha <sha> --run-after <ISO timestamp> --reviewer <reviewer-id> \
+  --record .ai-dev-foundation/reviewers.json --json
 ```
+
+helper は Foundation checkout の `tooling/` にあり、consumer へは配布されません
+（`sync` が materialize するのは `AGENTS.md`、`CLAUDE.md`、`.ai-dev-foundation/skills/`
+だけです）。consumer repository を review する場合は、cwd をその consumer repository
+root のまま維持し、helper を `node <foundation-checkout>/tooling/...` として起動します
+（`skills/review-code.md` の `## Foundation helper の実行（consumer cwd）`）。
+`--record` の既定値は cwd 相対の `.ai-dev-foundation/reviewers.json` なので、helper を
+起動するために Foundation checkout へ `cd` すると Foundation 自身の reviewer capability
+record を読むことになります。helper はこの 1 ケース（cwd が Foundation checkout root で
+`--record` 省略）を exit 2 の setup error として拒否します。Foundation リポジトリ自身を
+review する場合も含め、`--record` は明示的に渡してください。
 
 state output は `state`、`coverage_complete`、`evidence`、`observed_signals`、
 `reason_codes` を持ちます。`completed@target` は current target に構造化または
@@ -212,6 +224,17 @@ node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
   [--acknowledged-file <path>] [--acknowledged <canonical_id>=<body_digest>]... \
   [--run-after <ISO timestamp>] [--run-anchor-id <id>] [--record <path>] [--token <token>]
 ```
+
+helper は Foundation checkout の `tooling/` にあり、consumer へは配布されません
+（`sync` が materialize するのは `AGENTS.md`、`CLAUDE.md`、`.ai-dev-foundation/skills/`
+だけです）。consumer repository を review する場合は、cwd をその consumer repository
+root のまま維持し、helper を `node <foundation-checkout>/tooling/...` として起動します
+（`skills/review-code.md` の `## Foundation helper の実行（consumer cwd）`）。
+`--record` の既定値は cwd 相対の `.ai-dev-foundation/reviewers.json` なので、helper を
+起動するために Foundation checkout へ `cd` すると Foundation 自身の reviewer capability
+record を読むことになります。helper はこの 1 ケース（cwd が Foundation checkout root で
+`--record` 省略）を exit 2 の setup error として拒否します。Foundation リポジトリ自身を
+review する場合も含め、`--record` は明示的に渡してください。
 
 `--artifacts-file` と `--acknowledged-file` はいずれも改行区切りの plain text です
 （`#` 始まりの行と空行は無視します）。**snapshot file を引数に取りません。** 会話内で

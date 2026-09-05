@@ -40,6 +40,15 @@ artifact classification に関わらず共通であり、Foundation リポジト
 `.ai-dev-foundation/skills/review-code.md` として配布）の「reviewer capability
 record」節および「Adapter boundary」節に従います。この skill では重複定義しません。
 
+## Foundation helper の実行（consumer cwd）
+
+本 skill の command 例（`merge-ready-fence` 等）も、Foundation リポジトリの
+`skills/review-code.md`（consumer には `.ai-dev-foundation/skills/review-code.md`
+として配布）の `## Foundation helper の実行（consumer cwd）` 節に従います。cwd は
+consumer repository root のまま維持し、helper は `<foundation-checkout>/tooling/` の
+path で起動し、`--record` / `--artifacts-file` / `--acknowledged-file` は consumer
+repository root を基準に明示的に渡します。ここでは重複定義しません。
+
 ## 手順
 
 1. **Mechanical check** — その時点の target SHA / range と、その mechanical
@@ -170,11 +179,12 @@ record」節および「Adapter boundary」節に従います。この skill で
    を経由していなければ手順 4、経由していれば手順 7）で記録したものを再利用します。
 
    ```text
-   node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
+   node <foundation-checkout>/tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
      --target-sha <frozen target> --base-sha <frozen base> \
      --artifacts-file <frozen artifact set> --verify-sha <手順 1 の check SHA> \
      --required <reviewer-id> --declared-skill review-doc \
      --acknowledged-file <手順 4（または closure 時は手順 7）で記録した canonical_id=body_digest> \
+     --record .ai-dev-foundation/reviewers.json \
      --run-after <手順 3（または closure 時は手順 7）で記録した run anchor>
    ```
 

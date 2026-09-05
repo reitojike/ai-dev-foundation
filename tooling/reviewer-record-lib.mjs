@@ -17,6 +17,7 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const REVIEWER_RECORD_SCHEMA_ID = "ai-dev-foundation/reviewer-capability-record@1";
 export const REVIEWER_RECORD_RELATIVE_PATH = ".ai-dev-foundation/reviewers.json";
@@ -306,6 +307,46 @@ export async function readReviewerRecordFile(filePath) {
 // consumer directory, at the schema's canonical relative path.
 export async function loadReviewerRecord(consumerDirectory) {
   return readReviewerRecordFile(reviewerRecordPath(consumerDirectory));
+}
+
+// ---------------------------------------------------------------------------
+// Consumer binding for the helper CLIs (Issue #96)
+//
+// The review helpers live in this Foundation checkout's tooling/ but are run
+// with the CONSUMER repository as cwd, so their cwd-relative record default is
+// the consumer's own record — which is exactly what the review procedure means
+// by "the reviewer capability record". There is one cwd where that default
+// silently means something else: this Foundation checkout itself, where it
+// resolves to Foundation's record. Nothing in a helper's output distinguishes
+// "read the consumer's record" from "read Foundation's", so that single case is
+// refused rather than defaulted. Naming --record explicitly always works,
+// including when Foundation is the consumer being reviewed.
+//
+// This is a guard on one path, not a checkout-discovery mechanism: it never
+// searches for a Foundation checkout and never resolves anything on the
+// consumer's behalf.
+// ---------------------------------------------------------------------------
+
+const foundationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+export const FOUNDATION_REVIEWER_RECORD_PATH = reviewerRecordPath(foundationRoot);
+
+export function resolveConsumerReviewerRecordPath(explicitPath, cwd = process.cwd()) {
+  if (explicitPath) return path.resolve(cwd, explicitPath);
+  const resolved = path.resolve(cwd, ...REVIEWER_RECORD_RELATIVE_PATH.split("/"));
+  if (resolved !== FOUNDATION_REVIEWER_RECORD_PATH) return resolved;
+  throw new Error(
+    `Refusing to default the reviewer capability record to this Foundation checkout's own ${REVIEWER_RECORD_RELATIVE_PATH} (${resolved}). ` +
+      "Run the helper with the consumer repository as cwd, or pass --record <path> explicitly.",
+  );
+}
+
+// One actionable line per problem, so a helper that cannot use the record says
+// which record file it actually read as well as what is wrong with it.
+export function describeUnusableReviewerRecord(loaded) {
+  const lines = [`Reviewer record ${loaded.status}: ${loaded.path}`];
+  for (const message of loaded.errors) lines.push(`  - ${message}`);
+  return lines.join("\n");
 }
 
 // The record's own declared posting convention, defaulting to the schema's
