@@ -7,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { REVIEWER_RECORD_SCHEMA_ID, readReviewerRecordFile, validateReviewerRecord } from "../tooling/reviewer-record-lib.mjs";
+import { evaluateReviewerTargetStates } from "../tooling/review-evidence-state-lib.mjs";
 
 // Issue #72 Phase 1: the reviewer capability record makes "which reviewers
 // exist, how are they triggered, what counts as completion" machine-readable
@@ -360,4 +361,156 @@ test("review-code.md binds Selection, Execution and Acquisition to the record", 
   // the header paragraph already makes.
   const headingIndex = (heading) => skill.search(new RegExp(`^${heading}$`, "m"));
   assert.ok(headingIndex("## Happy path") > -1 && headingIndex("## Happy path") < headingIndex("## 手順"));
+});
+
+// --- observed evidence replay (Issue #88) -----------------------------------
+
+// The markers in the shipped seed are observed evidence, not a provider
+// contract. That makes them only as good as the bodies they were derived from,
+// so these replay the real provider bodies the seed cites through the current
+// evaluator against the shipped record itself. A synthetic record would prove
+// the evaluator works; only the shipped record proves the *seed* works.
+//
+// These are behavior fixtures, not a provider parser: nothing here teaches the
+// production tooling a provider-specific string.
+
+const REPLAY_TARGET = "abcdef1234567";
+const REPLAY_CAPTURED = "2026-09-05T00:00:00.000Z";
+const REPLAY_OBSERVED = "2026-09-05T02:13:28.000Z";
+
+function replayEvidence(comments) {
+  const fetched = (items = []) => ({ fetch_status: "fetched", items });
+  return {
+    repo: "org/repo",
+    pull_number: 88,
+    generated_at: REPLAY_CAPTURED,
+    pr_metadata: { fetch_status: "fetched", head_sha: REPLAY_TARGET },
+    surfaces: {
+      conversation_comments: fetched(comments),
+      review_submissions: fetched(),
+      inline_review_comments: fetched(),
+      review_threads: fetched(),
+    },
+  };
+}
+
+// One conversation comment from `actor`, which is how every body replayed here
+// was actually observed.
+function replayState(reviewerId, actor, body) {
+  const seed = JSON.parse(readFileSync(path.join(root, "templates", "reviewers.example.json"), "utf8"));
+  const evidence = replayEvidence([
+    {
+      id: 1,
+      actor,
+      actor_database_id: "9001",
+      actor_node_id: "ACTOR-9001",
+      body,
+      created_at: REPLAY_OBSERVED,
+      updated_at: REPLAY_OBSERVED,
+      locator: "conversation-1",
+    },
+  ]);
+  return evaluateReviewerTargetStates(evidence, {
+    record: seed,
+    reviewerId,
+    target: { sha: REPLAY_TARGET },
+    runAnchor: { after: REPLAY_CAPTURED },
+  }).reviewer_states[0];
+}
+
+function acceptedSignalKinds(state) {
+  return state.observed_signals.filter((signal) => signal.accepted).map((signal) => signal.kind);
+}
+
+test("the observed Codex quota notifications replay as rate-limited, not as completion", () => {
+  // Verbatim bodies from stage-tracker PR #327 (#issuecomment-5548663119 and
+  // #issuecomment-5548663539) and PR #325 (#issuecomment-5548636047). The
+  // second sentence differs between the cloud-task and code-review variants,
+  // and neither string is a prefix of the other, which is why the seed lists
+  // both rather than the shorter one alone.
+  const bodies = [
+    "You have reached your Codex usage limits. You can see your limits in the [Codex usage dashboard](https://chatgpt.com/codex/cloud/settings/usage).",
+    "You have reached your Codex usage limits for code reviews. You can see your limits in the [Codex usage dashboard](https://chatgpt.com/codex/cloud/settings/usage).\nTo continue using code reviews, you can upgrade your account or add credits to your account and enable them for code reviews in your [settings](https://chatgpt.com/codex/cloud/settings/code-review).",
+  ];
+
+  for (const body of bodies) {
+    const state = replayState("codex", "chatgpt-codex-connector[bot]", body);
+    assert.equal(state.state, "rate-limited", `quota notification must be machine-detectable: ${body.slice(0, 48)}`);
+    // The failure this guards is the one that silently passes a fence: a quota
+    // notice converted into a clean review with zero findings.
+    assert.notEqual(state.state, "completed@target");
+    assert.ok(
+      !acceptedSignalKinds(state).includes("completion"),
+      "a quota notification must not also register as completion evidence",
+    );
+  }
+
+  // Neither quota string may be matched by the *shorter* marker alone, which is
+  // what makes listing both non-redundant rather than belt-and-braces.
+  const codex = JSON.parse(
+    readFileSync(path.join(root, "templates", "reviewers.example.json"), "utf8"),
+  ).reviewers.find((reviewer) => reviewer.id === "codex");
+  assert.ok(!bodies[1].includes("You have reached your Codex usage limits."));
+  assert.deepEqual(codex.rate_limit_marker.any_of, [
+    "You have reached your Codex usage limits.",
+    "You have reached your Codex usage limits for code reviews.",
+  ]);
+});
+
+test("a Codex review result still completes at target after the quota marker was added", () => {
+  // Regression guard for the added rate_limit_marker: a real result must not
+  // start resolving as rate-limited.
+  const state = replayState(
+    "codex",
+    "chatgpt-codex-connector[bot]",
+    `**Reviewed commit:** ${REPLAY_TARGET}\n\nNo issues found.`,
+  );
+  assert.equal(state.state, "completed@target");
+});
+
+test("both observed CodeRabbit result bodies replay as positive completion evidence", () => {
+  // The 0-finding body is the one Issue #88 adds: observed on stage-tracker
+  // PR #290 (#issuecomment-5511416364) as a conversation comment rather than a
+  // review submission. The seed records that this body was seen, not that this
+  // surface is where CodeRabbit always posts.
+  const zeroFindings = replayState(
+    "coderabbitai",
+    "coderabbitai[bot]",
+    "No actionable comments were generated in the recent review. \u{1F389}\n\n<details>\n<summary>Pre-merge checks</summary>\n\nDocstring Coverage: warning\n\n</details>",
+  );
+  assert.ok(
+    acceptedSignalKinds(zeroFindings).includes("completion"),
+    "a 0-finding CodeRabbit run must register as completion evidence, not as silence",
+  );
+
+  // The pre-existing path must keep resolving exactly as before.
+  const withFindings = replayState(
+    "coderabbitai",
+    "coderabbitai[bot]",
+    "Actionable comments posted: 3\n\n<details>\n<summary>Review details</summary>\n</details>",
+  );
+  assert.ok(
+    acceptedSignalKinds(withFindings).includes("completion"),
+    "the existing Actionable-comments path must not regress",
+  );
+
+  // CodeRabbit declares no target_pattern, so neither body binds itself to a
+  // commit. That is unchanged by this Issue and is why the added marker cannot
+  // manufacture a `completed@target` for an advisory reviewer.
+  for (const state of [zeroFindings, withFindings]) {
+    assert.notEqual(state.state, "completed@target");
+    assert.ok(state.reason_codes.includes("target_binding_missing"));
+  }
+});
+
+test("the Claude completion and in-flight behavior is unchanged by the notes correction", () => {
+  const completed = replayState(
+    "claude",
+    "claude[bot]",
+    `**Claude finished @reitojike's task**\n\nLooks good.\n\nReviewed commit: ${REPLAY_TARGET}`,
+  );
+  assert.equal(completed.state, "completed@target");
+
+  const working = replayState("claude", "claude[bot]", "Claude Code is working on this…");
+  assert.equal(working.state, "in-flight");
 });
