@@ -1,4 +1,0 @@
-policy/core.md
-test/fixtures/consumer/AGENTS.md
-test/merge-ready-fence-lib.test.mjs
-tooling/merge-ready-fence-lib.mjs
