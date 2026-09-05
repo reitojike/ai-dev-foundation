@@ -694,6 +694,165 @@ test("a Selection that declared no skill at all is unknown, not vacuously routed
 });
 
 // ---------------------------------------------------------------------------
+// Issue #83: artifacts the table could not place, and the routing that hid it.
+//
+// The reproduction recorded on the Issue is the pre-fix baseline: each target
+// below derived no class at all, so `review-doc` alone came back `unknown` and
+// the only route to `pass` was declaring both mandatory skills. Every fixture
+// here asserts the reason codes as well as the status — a `pass` still
+// carrying `artifact_class_unresolved_covered_by_declaration` would be the
+// same degeneration wearing a green status.
+// ---------------------------------------------------------------------------
+
+/** Route one changed-artifact set through the fence and return its skill-routing check. */
+function routingFor(paths, declaredSkills) {
+  const { fence } = runFence({
+    snapshot: evidence({ files: paths.map((path) => file(path)) }),
+    inputs: { artifacts: paths, declaredSkills },
+  });
+  return checkOf(fence, "skill-routing");
+}
+
+test("fixture 24: a nested architecture document routes to review-doc on its own", () => {
+  const classification = classifyArtifactPaths(["docs/architecture/authentication.md"]);
+  assert.deepEqual(classification.classes, ["Normative"]);
+  assert.deepEqual(classification.required_skills, ["review-doc"]);
+  assert.deepEqual(classification.unresolved_paths, []);
+
+  const passed = routingFor(["docs/architecture/authentication.md"], ["review-doc"]);
+  assert.equal(passed.status, "pass");
+  assert.deepEqual(passed.reason_codes, []);
+});
+
+test("fixture 24b: the same document makes a missing review-doc detectable", () => {
+  const missing = routingFor(["docs/architecture/authentication.md"], ["review-code"]);
+  assert.equal(missing.status, "fail");
+  assert.deepEqual(missing.reason_codes, ["required_skill_missing"]);
+  assert.deepEqual(missing.detail.missing_skills, ["review-doc"]);
+});
+
+test("fixture 25: product-direction documents route to review-doc", () => {
+  const classification = classifyArtifactPaths(["docs/prd.md", "docs/roadmap.md", "docs/ux-ui.md"]);
+  assert.deepEqual(classification.classes, ["Normative"]);
+  assert.deepEqual(classification.required_skills, ["review-doc"]);
+  assert.deepEqual(classification.unresolved_paths, []);
+
+  const passed = routingFor(["docs/prd.md", "docs/roadmap.md"], ["review-doc"]);
+  assert.equal(passed.status, "pass");
+  assert.deepEqual(passed.reason_codes, []);
+
+  const missing = routingFor(["docs/prd.md", "docs/roadmap.md"], []);
+  assert.equal(missing.status, "fail");
+  assert.deepEqual(missing.detail.missing_skills, ["review-doc"]);
+});
+
+test("fixture 26: the routing rows that already worked are unchanged", () => {
+  const normative = routingFor([".ai-dev-foundation/product-rules.md"], ["review-doc"]);
+  assert.equal(normative.status, "pass");
+  assert.deepEqual(normative.reason_codes, []);
+  assert.equal(routingFor([".ai-dev-foundation/product-rules.md"], ["review-code"]).status, "fail");
+
+  const executable = routingFor(["src/proxy.ts"], ["review-code"]);
+  assert.equal(executable.status, "pass");
+  assert.deepEqual(executable.reason_codes, []);
+  assert.equal(routingFor(["src/proxy.ts"], ["review-doc"]).status, "fail");
+
+  const mixedPaths = ["src/proxy.ts", ".ai-dev-foundation/product-rules.md"];
+  const mixed = routingFor(mixedPaths, ["review-code", "review-doc"]);
+  assert.equal(mixed.status, "pass");
+  assert.deepEqual(mixed.reason_codes, []);
+  assert.deepEqual(mixed.detail.derived_required_skills, ["review-code", "review-doc"]);
+  assert.equal(routingFor(mixedPaths, ["review-code"]).status, "fail");
+  assert.equal(routingFor(mixedPaths, ["review-doc"]).status, "fail");
+});
+
+test("fixture 27: a raster image carries no mandatory review skill, whatever it is for", () => {
+  // A product asset and a documentation image land in the same class on
+  // purpose: neither mandatory skill has text semantics to read in a bitmap,
+  // so what the image is for does not change the required routing.
+  const classification = classifyArtifactPaths(["public/pwa/icon-192.png", "docs/architecture/sequence.jpg"]);
+  assert.deepEqual(classification.classes, ["Informational"]);
+  assert.deepEqual(classification.required_skills, []);
+  assert.deepEqual(classification.unresolved_paths, []);
+
+  // Before this rule existed, an image-only target could reach `pass` only by
+  // declaring both skills. It now needs neither.
+  const passed = routingFor(["public/pwa/icon-192.png", "public/pwa/icon-512.png"], []);
+  assert.equal(passed.status, "pass");
+  assert.deepEqual(passed.reason_codes, []);
+});
+
+test("fixture 27b: an image beside code adds no skill and conceals none", () => {
+  const check = routingFor(["src/app.ts", "public/pwa/icon-192.png"], ["review-code"]);
+  assert.equal(check.status, "pass");
+  assert.deepEqual(check.reason_codes, []);
+  assert.deepEqual(check.detail.derived_classes, ["Executable", "Informational"]);
+  assert.deepEqual(check.detail.derived_required_skills, ["review-code"]);
+});
+
+test("fixture 28: a genuinely unplaceable path is still unresolved, not swept into a class", () => {
+  // A binary that is not an image, an extensionless file, and SVG — which is
+  // text and can carry executable content, so a path alone cannot place it.
+  for (const path of ["data/opaque-blob.bin", "Makefile", "assets/logo.svg"]) {
+    assert.equal(classifyArtifactPath(path), null, path);
+  }
+  const check = routingFor(["data/opaque-blob.bin"], ["review-code"]);
+  assert.equal(check.status, "unknown");
+  assert.deepEqual(check.reason_codes, ["artifact_class_unresolved"]);
+});
+
+test("fixture 28b: a document kind no classification entry names stays unresolved", () => {
+  // These are canonical records in a consumer repository, but no Artifact
+  // classification entry names their document kind. Placing them would be the
+  // checker deciding classification, which the Skill routing contract reserves
+  // for the Selection Contract.
+  assert.equal(classifyArtifactPath("docs/screens.md"), null);
+  assert.equal(classifyArtifactPath("docs/holiday-data.md"), null);
+  assert.equal(classifyArtifactPath("docs/runbooks/catalog-import.md"), null);
+});
+
+test("fixture 28c: a directory that merely ends with a known name does not place a document", () => {
+  // The classification entry names the `architecture` directory, not any
+  // directory whose name contains it. A substring test would place all three
+  // of these, inventing a `review-doc` obligation for documents whose kind the
+  // table cannot actually determine.
+  assert.equal(classifyArtifactPath("docs/software-architecture/notes.md"), null);
+  assert.equal(classifyArtifactPath("docs/notarchitecture/notes.md"), null);
+  assert.equal(classifyArtifactPath("mypolicy/core.md"), null);
+
+  // The segments themselves still place their documents, at any depth.
+  assert.equal(classifyArtifactPath("policy/core.md"), "Normative");
+  assert.equal(classifyArtifactPath(".ai-dev-foundation/skills/review-code.md"), "Normative");
+  assert.equal(classifyArtifactPath("docs/architecture/nested/deep/decision.md"), "Normative");
+});
+
+test("fixture 29: the unresolved fallback cannot hide a known artifact missing its skill", () => {
+  // The fallback is reached only after every derived required skill is already
+  // present, so an unresolved path travelling with a known Normative document
+  // cannot convert that document missing `review-doc` into a covered pass.
+  const check = routingFor(["docs/architecture/authentication.md", "data/opaque-blob.bin"], ["review-code"]);
+  assert.equal(check.status, "fail");
+  assert.deepEqual(check.reason_codes, ["required_skill_missing"]);
+  assert.deepEqual(check.detail.missing_skills, ["review-doc"]);
+  assert.deepEqual(check.detail.unresolved_paths, ["data/opaque-blob.bin"]);
+});
+
+test("fixture 29b: reaching pass through the fallback stays visible as a distinct reason", () => {
+  // Kept deliberately. An unresolved path covered by declaring every mandatory
+  // skill still passes — narrowing that would strand any target holding a
+  // genuinely unplaceable artifact — but it never passes silently. The reason
+  // code and the unresolved path list are what keep the "always declare both"
+  // degeneration observable instead of invisible.
+  const check = routingFor(
+    ["docs/architecture/authentication.md", "data/opaque-blob.bin"],
+    ["review-code", "review-doc"],
+  );
+  assert.equal(check.status, "pass");
+  assert.deepEqual(check.reason_codes, ["artifact_class_unresolved_covered_by_declaration"]);
+  assert.deepEqual(check.detail.unresolved_paths, ["data/opaque-blob.bin"]);
+});
+
+// ---------------------------------------------------------------------------
 // Deterministic verification coherence
 // ---------------------------------------------------------------------------
 

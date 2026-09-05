@@ -253,12 +253,16 @@ Review 強度と停止条件は artifact の種類で分けます。
 - **Executable**: TS/TSX/SQL/workflow/config 等、実行される、または実行に影響するコード。
   deterministic verify を先に実行し、candidate SHA を freeze した上で、原則として独立
   AI reviewer による discovery -> triage -> batch fix -> verify -> targeted closure を行います。
-- **Normative**: AGENTS / Skill / PRODUCT / ARCHITECTURE / ADR 等、後続 agent や実装を
-  拘束する文書。mechanical markdown check の後、semantic discovery は原則 1 round とし、
-  triage / fix の後は closure verification のみを行います。重要な normative contract は
-  独立 reviewer を 2 系統使ってよいですが、各 reviewer の discovery は 1 回を基本とします。
+- **Normative**: AGENTS / Skill / PRODUCT / PRD / ROADMAP / UX-UI / ARCHITECTURE / ADR 等、
+  後続 agent や実装を拘束する文書。mechanical markdown check の後、semantic discovery は
+  原則 1 round とし、triage / fix の後は closure verification のみを行います。重要な
+  normative contract は独立 reviewer を 2 系統使ってよいですが、各 reviewer の discovery
+  は 1 回を基本とします。
 - **Informational**: README / research note / log 等。mechanical check を中心とし、
-  open-ended AI review を通常の merge gate にしません。
+  open-ended AI review を通常の merge gate にしません。PNG / JPEG 等の raster image asset
+  も、product asset か documentation image かを問わずここに含みます（open-ended AI review
+  が読む text semantics を持たず、この性質は用途で変わらないため）。text であり実行され得る
+  内容を持ち得る SVG は raster image ではなく、ここに含みません。
 
 ### Review contracts
 
