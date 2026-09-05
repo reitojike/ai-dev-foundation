@@ -49,9 +49,11 @@ test("the reviewer capability record materializes the reviewer portfolio without
     "advisory must not read as permission to ignore the findings that did arrive",
   );
 
-  // Rate limit stays a first-class, detectable state that routes to a fallback
-  // instead of being converted to success or 0 findings.
-  assert.deepEqual(byId.coderabbitai.rate_limit_marker.any_of, ["Review rate limited", "0 remain"]);
+  // Rate limit stays a first-class, detectable state instead of being converted
+  // to success or 0 findings. Which texts are the observed evidence for that
+  // state is owned by the replay fixtures in reviewer-capability-record.test.mjs,
+  // so refreshing an observed marker does not have to be done in two places.
+  assert.ok(byId.coderabbitai.rate_limit_marker.any_of.includes("Review rate limited"));
 
   // Required slot: one slot, filled preferring a different provider family from
   // the implementer, with an explicit successor when the first choice is
