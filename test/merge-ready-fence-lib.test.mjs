@@ -811,6 +811,21 @@ test("fixture 28b: a document kind no classification entry names stays unresolve
   assert.equal(classifyArtifactPath("docs/runbooks/catalog-import.md"), null);
 });
 
+test("fixture 28c: a directory that merely ends with a known name does not place a document", () => {
+  // The classification entry names the `architecture` directory, not any
+  // directory whose name contains it. A substring test would place all three
+  // of these, inventing a `review-doc` obligation for documents whose kind the
+  // table cannot actually determine.
+  assert.equal(classifyArtifactPath("docs/software-architecture/notes.md"), null);
+  assert.equal(classifyArtifactPath("docs/notarchitecture/notes.md"), null);
+  assert.equal(classifyArtifactPath("mypolicy/core.md"), null);
+
+  // The segments themselves still place their documents, at any depth.
+  assert.equal(classifyArtifactPath("policy/core.md"), "Normative");
+  assert.equal(classifyArtifactPath(".ai-dev-foundation/skills/review-code.md"), "Normative");
+  assert.equal(classifyArtifactPath("docs/architecture/nested/deep/decision.md"), "Normative");
+});
+
 test("fixture 29: the unresolved fallback cannot hide a known artifact missing its skill", () => {
   // The fallback is reached only after every derived required skill is already
   // present, so an unresolved path travelling with a known Normative document

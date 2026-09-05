@@ -1,0 +1,346 @@
+{
+  "schema": "ai-dev-foundation/review-evidence-state@1",
+  "repo": "reitojike/ai-dev-foundation",
+  "pull_number": 85,
+  "captured_at": "2026-09-05T01:36:46.201Z",
+  "coverage_complete": true,
+  "incomplete_surfaces": [],
+  "target": {
+    "sha": "7aefcac8e93e1ba0ac0686993bc26195631f3b50"
+  },
+  "canonical_objects": [
+    {
+      "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/conversation_comment/database:5548407415",
+      "object_kind": "conversation_comment",
+      "identity": {
+        "status": "stable",
+        "database_id": "5548407415",
+        "node_id": null
+      },
+      "sources": [
+        {
+          "surface": "conversation_comments",
+          "surface_id": "5548407415"
+        }
+      ],
+      "current": {
+        "body": "## Selection Contract record (discovery stage)\n\nIssue #83 / PR #85 の formal review の Selection です。\n`policy/core.md` の Review Protocol、`skills/review-code.md`、\n`skills/review-doc.md` に従います。\n\n### Artifact classification\n\n**Mixed（Executable + Normative）**\n\n| artifact | class |\n| --- | --- |\n| `tooling/merge-ready-fence-lib.mjs` | Executable |\n| `test/merge-ready-fence-lib.test.mjs` | Executable |\n| `policy/core.md` | Normative |\n| `test/fixtures/consumer/AGENTS.md` | Normative（generated adapter） |\n\nMixed のため、required review skill として `review-code` と `review-doc` の\n**両方**を宣言します。\n\n### Target\n\n- expected target SHA（frozen）: `7aefcac8e93e1ba0ac0686993bc26195631f3b50`\n- base SHA（frozen）: `4db87c5e3b559717c0ba35dd991f36cc425a8f99`\n- commit range: `4db87c5..7aefcac`（single commit）\n- target artifact set: 上表の 4 file（PR の changed file 全体と一致）\n\n### Reviewer / capability\n\nreviewer capability record（`.ai-dev-foundation/reviewers.json`,\n`required_selection.count = 1`,\n`prefer = different-provider-family-from-implementer`）に従います。\n\n- **required（1）**: `codex`（`provider_family: openai`）。実装した agent は\n  `anthropic` family のため、prefer に従い第一候補として選択します。\n  trigger は `comment_command` = `@codex review`、`target_argument` で\n  frozen target を渡し、結果に `Reviewed commit:` を含めるよう要求します。\n- **fallback order**: `codex` → `claude`。codex が unavailable /\n  rate-limited / failed の場合は Selection amendment を記録して required\n  slot を `claude` の run へ移します。\n- **advisory**: `coderabbitai`。`.coderabbit.yaml` で\n  `auto_review.enabled: false` のため自動起動せず、本 Selection では明示\n  trigger しません。advisory は required 数に算入せず blocker にもしません。\n  ただし merge-ready 判定までに review surface へ到着した finding は、class に\n  関係なく triage / Resolution の対象として扱います。\n\n### Expected review set\n\nSelection 時点で PR #85 の conversation comment / review submission /\ninline comment を fresh 取得し、actor は **0 件**でした\n（`gh api .../issues/85/comments`、`.../pulls/85/reviews` いずれも空）。\n\nしたがって現時点の expected review set は required の `codex` のみです。\nAcquisition 時に再度 fresh 列挙し、この review flow のいずれかの target 上に\nreview 行為を識別できる actor が現れた場合は expected member として追加し、\nSelection amendment を記録します。\n\n### Mechanical check / deterministic verify\n\nfrozen target `7aefcac` に対して実行し、すべて成功しています。\n\n- `npm test` — 257 pass / 0 fail / 1 skipped\n- `npm run test:guardrails` — Verified 8 guardrail fixtures\n- `npm run check:fixture` — generated adapters / quality profile / skill bundle /\n  reviewer capability record すべて current\n- markdown mechanical check: `npx prettier --check policy/core.md\n  test/fixtures/consumer/AGENTS.md` — All matched files use Prettier code style\n- `git diff --check 4db87c5..HEAD` — clean\n\nscope: repo-wide（`npm test` / guardrails / check:fixture）。markdown check は\n本 target の Normative artifact 2 file を明示的にカバーしています。\nしたがって直近の successful verify / mechanical check evidence は、確定した\ntarget SHA と target artifact set の両方をカバーしています。\n\n### Required review 数\n\n**1**（record の `required_selection.count`）。\n`validity: valid` な run が 1 件揃うまで triage へ進みません。\n",
+        "body_digest": "sha256:a1d95ed52611854b80a9beb106051a800333e3cc75b6baf789d41827947d7f07",
+        "body_status": "current",
+        "created_at": "2026-09-05T01:27:13Z",
+        "updated_at": "2026-09-05T01:27:13Z",
+        "captured_at": "2026-09-05T01:36:46.201Z",
+        "revision": {
+          "updated_at": "2026-09-05T01:27:13Z",
+          "body_digest": "sha256:a1d95ed52611854b80a9beb106051a800333e3cc75b6baf789d41827947d7f07",
+          "captured_at": "2026-09-05T01:36:46.201Z"
+        },
+        "actor": {
+          "status": "stable",
+          "database_id": "54256093",
+          "node_id": "MDQ6VXNlcjU0MjU2MDkz",
+          "logins": [
+            "reitojike"
+          ]
+        },
+        "ownership": {
+          "status": "not_applicable"
+        },
+        "review_state": null,
+        "thread_id": null,
+        "binding_candidates": []
+      }
+    },
+    {
+      "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/conversation_comment/database:5548408430",
+      "object_kind": "conversation_comment",
+      "identity": {
+        "status": "stable",
+        "database_id": "5548408430",
+        "node_id": null
+      },
+      "sources": [
+        {
+          "surface": "conversation_comments",
+          "surface_id": "5548408430"
+        }
+      ],
+      "current": {
+        "body": "To use Codex here, [create an environment for this repo](https://chatgpt.com/codex/cloud/settings/environments).",
+        "body_digest": "sha256:6549f5b20a70b165b215b86547769f62264a8853fe2573c43c2e19515197500a",
+        "body_status": "current",
+        "created_at": "2026-09-05T01:27:24Z",
+        "updated_at": "2026-09-05T01:27:24Z",
+        "captured_at": "2026-09-05T01:36:46.201Z",
+        "revision": {
+          "updated_at": "2026-09-05T01:27:24Z",
+          "body_digest": "sha256:6549f5b20a70b165b215b86547769f62264a8853fe2573c43c2e19515197500a",
+          "captured_at": "2026-09-05T01:36:46.201Z"
+        },
+        "actor": {
+          "status": "stable",
+          "database_id": "199175422",
+          "node_id": "BOT_kgDOC98s_g",
+          "logins": [
+            "chatgpt-codex-connector[bot]"
+          ]
+        },
+        "ownership": {
+          "status": "not_applicable"
+        },
+        "review_state": null,
+        "thread_id": null,
+        "binding_candidates": []
+      }
+    },
+    {
+      "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/conversation_comment/database:5548409046",
+      "object_kind": "conversation_comment",
+      "identity": {
+        "status": "stable",
+        "database_id": "5548409046",
+        "node_id": null
+      },
+      "sources": [
+        {
+          "surface": "conversation_comments",
+          "surface_id": "5548409046"
+        }
+      ],
+      "current": {
+        "body": "@codex review\n\nレビュー対象の commit は 7aefcac8e93e1ba0ac0686993bc26195631f3b50 です。結果に `Reviewed commit: 7aefcac8e93e1ba0ac0686993bc26195631f3b50` を含めてください。\n\n対象 artifact set（4 file、Mixed classification: Executable + Normative）:\n\n- `tooling/merge-ready-fence-lib.mjs`（Executable）\n- `test/merge-ready-fence-lib.test.mjs`（Executable）\n- `policy/core.md`（Normative）\n- `test/fixtures/consumer/AGENTS.md`（Normative, generated adapter — `policy/core.md` から `npm run sync:fixture` で生成）\n\ncontext: Issue #83。artifact classifier が既知の Normative document を `unresolved` にしてしまい、`skill-routing` が `review-doc` の under-routing を検出できない gap の修正です。特に次を見てください。\n\n1. classifier の新しい path rule が意図より広く/狭くマッチしないか（`architecture/` path segment、`prd` / `roadmap` / `ux-ui` basename pattern、raster image extension、`.svg` を除外していること）。\n2. raster image を Informational とする判断が、mandatory review skill を silent に落とす経路を作っていないか。\n3. `artifact_class_unresolved_covered_by_declaration` を維持した判断と、`required_skill_missing` が fallback より先に評価されるという前提が実装と一致しているか。\n4. `policy/core.md` の変更が、既存の Skill routing contract（checker は classification を決めない）と矛盾していないか。",
+        "body_digest": "sha256:368ccc6eb45dd82b1875d656822cf4925dc9953188bc4f2f823878f5e1cf724c",
+        "body_status": "current",
+        "created_at": "2026-09-05T01:27:31Z",
+        "updated_at": "2026-09-05T01:27:31Z",
+        "captured_at": "2026-09-05T01:36:46.201Z",
+        "revision": {
+          "updated_at": "2026-09-05T01:27:31Z",
+          "body_digest": "sha256:368ccc6eb45dd82b1875d656822cf4925dc9953188bc4f2f823878f5e1cf724c",
+          "captured_at": "2026-09-05T01:36:46.201Z"
+        },
+        "actor": {
+          "status": "stable",
+          "database_id": "54256093",
+          "node_id": "MDQ6VXNlcjU0MjU2MDkz",
+          "logins": [
+            "reitojike"
+          ]
+        },
+        "ownership": {
+          "status": "not_applicable"
+        },
+        "review_state": null,
+        "thread_id": null,
+        "binding_candidates": []
+      }
+    },
+    {
+      "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/review/database:5119175690",
+      "object_kind": "review",
+      "identity": {
+        "status": "stable",
+        "database_id": "5119175690",
+        "node_id": null
+      },
+      "sources": [
+        {
+          "surface": "review_submissions",
+          "surface_id": "5119175690"
+        }
+      ],
+      "current": {
+        "body": "\n### 💡 Codex Review\n\nHere are some automated review suggestions for this pull request.\n\n**Reviewed commit:** `7aefcac8e9`\n    \n\n<details> <summary>ℹ️ About Codex in GitHub</summary>\n<br/>\n\n[Your team has set up Codex to review pull requests in this repo](https://chatgpt.com/codex/cloud/settings/general). Reviews are triggered when you\n- Open a pull request for review\n- Mark a draft as ready\n- Comment \"@codex review\".\n\nIf Codex has suggestions, it will comment; otherwise it will react with 👍.\n\n\n\n\nCodex can also answer questions or update the PR. Try commenting \"@codex address that feedback\".\n            \n</details>",
+        "body_digest": "sha256:fb5ebd4629ca1513e1de05aa331c75977c6b0d0f36de311b01d9de73c26c001b",
+        "body_status": "current",
+        "created_at": "2026-09-05T01:30:28Z",
+        "updated_at": null,
+        "captured_at": "2026-09-05T01:36:46.201Z",
+        "revision": {
+          "updated_at": null,
+          "body_digest": "sha256:fb5ebd4629ca1513e1de05aa331c75977c6b0d0f36de311b01d9de73c26c001b",
+          "captured_at": "2026-09-05T01:36:46.201Z"
+        },
+        "actor": {
+          "status": "stable",
+          "database_id": "199175422",
+          "node_id": "BOT_kgDOC98s_g",
+          "logins": [
+            "chatgpt-codex-connector[bot]"
+          ]
+        },
+        "ownership": {
+          "status": "not_applicable"
+        },
+        "review_state": "COMMENTED",
+        "thread_id": null,
+        "binding_candidates": [
+          {
+            "tier": 2,
+            "basis": "review.submitted_commit",
+            "target": "7aefcac8e93e1ba0ac0686993bc26195631f3b50"
+          }
+        ]
+      }
+    },
+    {
+      "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/review_comment/database:3939000383",
+      "object_kind": "review_comment",
+      "identity": {
+        "status": "stable",
+        "database_id": "3939000383",
+        "node_id": "PRRC_kwDOT8cyus7qyGA_"
+      },
+      "sources": [
+        {
+          "surface": "inline_review_comments",
+          "surface_id": "3939000383"
+        },
+        {
+          "surface": "review_threads",
+          "surface_id": "PRRC_kwDOT8cyus7qyGA_"
+        }
+      ],
+      "current": {
+        "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  `architecture` を完全な path segment として照合する**\n\n`docs/software-architecture/notes.md` や `docs/notarchitecture/notes.md` のように directory 名が `architecture` で終わる場合も、`lowered.includes(\"architecture/\")` が真になり、本来 unresolved である文書を Normative と誤分類して `review-doc` を必須にします。意図した `architecture/` segment だけに限定するため、path を `/` で分割して segment の完全一致を確認してください。Reviewed commit: 7aefcac8e93e1ba0ac0686993bc26195631f3b50\n\nUseful? React with 👍 / 👎.",
+        "body_digest": "sha256:919e4bbff40175d2854d0aea13f8a7848aa7c407da5797a2d8979c6670cbe0f9",
+        "body_status": "current",
+        "created_at": "2026-09-05T01:30:28Z",
+        "updated_at": "2026-09-05T01:30:28Z",
+        "captured_at": "2026-09-05T01:36:46.201Z",
+        "revision": {
+          "updated_at": "2026-09-05T01:30:28Z",
+          "body_digest": "sha256:919e4bbff40175d2854d0aea13f8a7848aa7c407da5797a2d8979c6670cbe0f9",
+          "captured_at": "2026-09-05T01:36:46.201Z"
+        },
+        "actor": {
+          "status": "stable",
+          "database_id": "199175422",
+          "node_id": "BOT_kgDOC98s_g",
+          "logins": [
+            "chatgpt-codex-connector",
+            "chatgpt-codex-connector[bot]"
+          ]
+        },
+        "ownership": {
+          "status": "owned",
+          "review_id": "5119175690",
+          "review_node_id": null,
+          "review_canonical_id": "github://reitojike/ai-dev-foundation/pull/85/review/database:5119175690"
+        },
+        "review_state": null,
+        "thread_id": "PRRT_kwDOT8cyus6ffEt3",
+        "binding_candidates": [
+          {
+            "tier": 1,
+            "basis": "comment.original_commit",
+            "target": "7aefcac8e93e1ba0ac0686993bc26195631f3b50"
+          },
+          {
+            "tier": 2,
+            "basis": "review.owner.submitted_commit",
+            "target": "7aefcac8e93e1ba0ac0686993bc26195631f3b50"
+          },
+          {
+            "tier": 4,
+            "basis": "comment.commit",
+            "target": "7aefcac8e93e1ba0ac0686993bc26195631f3b50"
+          }
+        ]
+      }
+    }
+  ],
+  "reviewer_states": [
+    {
+      "reviewer": "codex",
+      "target": "7aefcac8e93e1ba0ac0686993bc26195631f3b50",
+      "state": "completed@target",
+      "coverage_complete": true,
+      "evidence": [
+        {
+          "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/review_comment/database:3939000383",
+          "sources": [
+            {
+              "surface": "inline_review_comments",
+              "surface_id": "3939000383"
+            },
+            {
+              "surface": "review_threads",
+              "surface_id": "PRRC_kwDOT8cyus7qyGA_"
+            }
+          ],
+          "revision": {
+            "updated_at": "2026-09-05T01:30:28Z",
+            "body_digest": "sha256:919e4bbff40175d2854d0aea13f8a7848aa7c407da5797a2d8979c6670cbe0f9",
+            "captured_at": "2026-09-05T01:36:46.201Z"
+          }
+        }
+      ],
+      "observed_signals": [
+        {
+          "kind": "completion",
+          "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/conversation_comment/database:5548407415",
+          "event_at": "2026-09-05T01:27:13Z",
+          "target_claim": null,
+          "attribution": "unknown",
+          "anchor": "unproven",
+          "accepted": false,
+          "reason_code": "actor_unattributed"
+        },
+        {
+          "kind": "completion",
+          "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/conversation_comment/database:5548409046",
+          "event_at": "2026-09-05T01:27:31Z",
+          "target_claim": "7aefcac8e93e1ba0ac0686993bc26195631f3b50",
+          "attribution": "unknown",
+          "anchor": "matched",
+          "accepted": false,
+          "reason_code": "actor_unattributed"
+        },
+        {
+          "kind": "completion",
+          "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/review/database:5119175690",
+          "event_at": "2026-09-05T01:30:28Z",
+          "target_claim": "7aefcac8e9",
+          "attribution": "attributed",
+          "anchor": "matched",
+          "accepted": true
+        },
+        {
+          "kind": "completion",
+          "canonical_id": "github://reitojike/ai-dev-foundation/pull/85/review_comment/database:3939000383",
+          "event_at": "2026-09-05T01:30:28Z",
+          "target_claim": "7aefcac8e93e1ba0ac0686993bc26195631f3b50",
+          "attribution": "attributed",
+          "anchor": "matched",
+          "accepted": true
+        }
+      ],
+      "reason_codes": [
+        "actor_unattributed"
+      ]
+    },
+    {
+      "reviewer": "claude",
+      "target": "7aefcac8e93e1ba0ac0686993bc26195631f3b50",
+      "state": "unknown",
+      "coverage_complete": true,
+      "evidence": [],
+      "observed_signals": [],
+      "reason_codes": [
+        "no_current_run_signal"
+      ]
+    },
+    {
+      "reviewer": "coderabbitai",
+      "target": "7aefcac8e93e1ba0ac0686993bc26195631f3b50",
+      "state": "unknown",
+      "coverage_complete": true,
+      "evidence": [],
+      "observed_signals": [],
+      "reason_codes": [
+        "no_current_run_signal"
+      ]
+    }
+  ]
+}

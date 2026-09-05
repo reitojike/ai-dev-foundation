@@ -90,10 +90,11 @@ const INFORMATIONAL_IMAGE_EXTENSIONS = new Set([
 
 const NORMATIVE_BASENAMES = new Set(["agents.md", "claude.md"]);
 
-// `architecture/` covers the nested form (`docs/architecture/authentication.md`)
-// that the sibling basename pattern below cannot see, because there the
-// document kind is carried by the directory rather than by the file name.
-const NORMATIVE_PATH_SEGMENTS = ["policy/", "skills/", "architecture/"];
+// Directory names that carry the document kind when the file name does not
+// (`docs/architecture/authentication.md`). Compared as whole path segments:
+// a substring test would also place `docs/software-architecture/notes.md` and
+// `mypolicy/core.md`, whose document kind no classification entry names.
+const NORMATIVE_PATH_SEGMENTS = ["policy", "skills", "architecture"];
 
 const NORMATIVE_BASENAME_PATTERNS = [
   /^product([-._].*)?\.md$/,
@@ -130,7 +131,8 @@ export function classifyArtifactPath(path) {
   if (extensionOf(basename) === ".md") {
     const lowered = normalized.toLowerCase();
     if (NORMATIVE_BASENAMES.has(basename)) return "Normative";
-    if (NORMATIVE_PATH_SEGMENTS.some((segment) => lowered.includes(segment))) return "Normative";
+    const directories = lowered.split("/").slice(0, -1);
+    if (directories.some((segment) => NORMATIVE_PATH_SEGMENTS.includes(segment))) return "Normative";
     if (NORMATIVE_BASENAME_PATTERNS.some((pattern) => pattern.test(basename))) return "Normative";
   }
   return null;
