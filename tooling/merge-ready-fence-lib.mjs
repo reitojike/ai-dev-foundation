@@ -67,10 +67,12 @@ export const COMPLETED_RESULT_STATES = ["completed@target", "not-bound"];
 // invent an obligation. Neither is the machine's call.
 // ---------------------------------------------------------------------------
 
+// ".module.css" also lands here: extensionOf() takes the final "." segment,
+// so no separate compound-extension rule is needed (Issue #86).
 const EXECUTABLE_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts",
   ".sql", ".sh", ".bash", ".ps1", ".py", ".rb", ".go", ".rs", ".java", ".kt", ".swift",
-  ".json", ".yaml", ".yml", ".toml",
+  ".json", ".yaml", ".yml", ".toml", ".css",
 ]);
 
 const INFORMATIONAL_BASENAMES = new Set([
