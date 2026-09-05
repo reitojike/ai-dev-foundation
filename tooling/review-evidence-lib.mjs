@@ -413,6 +413,72 @@ function normalizePullRequestFile(item) {
   };
 }
 
+function encodeRefPath(ref) {
+  return ref.split("/").map(encodeURIComponent).join("/");
+}
+
+// Where the PR's base branch currently points.
+//
+// The PR object's `base.sha` is a snapshot field: it does not advance when the
+// base branch alone moves, so it cannot answer "has the base moved since the
+// target was frozen?" (Issue #82). This reads the base ref itself, once, in the
+// same fresh acquisition, and reports that ref's current commit SHA as its own
+// fact. It stays mechanical — it compares nothing and decides nothing about
+// whether a moved base is acceptable.
+//
+// Anything short of a confirmed commit SHA (PR metadata failure, missing ref,
+// deleted branch, a response carrying no object SHA) is reported as
+// not_applicable/failed with `tip_sha: null` — never as an empty-but-fetched
+// value a caller could read as "unchanged".
+export async function fetchBaseBranchTip(fetchImpl, token, owner, repo, prBody) {
+  const baseRef = typeof prBody?.base?.ref === "string" ? prBody.base.ref.trim() : "";
+  if (baseRef === "") {
+    return {
+      fetch_status: "not_applicable",
+      failure: null,
+      repo: null,
+      ref: null,
+      tip_sha: null,
+      note: "base ref unavailable because PR metadata fetch failed or carried no base ref",
+    };
+  }
+  // The base repository is the one the PR targets — where the base ref lives
+  // even when the head is a fork. `base.repo` is preferred over the requested
+  // owner/repo so the ref is resolved on the repository the PR actually merges
+  // into, and the requested owner/repo is only a fallback when the PR object
+  // did not carry it.
+  const baseOwner = prBody.base.repo?.owner?.login ?? owner;
+  const baseRepo = prBody.base.repo?.name ?? repo;
+  const baseRepoFullName = baseOwner + "/" + baseRepo;
+  // The singular `git/ref/heads/<ref>` form is an exact-match lookup: a ref
+  // that does not exist is a 404 rather than a prefix match on some other
+  // branch, so a deleted or renamed base branch cannot resolve to a SHA.
+  const url = `${GITHUB_API_ROOT}/repos/${baseOwner}/${baseRepo}/git/ref/heads/${encodeRefPath(baseRef)}`;
+  let body;
+  try {
+    ({ body } = await fetchRestPage(fetchImpl, token, url));
+  } catch (error) {
+    return {
+      fetch_status: "failed",
+      failure: error.failure ?? { status: null, message: error.message },
+      repo: baseRepoFullName,
+      ref: baseRef,
+      tip_sha: null,
+    };
+  }
+  const tipSha = typeof body?.object?.sha === "string" && body.object.sha.trim() !== "" ? body.object.sha : null;
+  if (!tipSha) {
+    return {
+      fetch_status: "failed",
+      failure: { status: null, message: "base ref response carried no commit SHA" },
+      repo: baseRepoFullName,
+      ref: baseRef,
+      tip_sha: null,
+    };
+  }
+  return { fetch_status: "fetched", failure: null, repo: baseRepoFullName, ref: baseRef, tip_sha: tipSha };
+}
+
 function notApplicableSurface(note) {
   return { fetch_status: "not_applicable", count: null, pages_fetched: 0, items: [], failure: null, note };
 }
@@ -437,12 +503,13 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
   }
   const headSha = prBody?.head?.sha ?? null;
 
-  const [conversationComments, reviewSubmissions, inlineReviewComments, reviewThreads, pullRequestFiles] = await Promise.all([
+  const [conversationComments, reviewSubmissions, inlineReviewComments, reviewThreads, pullRequestFiles, baseBranch] = await Promise.all([
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/issues/${pullNumber}/comments?per_page=100`),
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/reviews?per_page=100`),
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/comments?per_page=100`),
     fetchReviewThreadsSurface(fetchImpl, token, owner, repo, pullNumber),
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/files?per_page=100`),
+    fetchBaseBranchTip(fetchImpl, token, owner, repo, prBody),
   ]);
 
   // commit_status/check_runs are fetched for this snapshot's headSha only —
@@ -493,7 +560,11 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     check_runs: { ...checkRuns, items: checkRuns.items.map(normalizeCheckRun) },
   };
 
+  // base_branch is counted like a surface: a failed base-ref read is a real
+  // acquisition failure. `not_applicable` is not counted, because it only
+  // arises when PR metadata already failed, which is counted once above.
   let fetchFailures = prMetadataFailure ? 1 : 0;
+  if (baseBranch.fetch_status === "failed") fetchFailures += 1;
   for (const surface of Object.values(surfaces)) {
     if (surface.fetch_status === "failed" || surface.fetch_status === "partial") fetchFailures += 1;
   }
@@ -529,6 +600,10 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
           updated_at: null,
           body: null,
         },
+    // Where the base branch points right now, as opposed to
+    // `pr_metadata.base_sha`, which is the base commit recorded on the PR
+    // object at its last sync (Issue #82).
+    base_branch: baseBranch,
     surfaces,
     fetch_failures: fetchFailures,
   };
@@ -554,6 +629,14 @@ export function formatHumanSummary(result) {
     lines.push(`Head: ${result.pr_metadata.head_sha ?? "unknown"} (state: ${result.pr_metadata.state ?? "unknown"})`);
   } else {
     lines.push(`Head: unknown (PR metadata fetch failed: ${result.pr_metadata.failure?.message ?? "unknown error"})`);
+  }
+  const baseBranch = result.base_branch;
+  if (baseBranch?.fetch_status === "fetched") {
+    lines.push(`Base branch: ${baseBranch.ref} tip ${baseBranch.tip_sha} (${baseBranch.repo})`);
+  } else {
+    lines.push(
+      `Base branch: ${baseBranch?.fetch_status ?? "unavailable"} — ${baseBranch?.failure?.message ?? baseBranch?.note ?? "unknown error"}`,
+    );
   }
   lines.push(`Snapshot fetched at: ${result.generated_at}`);
   lines.push("");

@@ -126,11 +126,11 @@ blocking checkで検知します。
 ## Review evidence helper
 
 `tooling/review-evidence.mjs` は、指定した GitHub PR について durable review
-surface（PR metadata / head SHA / base SHA / body、Conversation comments、review
-submissions、inline review comments、review-thread comments とその resolution
-state、changed files、combined commit status、check runs）を fresh に取得し、
-pagination を完了した上で human-readable summary または `--json` machine-readable
-output を返す snapshot tool です。
+surface（PR metadata / head SHA / base SHA / body、PR が target とする base branch の
+現在の tip SHA、Conversation comments、review submissions、inline review comments、
+review-thread comments とその resolution state、changed files、combined commit
+status、check runs）を fresh に取得し、pagination を完了した上で human-readable
+summary または `--json` machine-readable output を返す snapshot tool です。
 
 ```text
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json]
@@ -236,7 +236,7 @@ exit 2 の 2 つの経路は stdout の有無で区別できます。
 | check id | pass | fail | unknown |
 | --- | --- | --- | --- |
 | `target-head` | current head == `--target-sha` | 不一致 | 取得失敗 / 宣言なし |
-| `target-base` | current base == `--base-sha` | 不一致 | 取得失敗 / 宣言なし |
+| `target-base` | base branch の現在の tip == `--base-sha` | 不一致 | tip 取得失敗 / 宣言なし |
 | `artifact-set` | changed path 集合が frozen 集合と厳密一致 | 追加・削除いずれも | files surface 取得失敗 / 宣言なし |
 | `skill-routing` | derived required skills ⊆ declared skills | derived ⊄ declared | 分類不能 path（declared が mandatory skill を網羅していれば pass）/ 宣言なし |
 | `reviewer-completion` | required reviewer がすべて `completed@target` | `not-bound` / `rate-limited` / `failed` / `declined` | `in-flight` / `unknown` / record に無い id |

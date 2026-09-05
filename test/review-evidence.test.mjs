@@ -38,10 +38,25 @@ const PR_META = {
   body: "PR body text",
 };
 
+const BASE_TIP = "basetip0";
+
 function prRoute(pr = PR_META) {
   return {
     match: (url, init) => url.endsWith("/repos/octo/demo/pulls/62") && (!init.method || init.method === "GET"),
     handler: () => jsonResponse(pr),
+  };
+}
+
+// The base ref lookup added by Issue #82. It returns a SHA distinct from
+// PR_META.base.sha so a fixture can never pass by reading the PR snapshot's
+// base commit when it meant to read the branch tip.
+function baseRefRoute({ sha = BASE_TIP, status = 200, body } = {}) {
+  return {
+    match: (url) => url.includes("/git/ref/heads/"),
+    handler: () =>
+      status === 200
+        ? jsonResponse(body === undefined ? { ref: "refs/heads/main", object: { sha, type: "commit" } } : body)
+        : jsonResponse({ message: "Not Found" }, { status }),
   };
 }
 
@@ -94,6 +109,7 @@ function baseRoutes() {
     // Appended last so the positional route indices used by the pagination
     // tests above stay stable.
     emptyListRoute("/pulls/62/files"),
+    baseRefRoute(),
   ];
 }
 
@@ -168,6 +184,7 @@ test("collects a representative multi-surface snapshot with independent per-surf
           { filename: "docs/new.md", status: "added", previous_filename: undefined },
         ]),
     },
+    baseRefRoute(),
   ];
 
   const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
@@ -178,6 +195,14 @@ test("collects a representative multi-surface snapshot with independent per-surf
   assert.equal(result.pr_metadata.base_ref, "main");
   assert.equal(result.pr_metadata.body, "PR body text");
   assert.equal(result.fetch_failures, 0);
+
+  // Issue #82: the base branch tip is its own acquired fact, read from the
+  // base ref rather than copied off the PR object's base commit.
+  assert.equal(result.base_branch.fetch_status, "fetched");
+  assert.equal(result.base_branch.repo, "octo/demo");
+  assert.equal(result.base_branch.ref, "main");
+  assert.equal(result.base_branch.tip_sha, BASE_TIP);
+  assert.notEqual(result.base_branch.tip_sha, result.pr_metadata.base_sha);
 
   assert.equal(result.surfaces.conversation_comments.fetch_status, "fetched");
   assert.equal(result.surfaces.conversation_comments.count, 1);
@@ -648,7 +673,108 @@ test("a PR-metadata fetch failure does not crash the run and marks head-dependen
   assert.equal(result.surfaces.pull_request_files.fetch_status, "fetched");
   assert.equal(result.pr_metadata.base_sha, null);
   assert.equal(result.pr_metadata.body, null);
+  // No PR object means no base ref to read, so the base branch tip is
+  // not_applicable rather than a second counted failure.
+  assert.equal(result.base_branch.fetch_status, "not_applicable");
+  assert.equal(result.base_branch.tip_sha, null);
   assert.equal(result.fetch_failures, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Base branch tip acquisition (Issue #82)
+//
+// The PR object's `base.sha` is the base commit recorded on the PR at its last
+// sync; it does not advance when the base branch alone moves. These fixtures
+// pin that the tip is read from the ref itself and that every way of failing to
+// read it stays distinguishable from "read it, and it was unchanged".
+// ---------------------------------------------------------------------------
+
+test("the base branch tip is read from the base ref, not copied off the PR object's base commit", async () => {
+  const routes = baseRoutes();
+  const requested = [];
+  routes[routes.length - 1] = {
+    match: (url) => url.includes("/git/ref/heads/"),
+    handler: (url) => {
+      requested.push(url);
+      return jsonResponse({ ref: "refs/heads/main", object: { sha: "advanced9", type: "commit" } });
+    },
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.deepEqual(requested, ["https://api.github.com/repos/octo/demo/git/ref/heads/main"]);
+  assert.equal(result.base_branch.fetch_status, "fetched");
+  assert.equal(result.base_branch.tip_sha, "advanced9");
+  // The PR snapshot still reports its own, older base commit. Both facts are
+  // present and neither is derived from the other.
+  assert.equal(result.pr_metadata.base_sha, "base987");
+  assert.equal(result.fetch_failures, 0);
+});
+
+test("a base ref that no longer exists is a counted failure with a null tip, never a fetched blank", async () => {
+  const routes = baseRoutes();
+  routes[routes.length - 1] = baseRefRoute({ status: 404 });
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.base_branch.fetch_status, "failed");
+  assert.equal(result.base_branch.failure.status, 404);
+  assert.equal(result.base_branch.ref, "main");
+  assert.equal(result.base_branch.tip_sha, null);
+  assert.equal(result.fetch_failures, 1);
+});
+
+test("a 200 base ref response carrying no commit SHA is a failure, not a fetched null tip", async () => {
+  const routes = baseRoutes();
+  routes[routes.length - 1] = baseRefRoute({ body: { ref: "refs/heads/main" } });
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.equal(result.base_branch.fetch_status, "failed");
+  assert.equal(result.base_branch.tip_sha, null);
+  assert.match(result.base_branch.failure.message, /no commit SHA/);
+  assert.equal(result.fetch_failures, 1);
+});
+
+test("a base ref containing slashes is requested as path segments, not as one encoded component", async () => {
+  const routes = baseRoutes();
+  routes[0] = prRoute({ ...PR_META, base: { sha: "base987", ref: "release/2026-09" } });
+  const requested = [];
+  routes[routes.length - 1] = {
+    match: (url) => url.includes("/git/ref/heads/"),
+    handler: (url) => {
+      requested.push(url);
+      return jsonResponse({ ref: "refs/heads/release/2026-09", object: { sha: "reltip1" } });
+    },
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.deepEqual(requested, ["https://api.github.com/repos/octo/demo/git/ref/heads/release/2026-09"]);
+  assert.equal(result.base_branch.ref, "release/2026-09");
+  assert.equal(result.base_branch.tip_sha, "reltip1");
+});
+
+test("the base ref is resolved on the repository the PR merges into, which a fork head does not change", async () => {
+  const routes = baseRoutes();
+  routes[0] = prRoute({
+    ...PR_META,
+    head: { sha: "abc1234", repo: { owner: { login: "contributor" }, name: "demo-fork" } },
+    base: { sha: "base987", ref: "main", repo: { owner: { login: "octo" }, name: "demo" } },
+  });
+  const requested = [];
+  routes[routes.length - 1] = {
+    match: (url) => url.includes("/git/ref/heads/"),
+    handler: (url) => {
+      requested.push(url);
+      return jsonResponse({ ref: "refs/heads/main", object: { sha: "basetip0" } });
+    },
+  };
+
+  const result = await collectReviewEvidence({ owner: "octo", repo: "demo", pullNumber: 62, token: "t", fetchImpl: createFetch(routes) });
+
+  assert.deepEqual(requested, ["https://api.github.com/repos/octo/demo/git/ref/heads/main"]);
+  assert.equal(result.base_branch.repo, "octo/demo");
 });
 
 test("formatHumanSummary renders a deterministic snapshot summary", async () => {
@@ -662,6 +788,7 @@ test("formatHumanSummary renders a deterministic snapshot summary", async () => 
   assert.match(text, /^Conversation comments: fetched \(0\)$/m);
   assert.match(text, /^Review threads: fetched \(0\)$/m);
   assert.match(text, /^Changed files: fetched \(0\)$/m);
+  assert.match(text, /^Base branch: main tip basetip0 \(octo\/demo\)$/m);
   assert.match(text, /^Fetch failures: 0$/m);
 });
 

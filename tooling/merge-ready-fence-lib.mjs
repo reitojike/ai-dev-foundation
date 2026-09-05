@@ -350,15 +350,30 @@ function checkTargetHead(evidence, inputs) {
     : check("target-head", "fail", ["target_head_moved"], detail);
 }
 
+// The authority here is where the base branch points NOW, not the PR object's
+// `base.sha` (Issue #82). `base.sha` is a snapshot the PR carries: advancing
+// the base branch alone does not update it, so comparing against it reports
+// `pass` for exactly the ordinary case this check exists to catch — the base
+// moved while the PR head stood still. `pr_base_sha` is kept in the detail as
+// a diagnostic fact, and is never consulted to reach a verdict.
 function checkTargetBase(evidence, inputs) {
   const frozen = nonEmpty(inputs.baseSha);
   if (!frozen) return check("target-base", "unknown", ["frozen_base_missing"]);
   const metadata = evidence?.pr_metadata;
-  if (metadata?.fetch_status !== "fetched" || !nonEmpty(metadata.base_sha)) {
-    return check("target-base", "unknown", ["pr_metadata_unavailable"]);
-  }
-  const detail = { frozen_base_sha: frozen, current_base_sha: metadata.base_sha };
-  return shaEqual(metadata.base_sha, frozen)
+  const prBaseSha = metadata?.fetch_status === "fetched" ? nonEmpty(metadata.base_sha) : null;
+  const baseBranch = evidence?.base_branch;
+  const tip = baseBranch?.fetch_status === "fetched" ? nonEmpty(baseBranch.tip_sha) : null;
+  const detail = {
+    frozen_base_sha: frozen,
+    base_ref: nonEmpty(baseBranch?.ref),
+    base_branch_fetch_status: nonEmpty(baseBranch?.fetch_status),
+    current_base_tip_sha: tip,
+    pr_base_sha: prBaseSha,
+  };
+  // No confirmed tip is `unknown`, never `pass`: an unreadable base ref is
+  // the state in which the base is most likely to have moved unobserved.
+  if (!tip) return check("target-base", "unknown", ["base_branch_tip_unavailable"], detail);
+  return shaEqual(tip, frozen)
     ? check("target-base", "pass", [], detail)
     : check("target-base", "fail", ["target_base_moved"], detail);
 }
