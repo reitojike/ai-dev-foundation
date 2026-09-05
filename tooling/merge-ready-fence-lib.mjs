@@ -77,12 +77,29 @@ const INFORMATIONAL_BASENAMES = new Set([
   "readme.md", "changelog.md", "license", "license.md", "notice", "notice.md",
 ]);
 
+// Raster image assets, per the Informational bullet of policy/core.md: neither
+// mandatory review skill has text semantics to read in a bitmap, and that is
+// true of a product asset (a PWA icon) and a documentation image alike — so the
+// product/documentation distinction does not change the required routing and is
+// not encoded here. `.svg` is deliberately absent: it is text and can carry
+// executable content, which a path-only rule cannot decide, so it stays
+// unresolved rather than being called Informational.
+const INFORMATIONAL_IMAGE_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico", ".bmp", ".tif", ".tiff",
+]);
+
 const NORMATIVE_BASENAMES = new Set(["agents.md", "claude.md"]);
 
-const NORMATIVE_PATH_SEGMENTS = ["policy/", "skills/"];
+// `architecture/` covers the nested form (`docs/architecture/authentication.md`)
+// that the sibling basename pattern below cannot see, because there the
+// document kind is carried by the directory rather than by the file name.
+const NORMATIVE_PATH_SEGMENTS = ["policy/", "skills/", "architecture/"];
 
 const NORMATIVE_BASENAME_PATTERNS = [
   /^product([-._].*)?\.md$/,
+  /^prd([-._].*)?\.md$/,
+  /^roadmap([-._].*)?\.md$/,
+  /^ux-ui([-._].*)?\.md$/,
   /^architecture([-._].*)?\.md$/,
   /^adr([-._].*)?\.md$/,
   /-rules\.md$/,
@@ -108,6 +125,7 @@ export function classifyArtifactPath(path) {
   if (!normalized) return null;
   const basename = basenameOf(normalized);
   if (INFORMATIONAL_BASENAMES.has(basename)) return "Informational";
+  if (INFORMATIONAL_IMAGE_EXTENSIONS.has(extensionOf(basename))) return "Informational";
   if (EXECUTABLE_EXTENSIONS.has(extensionOf(basename))) return "Executable";
   if (extensionOf(basename) === ".md") {
     const lowered = normalized.toLowerCase();
