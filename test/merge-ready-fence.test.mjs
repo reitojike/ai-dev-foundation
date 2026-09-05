@@ -1030,7 +1030,7 @@ test("the Normative review procedure reaches the fence and the expected review s
   // Freshness is no longer a sentence the agent has to remember: the fence CLI
   // accepts no snapshot argument, so a remembered snapshot cannot reach it.
   // test/merge-ready-fence-lib.test.mjs owns that property.
-  assert.ok(containsText(doc, "node tooling/merge-ready-fence.mjs"));
+  assert.ok(containsText(doc, "node <foundation-checkout>/tooling/merge-ready-fence.mjs"));
   assert.ok(containsText(doc, "`fail`（exit 1）と `unknown`（exit 2）はどちらも merge-ready ではありません"));
   assert.ok(containsText(doc, "target completion state"));
 });
@@ -1052,7 +1052,7 @@ test("review-code skill carries the procedural detail for the fence", async () =
   // Merge-ready: the fence runs last, and neither of its non-pass states is
   // merge-ready.
   assert.ok(containsText(skill, "宣言の直前の最後の action として merge-ready fence を実行します"));
-  assert.ok(containsText(skill, "node tooling/merge-ready-fence.mjs"));
+  assert.ok(containsText(skill, "node <foundation-checkout>/tooling/merge-ready-fence.mjs"));
   assert.ok(containsText(skill, "`unknown` を `pass` として扱わないでください"));
 
   // Provider observations stay observations — and, since Issue #72 Phase 1,

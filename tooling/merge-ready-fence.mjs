@@ -2,7 +2,11 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { collectReviewEvidence } from "./review-evidence-lib.mjs";
-import { readReviewerRecordFile } from "./reviewer-record-lib.mjs";
+import {
+  describeUnusableReviewerRecord,
+  readReviewerRecordFile,
+  resolveConsumerReviewerRecordPath,
+} from "./reviewer-record-lib.mjs";
 import { evaluateReviewerTargetStates } from "./review-evidence-state-lib.mjs";
 import {
   MERGE_READY_FENCE_USAGE,
@@ -79,10 +83,14 @@ async function main() {
     throw new Error("No GitHub token available. Set GH_TOKEN/GITHUB_TOKEN, pass --token, or run `gh auth login`.");
   }
 
-  const recordPath = path.resolve(args.record ?? ".ai-dev-foundation/reviewers.json");
+  // Consumer-bound, never silently Foundation-bound (Issue #96): this helper is
+  // run from the Foundation checkout with the consumer as cwd, so the cwd
+  // default is the consumer's record everywhere except inside the Foundation
+  // checkout itself, where it is refused instead of substituted.
+  const recordPath = resolveConsumerReviewerRecordPath(args.record);
   const loaded = await readReviewerRecordFile(recordPath);
   if (loaded.status !== "ok") {
-    throw new Error(`Reviewer record ${loaded.status}: ${recordPath}`);
+    throw new Error(describeUnusableReviewerRecord(loaded));
   }
 
   const [artifacts, acknowledged] = await Promise.all([

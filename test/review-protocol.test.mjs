@@ -878,7 +878,7 @@ test("both review skills define a run-anchor source and reuse it through to the 
     let searchFrom = 0;
     let blockCount = 0;
     for (;;) {
-      const start = skill.indexOf("node tooling/merge-ready-fence.mjs", searchFrom);
+      const start = skill.indexOf("node <foundation-checkout>/tooling/merge-ready-fence.mjs", searchFrom);
       if (start === -1) break;
       const end = skill.indexOf("```", start);
       const block = skill.slice(start, end === -1 ? undefined : end);

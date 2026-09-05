@@ -23,6 +23,43 @@ review target は Selection Contract に従い、candidate SHA、applicable な
 SHA について述べる箇所は、commit range や target artifact set を使う
 review でも同じ意味で適用します。
 
+## Foundation helper の実行（consumer cwd）
+
+`review-evidence` / `merge-ready-fence` は Foundation checkout の `tooling/` にあり、
+consumer へは配布されません（`sync` が materialize するのは `AGENTS.md`、`CLAUDE.md`、
+`.ai-dev-foundation/skills/` だけです）。consumer で `node tooling/...` と書いても
+解決しないため、本 skill の command 例は次の形を canonical とします。
+
+- cwd は review 対象の **consumer repository root** のまま維持します。
+- helper は Foundation checkout 側の path で起動します。以降 `<foundation-checkout>`
+  は、**この consumer を sync している Foundation checkout** の path を指します。
+- consumer-owned な path 引数（`--record` / `--artifacts-file` /
+  `--acknowledged-file`）は、その consumer repository root を基準に明示的に渡します。
+
+実行される helper 実装は、command で addressing した checkout のものそのものです。
+残る問いは「その checkout が、この consumer を sync した checkout と同じか」だけで、
+これは新しい discovery 機構を作らず、既存の drift check で狭めます。
+
+```text
+node <foundation-checkout>/tooling/check.mjs --consumer .
+```
+
+この check が比較するのは、consumer へ配布済みの Foundation-owned artifact
+（generated `AGENTS.md` / `CLAUDE.md`、`.ai-dev-foundation/skills/`、quality profile）と、
+この checkout 側の canonical source です。drift があれば、その checkout はこの consumer が
+現在使っているものではありません。**逆は成り立ちません。** `tooling/` は比較対象ではなく
+consumer へ配布もされないため、配布 artifact が同一で `tooling/` だけが異なる checkout は
+この check を通過します。したがってこの check を helper revision の同一性証明として
+扱わず、どの checkout を addressing したかは review evidence として記録します。
+
+helper を起動するために Foundation checkout へ `cd` しないでください。`--record` の
+既定値は cwd 相対の `.ai-dev-foundation/reviewers.json` であり、Foundation checkout を
+cwd にすると、Foundation 自身の reviewer capability record を consumer の record として
+読む経路になります。helper 側はこの 1 ケース（cwd が Foundation checkout root で
+`--record` 省略）を **exit 2 の setup error** として拒否し、既定値へ silent fallback
+しません。Foundation リポジトリ自身を review する場合も同じで、`--record` を明示的に
+渡します。
+
 ## Happy path
 
 迷ったらこの順に進めます。各 step の詳細・分岐・例外は `## 手順` にあります。
@@ -42,8 +79,9 @@ review でも同じ意味で適用します。
    `--run-after` として渡す。
 
    ```text
-   node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --state \
-     --target-sha <sha> --run-after <手順 5 で記録した run anchor> --json
+   node <foundation-checkout>/tooling/review-evidence.mjs --repo <owner/repo> --pr <number> --state \
+     --target-sha <sha> --run-after <手順 5 で記録した run anchor> \
+     --record .ai-dev-foundation/reviewers.json --json
    ```
 
 7. fresh snapshot を state evaluator へ渡して target completion state を読み、
@@ -62,10 +100,10 @@ review でも同じ意味で適用します。
    記録したものを再利用する。
 
    ```text
-   node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
+   node <foundation-checkout>/tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
      --target-sha <sha> --base-sha <sha> --artifacts-file <path> \
      --verify-sha <sha> --required <reviewer-id> --declared-skill review-code \
-     --acknowledged-file <path> \
+     --acknowledged-file <path> --record .ai-dev-foundation/reviewers.json \
      --run-after <手順 5（または closure 時は手順 8）で記録した run anchor>
    ```
 
@@ -185,8 +223,8 @@ required/expected review の消化根拠にしてはいけません。この区�
    の merge-ready fence が使う run anchor は手順 4 のものではなく、手順 10 で記録した
    closure run の anchor です。
 
-5. **Acquisition & state** — reviewer の run ごとに `tooling/review-evidence.mjs` を
-   fresh に実行し、`--state --target-sha <sha>` に加えて手順 4 で記録した run anchor を
+5. **Acquisition & state** — reviewer の run ごとに `review-evidence` helper を
+   fresh に実行し（起動形式は `## Foundation helper の実行（consumer cwd）`）、`--state --target-sha <sha>` に加えて手順 4 で記録した run anchor を
    `--run-after <timestamp>` として渡し、state evaluator を実行します。
    state output の `state`、`coverage_complete`、`evidence`、`reason_codes` を記録します。
    **あわせて、triage の対象にする result の `canonical_id` と
@@ -314,11 +352,12 @@ required/expected review の消化根拠にしてはいけません。この区�
     記録したものを再利用します。
 
     ```text
-    node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
+    node <foundation-checkout>/tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
       --target-sha <frozen target> --base-sha <frozen base> \
       --artifacts-file <frozen artifact set> --verify-sha <手順 1/8 の verify SHA> \
       --required <reviewer-id> --declared-skill review-code \
       --acknowledged-file <手順 5（または closure 時は手順 11）で記録した canonical_id=body_digest> \
+      --record .ai-dev-foundation/reviewers.json \
       --run-after <手順 4（または closure 時は手順 10）で記録した run anchor>
     ```
 
@@ -394,8 +433,8 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
 `collectOutputs()` / `normalizeFindings()` を人手で埋めます。
 
 - `trigger()`: record の `trigger` に従って起動し、どう起動したかを記録します。
-- `pollCompletion()`: `tooling/review-evidence.mjs --state` を fresh target と
-  run anchor 付きで実行し、reduced state output と canonical object の sources /
+- `pollCompletion()`: `review-evidence` helper を `--state` 付きで、fresh target と
+  run anchor を渡して実行し（起動形式は `## Foundation helper の実行（consumer cwd）`）、reduced state output と canonical object の sources /
   current revision を記録します。`completed@target` だけを target-bound completion
   として扱い、`unknown` / `in-flight` を terminal failure にしません。
 - `collectOutputs()`: 同じ helper の `--json` output を durable evidence として保存
