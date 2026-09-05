@@ -85,13 +85,13 @@
       },
       "non_participation_marker": null,
       "rate_limit_marker": {
-        "any_of": ["Review rate limited", "0 remain"]
+        "any_of": ["Review rate limited"]
       },
       "failure_marker": null,
       "in_flight_marker": null,
       "fallback_order": [],
-      "observed_at": "2026-09-03",
-      "notes": "actionable finding がある run では review submission（state=COMMENTED、本文冒頭が `Actionable comments posted: N`）として投稿されるのを実測している。actionable finding が 0 件の run では、review submission ではなく conversation comment（本文冒頭 `No actionable comments were generated in the recent review.`）として結果が観測された。したがって review submission だけを唯一の結果 surface と仮定しない。この対応が今後も固定されるとは限らないため、surface は再検証の対象として扱う。結果 comment は複数 section から成るため、冒頭 1 行だけで finding/warning 無しと判断しない。冒頭が `No actionable comments...` でも、同一 comment 内の Pre-merge checks section に advisory な warning が含まれることがある。trigger への `Action performed` 返信と walkthrough comment も投稿されるが、いずれも完了根拠にしない。advisory member のため completion を待たず、未参加・rate limit でも blocker にしない。ただし到着した finding の triage / Resolution obligation は class に関係なく残る。無料枠は 1 件/時のため rate limit は fallback ではなく advisory 継続の根拠として扱い、復帰を待たない。`success` の commit status が automatic review 無効化による review スキップを表すことがあり、green な status が review 完了ではなく review 未実施を意味する。status の state だけを completion へ変換しない。"
+      "observed_at": "2026-09-05",
+      "notes": "actionable finding がある run では review submission（state=COMMENTED、本文冒頭が `Actionable comments posted: N`）として投稿されるのを実測している。actionable finding が 0 件の run では、review submission ではなく conversation comment（本文冒頭 `No actionable comments were generated in the recent review.`）として結果が観測された。したがって review submission だけを唯一の結果 surface と仮定しない。この対応が今後も固定されるとは限らないため、surface は再検証の対象として扱う。結果 comment は複数 section から成るため、冒頭 1 行だけで finding/warning 無しと判断しない。冒頭が `No actionable comments...` でも、同一 comment 内の Pre-merge checks section に advisory な warning が含まれることがある。trigger への `Action performed` 返信と walkthrough comment も投稿されるが、いずれも完了根拠にしない。advisory member のため completion を待たず、未参加・rate limit でも blocker にしない。ただし到着した finding の triage / Resolution obligation は class に関係なく残る。included review 枠は 1 件/時と実測されているため、rate limit は fallback ではなく advisory 継続の根拠として扱い、復帰を待たない。`success` の commit status が automatic review 無効化による review スキップを表すことがあり、green な status が review 完了ではなく review 未実施を意味する。status の state だけを completion へ変換しない。rate limit の terminal evidence は、trigger への返信 comment が `⚠️ Action not completed` と `Review rate limited.` を含み review 自体が実行されない形で実測した。一方、review が正常完了した 0-finding result の本文には `**Included review availability:** Your plan provides up to 1 included review per hour; 0 remain after this review.` という残枠表示が含まれることを実測した。これは review 実行後の availability 表示であって terminal rate limit ではない。したがって bare `0 remain` を rate_limit_marker に置くと成功 result が completion と rate-limited の両方へ一致し、state が conflicting_signals へ倒れるため、rate_limit_marker には terminal 実測の `Review rate limited` だけを置く。"
     }
   ]
 }

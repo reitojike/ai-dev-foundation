@@ -503,6 +503,109 @@ test("both observed CodeRabbit result bodies replay as positive completion evide
   }
 });
 
+// Issue #92: the two bodies below are the real ones observed on stage-tracker.
+// They are the pair that a bare `0 remain` rate-limit marker cannot tell apart,
+// so they are replayed through the evaluator rather than asserted as strings.
+
+// stage-tracker PR #334, comment 5550394802. A review that RAN and found
+// nothing. Its availability footer states the quota left AFTER the review, so
+// it is a success report that happens to contain the digits `0 remain`.
+const CODERABBIT_SUCCESS_BODY = [
+  "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->",
+  "<!-- recent_review_start -->",
+  "",
+  "No actionable comments were generated in the recent review. \u{1F389}",
+  "",
+  "<details>",
+  "<summary>\u2139\uFE0F Recent review info</summary>",
+  "",
+  "**Review profile**: CHILL",
+  "",
+  "**Included review availability:** Your plan provides up to 1 included review per hour; 0 remain after this review.",
+  "",
+  "</details>",
+].join("\n");
+
+// stage-tracker PR #267, comment 5489197879. A review that did NOT run.
+const CODERABBIT_RATE_LIMITED_BODY = [
+  "<!-- This is an auto-generated reply by CodeRabbit -->",
+  "<details>",
+  "<summary>\u26A0\uFE0F Action not completed</summary>",
+  "",
+  "Review rate limited.",
+  "",
+  "> Note: CodeRabbit is an incremental review system and does not re-review already reviewed commits. This command is applicable only when automatic reviews are paused.",
+  "",
+  "</details>",
+].join("\n");
+
+test("a successful CodeRabbit review is not read as rate-limited because its availability footer says `0 remain`", () => {
+  // The body carries both texts at once, which is the whole difficulty: a
+  // marker wide enough to catch `0 remain` fires on a review that succeeded.
+  assert.ok(CODERABBIT_SUCCESS_BODY.includes("No actionable comments were generated in the recent review."));
+  assert.ok(CODERABBIT_SUCCESS_BODY.includes("0 remain after this review."));
+
+  const state = replayState("coderabbitai", "coderabbitai[bot]", CODERABBIT_SUCCESS_BODY);
+  const kinds = acceptedSignalKinds(state);
+
+  assert.ok(kinds.includes("completion"), "the run completed, so its completion evidence must survive");
+  assert.ok(
+    !kinds.includes("rate-limited"),
+    "an availability footer reporting the quota left after a review is not a rate limit",
+  );
+  // Accepting both is what produced the observed `unknown / conflicting_signals`
+  // on PR #334. The evaluator collapsing that conflict to `unknown` is correct
+  // fail-safe behavior, so the seed is what has to stop raising the conflict.
+  assert.ok(!state.reason_codes.includes("conflicting_signals"));
+
+  // Unchanged by this Issue: CodeRabbit declares no target_pattern, so a
+  // completion still does not bind itself to a commit. The fix must not
+  // manufacture a binding to make the state look better.
+  assert.notEqual(state.state, "completed@target");
+  assert.ok(state.reason_codes.includes("target_binding_missing"));
+});
+
+test("a real CodeRabbit terminal rate limit is still detected after `0 remain` is dropped", () => {
+  // The guard that matters in the other direction: dropping the ambiguous
+  // marker must not cost the detection of a review that never ran.
+  const state = replayState("coderabbitai", "coderabbitai[bot]", CODERABBIT_RATE_LIMITED_BODY);
+  const kinds = acceptedSignalKinds(state);
+
+  assert.equal(state.state, "rate-limited");
+  assert.ok(kinds.includes("rate-limited"));
+  assert.ok(
+    !kinds.includes("completion"),
+    "a review that did not run must never register as completion evidence",
+  );
+});
+
+test("the CodeRabbit rate-limit marker carries only the observed terminal text", () => {
+  const coderabbit = JSON.parse(
+    readFileSync(path.join(root, "templates", "reviewers.example.json"), "utf8"),
+  ).reviewers.find((reviewer) => reviewer.id === "coderabbitai");
+
+  assert.deepEqual(coderabbit.rate_limit_marker.any_of, ["Review rate limited"]);
+  // Named explicitly so re-adding the substring has to be a deliberate act with
+  // fresh evidence, not an unnoticed widening.
+  assert.ok(
+    !coderabbit.rate_limit_marker.any_of.some((marker) => CODERABBIT_SUCCESS_BODY.includes(marker)),
+    "no rate-limit marker may appear in the body of a review that succeeded",
+  );
+  assert.ok(
+    coderabbit.rate_limit_marker.any_of.some((marker) => CODERABBIT_RATE_LIMITED_BODY.includes(marker)),
+    "some rate-limit marker must still appear in the body of a review that was refused",
+  );
+
+  // The advisory contract around the marker is untouched by this correction.
+  assert.equal(coderabbit.default_class, "advisory");
+  assert.deepEqual(coderabbit.fallback_order, []);
+  assert.deepEqual(coderabbit.completion_marker.any_of, [
+    "Actionable comments posted:",
+    "No actionable comments were generated in the recent review.",
+  ]);
+  assert.equal(coderabbit.completion_marker.target_pattern, undefined);
+});
+
 test("the Claude completion and in-flight behavior is unchanged by the notes correction", () => {
   const completed = replayState(
     "claude",
