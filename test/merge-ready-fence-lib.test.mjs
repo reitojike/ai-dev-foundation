@@ -853,6 +853,73 @@ test("fixture 29b: reaching pass through the fallback stays visible as a distinc
 });
 
 // ---------------------------------------------------------------------------
+// Issue #86: ".css" (including ".module.css") is Executable, machine-resolved.
+// ---------------------------------------------------------------------------
+
+test("fixture 30: a .module.css-only target routes to review-code on its own", () => {
+  const paths = [
+    "src/components/StageCard.module.css",
+    "src/components/StageList.module.css",
+  ];
+  const classification = classifyArtifactPaths(paths);
+  assert.deepEqual(classification.classes, ["Executable"]);
+  assert.deepEqual(classification.required_skills, ["review-code"]);
+  assert.deepEqual(classification.unresolved_paths, []);
+
+  const passed = routingFor(paths, ["review-code"]);
+  assert.equal(passed.status, "pass");
+  assert.deepEqual(passed.reason_codes, []);
+});
+
+test("fixture 30b: stage-tracker PR #323's actual artifact set routes without the unresolved fallback", () => {
+  const paths = [
+    "src/app/calendar/_components/MyMonthCalendar.module.css",
+    "src/app/catalog/_components/MonthCalendar.module.css",
+    "src/ui/CalendarSkeleton.module.css",
+    "src/ui/monthCalendarGrid.module.css",
+    "src/app/calendar/_components/__tests__/MyMonthCalendar.test.ts",
+    "src/app/catalog/_components/__tests__/MonthCalendar.test.ts",
+    "src/ui/__tests__/CalendarSkeleton.test.ts",
+  ];
+  const classification = classifyArtifactPaths(paths);
+  assert.deepEqual(classification.classes, ["Executable"]);
+  assert.deepEqual(classification.required_skills, ["review-code"]);
+  assert.deepEqual(classification.unresolved_paths, []);
+
+  const passed = routingFor(paths, ["review-code"]);
+  assert.equal(passed.status, "pass");
+  assert.deepEqual(passed.reason_codes, []);
+
+  const missing = routingFor(paths, ["review-doc"]);
+  assert.equal(missing.status, "fail");
+  assert.deepEqual(missing.reason_codes, ["required_skill_missing"]);
+  assert.deepEqual(missing.detail.missing_skills, ["review-code"]);
+});
+
+test("fixture 30c: a plain (non-module) .css file is Executable too", () => {
+  assert.equal(classifyArtifactPath("src/styles/global.css"), "Executable");
+});
+
+test("fixture 30d: .css beside a known Normative document is Mixed, both skills required", () => {
+  const paths = ["src/styles/theme.module.css", "policy/core.md"];
+  const classification = classifyArtifactPaths(paths);
+  assert.deepEqual(classification.classes, ["Executable", "Normative"]);
+  assert.deepEqual(classification.required_skills, ["review-code", "review-doc"]);
+
+  const passed = routingFor(paths, ["review-code", "review-doc"]);
+  assert.equal(passed.status, "pass");
+  assert.deepEqual(passed.reason_codes, []);
+  assert.equal(routingFor(paths, ["review-code"]).status, "fail");
+  assert.equal(routingFor(paths, ["review-doc"]).status, "fail");
+});
+
+test("fixture 30e: an unobserved stylesheet dialect stays unresolved, not guessed into Executable", () => {
+  for (const path of ["src/styles/theme.scss", "src/styles/theme.sass", "src/styles/theme.less"]) {
+    assert.equal(classifyArtifactPath(path), null, path);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Deterministic verification coherence
 // ---------------------------------------------------------------------------
 
