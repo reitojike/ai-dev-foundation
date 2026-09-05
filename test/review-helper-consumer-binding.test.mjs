@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -239,6 +239,30 @@ test("record resolution binds to the cwd it is given, and refuses only the Found
     FOUNDATION_REVIEWER_RECORD_PATH,
   );
   assert.throws(() => resolveConsumerReviewerRecordPath(undefined, root), /Refusing to default/);
+});
+
+test("the Foundation default is refused however that checkout path is spelled", async (t) => {
+  // The guard has to be about directory IDENTITY, not spelling. On Windows a
+  // differently-cased cwd names the same directory, so a string compare would
+  // hand back Foundation's own record — silently, which is the entire failure
+  // this guard exists to prevent.
+  if (process.platform === "win32") {
+    assert.throws(() => resolveConsumerReviewerRecordPath(undefined, root.toLowerCase()), /Refusing to default/);
+    assert.throws(() => resolveConsumerReviewerRecordPath(undefined, root.toUpperCase()), /Refusing to default/);
+  }
+
+  // The other way to spell the same directory, on every platform: reach it
+  // through a link. Creating one can be denied (unprivileged Windows), and a
+  // skip there is honest — the case-identity assertions above still ran.
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "adf-link-"));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const link = path.join(temporary, "foundation-link");
+  try {
+    await symlink(root, link, "junction");
+  } catch {
+    return t.skip("creating a directory link is not permitted in this environment");
+  }
+  assert.throws(() => resolveConsumerReviewerRecordPath(undefined, link), /Refusing to default/);
 });
 
 test("both review skills document a helper path that does not depend on a consumer-local tooling/", async () => {

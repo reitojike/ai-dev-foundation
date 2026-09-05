@@ -15,6 +15,7 @@
 // judge completion, and does not rank fallbacks. It only answers "is this file
 // present, parseable, and minimally well-formed".
 
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -331,10 +332,27 @@ const foundationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 export const FOUNDATION_REVIEWER_RECORD_PATH = reviewerRecordPath(foundationRoot);
 
+// Whether two directories are the SAME directory, not whether they are spelled
+// the same way. Windows path identity is case-insensitive and a checkout can
+// also be reached through a symlink, so a raw string compare lets a
+// differently-spelled cwd walk straight past the guard below and read
+// Foundation's record anyway. The directory is canonicalized rather than the
+// record file because the directory always exists — it is either a cwd or this
+// module's own checkout — while the record file legitimately may not.
+function canonicalDirectory(directory) {
+  let canonical;
+  try {
+    canonical = realpathSync.native(directory);
+  } catch {
+    canonical = path.resolve(directory);
+  }
+  return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+}
+
 export function resolveConsumerReviewerRecordPath(explicitPath, cwd = process.cwd()) {
   if (explicitPath) return path.resolve(cwd, explicitPath);
   const resolved = path.resolve(cwd, ...REVIEWER_RECORD_RELATIVE_PATH.split("/"));
-  if (resolved !== FOUNDATION_REVIEWER_RECORD_PATH) return resolved;
+  if (canonicalDirectory(cwd) !== canonicalDirectory(foundationRoot)) return resolved;
   throw new Error(
     `Refusing to default the reviewer capability record to this Foundation checkout's own ${REVIEWER_RECORD_RELATIVE_PATH} (${resolved}). ` +
       "Run the helper with the consumer repository as cwd, or pass --record <path> explicitly.",
