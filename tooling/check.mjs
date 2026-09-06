@@ -9,6 +9,7 @@ import {
   parseConsumerArgument,
   skillsSourceDirectory,
 } from "./lib.mjs";
+import { codexLocalStartupBudgetAdvisory } from "./check-lib.mjs";
 import { REVIEWER_RECORD_RELATIVE_PATH, loadReviewerRecord } from "./reviewer-record-lib.mjs";
 
 const foundationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -82,11 +83,15 @@ const sizes = [["policy/core.md", Buffer.byteLength(await readFile(path.join(fou
 for (const file of skillFiles) {
   sizes.push([`skills/${file}`, Buffer.byteLength(await readFile(path.join(skillsSourceDirectory, file)))]);
 }
-sizes.push([`generated AGENTS.md (${consumerDirectory})`, Buffer.byteLength(agentsContent)]);
+const generatedAgentsBytes = Buffer.byteLength(agentsContent);
+sizes.push([`generated AGENTS.md (${consumerDirectory})`, generatedAgentsBytes]);
 
 console.log("Artifact sizes (advisory, no threshold):");
 for (const [label, bytes] of sizes) console.log(`  ${label}: ${bytes} bytes`);
 console.log(`  total: ${sizes.reduce((sum, [, bytes]) => sum + bytes, 0)} bytes`);
+
+const codexAdvisory = codexLocalStartupBudgetAdvisory(generatedAgentsBytes);
+if (codexAdvisory) console.log(codexAdvisory);
 
 if (hasDrift) {
   process.exitCode = 1;

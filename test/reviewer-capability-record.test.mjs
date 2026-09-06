@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { REVIEWER_RECORD_SCHEMA_ID, readReviewerRecordFile, validateReviewerRecord } from "../tooling/reviewer-record-lib.mjs";
 import { evaluateReviewerTargetStates } from "../tooling/review-evidence-state-lib.mjs";
+import {
+  CODEX_LOCAL_STARTUP_BUDGET_BYTES,
+  codexLocalStartupBudgetAdvisory,
+} from "../tooling/check-lib.mjs";
 
 // Issue #72 Phase 1: the reviewer capability record makes "which reviewers
 // exist, how are they triggered, what counts as completion" machine-readable
@@ -234,6 +238,16 @@ test("duplicate reviewer ids are rejected", () => {
 
 // --- check.mjs --------------------------------------------------------------
 
+test("Codex Local/Desktop startup advisory has a strict 32 KiB byte boundary", () => {
+  assert.equal(codexLocalStartupBudgetAdvisory(CODEX_LOCAL_STARTUP_BUDGET_BYTES - 1), null);
+  assert.equal(codexLocalStartupBudgetAdvisory(CODEX_LOCAL_STARTUP_BUDGET_BYTES), null);
+
+  const advisory = codexLocalStartupBudgetAdvisory(CODEX_LOCAL_STARTUP_BUDGET_BYTES + 1);
+  assert.match(advisory, /Codex Local CLI \/ Desktop Local\/Worktree/);
+  assert.match(advisory, /32 KiB \/ 32,768 bytes/);
+  assert.match(advisory, /project_doc_max_bytes/);
+});
+
 function runCheck(consumer) {
   return spawnSync(process.execPath, [path.join(root, "tooling", "check.mjs"), "--consumer", consumer], {
     encoding: "utf8",
@@ -284,9 +298,12 @@ test("check reports artifact byte sizes as advisory output that never changes th
     assert.ok(green.stdout.includes(label), `advisory size output missing: ${label}`);
   }
   assert.match(green.stdout, /^ {2}total: \d+ bytes$/m);
+  assert.match(green.stdout, /Codex Local CLI \/ Desktop Local\/Worktree advisory/);
+  assert.match(green.stdout, /current default startup project-doc budget/);
+  assert.match(green.stdout, /project_doc_max_bytes/);
 
-  // No threshold: the sizes are reported, never enforced. The only thing that
-  // moves the exit code here is real drift.
+  // The size measurement remains advisory, and the new budget advisory is also
+  // non-blocking. The only thing that moves the exit code here is real drift.
   await writeFile(path.join(consumer, "AGENTS.md"), "drift\n");
   const drifted = runCheck(consumer);
   assert.notEqual(drifted.status, 0);
