@@ -296,8 +296,12 @@ fail）。
 - frozen base -> current base tip の ancestry が forward-only（`ahead`）
 - intervening base delta の changed artifact set が完全に取得できている
 - reviewed artifact set と intervening artifact set が直接重複しない
-- `--verify-base-sha` が current base tip と一致する（old base の green を composed
-  state の green へ変換しない）
+- `--verify-base-sha` が current base tip と一致する。base drift 中は tip が frozen base
+  と異なるため、**drift 前の verify が composed した base ではこの条件を満たせません**。
+  old base の green を持ち越すには、new base について新しい宣言を出す必要があります。
+  ただし他の frozen 宣言（`--verify-sha`、artifact list、acknowledged revision）と同様、
+  fence が照合するのは SHA の一致であって check を実行したことの証明ではありません。
+  実行そのものは agent 側の obligation です
 - `--drift-assessment` が指す PR comment が、この drift の 3 SHA を名指しした上で
   `verdict: independent` と非空の `basis` を持つ
 

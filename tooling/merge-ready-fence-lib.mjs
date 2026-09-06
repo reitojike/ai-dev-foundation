@@ -916,10 +916,17 @@ function checkBaseDriftCarryForward(evidence, inputs, current, priorChecks) {
     if (overlap.length > 0) reasons.fail.push("base_drift_artifact_overlap");
   }
 
-  // 5. Verification freshly run against the composed state. The green recorded
-  // against the reviewed head at the OLD base is not converted into a green for
-  // the new composition: the caller declares which base the verification
-  // composed, and it must be the current tip.
+  // 5. Verification declared against the composed state. Like every other
+  // frozen declaration this module takes — `--verify-sha`, the artifact list,
+  // the acknowledged revisions — this is the caller's statement, not proof
+  // that a command ran; the fence owns SHA coherence, and the agent owns
+  // having actually run the check (policy/core.md, Review stopping rules).
+  //
+  // What the comparison does buy is that the OLD verification cannot satisfy
+  // it. In this branch the tip differs from the frozen base, so the base the
+  // pre-drift verify composed can never equal the required value: carrying the
+  // old green forward requires making a new and different declaration about
+  // the new base, rather than reusing the one already on file.
   const verifyBase = nonEmpty(inputs.verifyBaseSha);
   if (!verifyBase) reasons.unknown.push("composed_verify_base_missing");
   else if (!shaEqual(verifyBase, tip)) reasons.fail.push("composed_verify_base_stale");

@@ -390,10 +390,16 @@ finite な手順として表したものです。規範的な条件は同節が�
 - accepted finding の fix / verification 由来の correction / rebase 等、head を動かす
   理由がこの drift に含まれていない
 
-1. **composed state を fresh に verify する** — reviewed head と current base tip を
-   composed した状態に対して、手順 1 と同じ deterministic verify を実行し直します。
-   old base 時点の green を composed state の green として持ち越しません。composed した
-   base の SHA を記録します。
+1. **composed state に対して precondition check を fresh に実行する** — reviewed head と
+   current base tip を composed した状態に対して、artifact classification が要求する
+   precondition check を実行し直します（Executable なら手順 1 と同じ deterministic
+   verify、Normative なら `skills/review-doc.md` の mechanical check）。old base 時点の
+   green を composed state の green として持ち越しません。composed した base の SHA を
+   記録します。
+
+   fence が照合するのは、宣言された SHA が current base tip と一致することだけです。
+   check を実際に実行したことの証明は fence の対象外であり、`--verify-sha` と同じく
+   agent 側の obligation です。ここを飛ばして SHA だけ宣言してはいけません。
 
 2. **semantic assessment を判断する** — 問いは 1 つです。
 
@@ -445,6 +451,11 @@ finite な手順として表したものです。規範的な条件は同節が�
 
 この分岐は required review 数を変えず、review ceremony を縮小せず、head が動いた case を
 扱いません。
+
+Normative artifact のみを target とする review では、手順 1 の precondition が
+`skills/review-doc.md` の mechanical check になる点だけが異なります。それ以外
+（assessment record の形式、scope binding、fence の引数、fail-closed の扱い）は
+同一です。`skills/review-doc.md` の `## Safe base drift` を参照してください。
 
 ## 停止条件
 

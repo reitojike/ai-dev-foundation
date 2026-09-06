@@ -194,6 +194,37 @@ repository root を基準に明示的に渡します。ここでは重複定義�
    merge-ready の成立条件と、review-relevant な state 変化による fence の無効化は
    `policy/core.md` の Merge-ready completion fence に従います。
 
+   fence が `target-base` を `target_base_moved` で fail させ、かつ `target-head` が
+   pass している場合（reviewed head は不変で base branch tip だけが進んだ場合）は、
+   次の `## Safe base drift` へ進めます。それ以外の drift はこの分岐に入りません。
+
+## Safe base drift（reviewed head unchanged）
+
+`policy/core.md` の Review stopping rules / Safe base drift の bounded な例外は、
+artifact class を限定しません。Normative artifact のみを target とする review でも、
+reviewed head が動いておらず base branch tip だけが forward に進んだ場合は、prior
+review evidence を bounded に carry-forward できます。
+
+**既定は通常経路です。** current base を取り込んだ target について precondition check を
+再成立させ、Selection / Execution を再確立してから先へ進みます。以下はその再確立を
+省いてよい bounded な例外に入るときだけ実施します。
+
+手順は `skills/review-code.md`（consumer には
+`.ai-dev-foundation/skills/review-code.md` として配布）の `## Safe base drift
+（reviewed head unchanged）` が canonical source です。assessment record の形式、
+3 SHA による scope binding、fence へ渡す `--verify-base-sha` / `--drift-assessment`、
+`unknown` を eligible へ変換しないこと、いずれも同一に適用します。
+
+Normative review で異なるのは、composed state に対して再実行する precondition check の
+中身だけです。deterministic verify ではなく、**手順 1 の mechanical check**（`npm run
+check:fixture` 等、その document の class が要求するもの）を reviewed head と current
+base tip を composed した状態に対して実行し直し、その base SHA を
+`--verify-base-sha` として渡します。old base 時点の結果を composed state の結果として
+持ち越しません。
+
+fence が照合するのは、宣言された SHA が current base tip と一致することだけです。
+check を実際に実行したことの証明は fence の対象外であり、agent 側の obligation です。
+
 ## 停止条件
 
 同種の finding が複数の文書や round にまたがって繰り返し出る場合は、review loop
