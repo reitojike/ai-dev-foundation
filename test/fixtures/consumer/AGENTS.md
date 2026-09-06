@@ -704,13 +704,17 @@ Task 実行中に少なくとも次のいずれかを観測した場合、Founda
 Observation trigger が発火した場合、または発火したかどうか判断がつかない
 場合は、`.ai-dev-foundation/skills/foundation-change.md` を **MUST load**
 します。判断がつかない場合を「trigger なし」と解釈して silent skip しては
-いけません。
+いけません。**この path は consumer context のものです。Foundation
+リポジトリ自身の Task では、同じ canonical source である
+`skills/foundation-change.md` を同じ条件で MUST load します。**
 
 Observation の 4 分類（root cause / ownership を軸にした定義と境界）、
 Observation recording の procedure・field、Change Proposal が表現すべき
 field 定義、および Observation から Change Proposal への昇格 signal の
-detail の canonical source は `.ai-dev-foundation/skills/foundation-change.md`
-です。本節はこれらの手続き的 detail を複製しません。
+detail の canonical source は、consumer context では
+`.ai-dev-foundation/skills/foundation-change.md`、Foundation リポジトリ
+自身の Task では `skills/foundation-change.md` です。本節はこれらの
+手続き的 detail を複製しません。
 
 本節が、Foundation Change に関与しない Task でも成立していなければ
 ならない minimum safety boundary として保持するのは次のとおりです。

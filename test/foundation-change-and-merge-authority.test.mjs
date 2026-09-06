@@ -183,6 +183,23 @@ test("core policy keeps the minimum Foundation Change Kernel safety boundary (#2
     containsText(core, "判断がつかない場合を「trigger なし」と解釈して silent skip してはいけません。"),
   );
 
+  // #113 Codex P2: the MUST-load pointer named only the consumer-distributed
+  // path, so a Task running inside the Foundation repository itself could
+  // not resolve it to the canonical skills/foundation-change.md. Both
+  // contexts must be named explicitly, without a generalized resolver.
+  assert.ok(
+    containsText(
+      core,
+      "この path は consumer context のものです。Foundation リポジトリ自身の Task では、同じ canonical source である `skills/foundation-change.md` を同じ条件で MUST load します。",
+    ),
+  );
+  assert.ok(
+    containsText(
+      core,
+      "consumer context では `.ai-dev-foundation/skills/foundation-change.md`、Foundation リポジトリ自身の Task では `skills/foundation-change.md` です。",
+    ),
+  );
+
   // Observation is not a work item and does not auto-create a Foundation
   // Issue; it is recorded on the originating consumer Task's canonical Issue.
   assert.ok(
