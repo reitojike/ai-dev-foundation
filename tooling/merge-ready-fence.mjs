@@ -98,11 +98,17 @@ async function main() {
     readAcknowledged(args.acknowledgedFile, args.acknowledged),
   ]);
   const [owner, repo] = args.repo.split("/");
+  // The frozen base is handed to the acquisition so the intervening base delta
+  // (frozen base -> current base tip) is read in this same single fresh
+  // acquisition, never as a second observation taken at another moment
+  // (Issue #102). With no frozen base, or with none of the base having moved,
+  // the acquisition reports it as not_applicable and fetches nothing extra.
   const evidence = await collectReviewEvidence({
     owner,
     repo,
     pullNumber: Number(args.pr),
     token,
+    frozenBaseSha: args.baseSha ?? null,
   });
   // Every reviewer in the record is evaluated, not just the required ones: an
   // advisory reviewer whose result has already arrived still owes revision
@@ -120,6 +126,8 @@ async function main() {
       baseSha: args.baseSha ?? null,
       artifacts,
       verifySha: args.verifySha ?? null,
+      verifyBaseSha: args.verifyBaseSha ?? null,
+      driftAssessment: args.driftAssessment ?? null,
       requiredReviewers: args.requiredReviewers,
       declaredSkills: args.declaredSkills.length > 0 ? args.declaredSkills : null,
       acknowledged,

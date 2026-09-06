@@ -1,0 +1,140 @@
+{
+  "schema": "ai-dev-foundation/safe-base-drift-replay@1",
+  "note": "Real consumer evidence, replayed. Every SHA, path list and ancestry relation below was read from reitojike/stage-tracker on 2026-09-06 with the GitHub compare API — none of it is synthesised, and no product PR was created to manufacture a base drift (Issue #102, Consumer validation). The `expected` block records what the deterministic half of the fence must conclude from these facts alone; it deliberately never records a semantic conclusion, because these facts do not contain one.",
+  "acquired_at": "2026-09-06",
+  "repo": "reitojike/stage-tracker",
+  "cases": [
+    {
+      "id": "pr-321-forward-only-disjoint",
+      "pull_number": 321,
+      "title": "Design refactor: 選択日リストのpresentationを3実装から1つへ寄せる (Issue #315)",
+      "story": "The reviewed head 57137c39 was a single commit on issue-315-presentation, frozen against main tip 6afd3458. While it sat, PR #313 (the PWA installable shell) merged and moved main to ed53dd79. What actually happened next is the friction this Issue is about: the agent merged the advanced main into the branch as 4908998e, which changed the head SHA and forced precondition / Selection / discovery to be re-established from scratch.",
+      "reviewed_head": "57137c39",
+      "frozen_base": "6afd3458e9db039243ae837f3ddb9a3642bc8013",
+      "advanced_base": "ed53dd798a3ed3d28ea4e6de3b22214a61c9d5d2",
+      "ancestry": "ahead",
+      "ahead_by": 13,
+      "behind_by": 0,
+      "reviewed_artifacts": [
+        "src/app/calendar/_components/MySelectedDayList.module.css",
+        "src/app/catalog/_components/EventLevelFallbackList.module.css",
+        "src/app/catalog/_components/SelectedDayList.module.css",
+        "src/ui/__tests__/Row.test.ts",
+        "src/ui/selectedDayList.module.css"
+      ],
+      "intervening_artifacts": [
+        ".ai-dev-foundation/product-rules.md",
+        "AGENTS.md",
+        "docs/architecture/authentication.md",
+        "docs/prd.md",
+        "docs/roadmap.md",
+        "docs/ux-ui.md",
+        "public/pwa/apple-touch-icon.png",
+        "public/pwa/icon-192.png",
+        "public/pwa/icon-512.png",
+        "public/pwa/maskable-icon-512.png",
+        "src/app/layout.tsx",
+        "src/app/manifest.ts",
+        "src/proxy.ts",
+        "src/pwa/__tests__/appIdentity.test.ts",
+        "src/pwa/__tests__/decodePng.ts",
+        "src/pwa/appIdentity.ts",
+        "src/pwa/manifest.ts",
+        "test/auth/routeProtection.test.ts"
+      ],
+      "expected": {
+        "forward_only": true,
+        "artifact_overlap": [],
+        "deterministic_facts_satisfied": true,
+        "carry_forward_without_assessment": false,
+        "note": "Every mechanism-owned fact holds. The route still does not open, because no agent has judged the semantics."
+      }
+    },
+    {
+      "id": "pr-311-artifact-overlap",
+      "pull_number": 311,
+      "title": "Design refactor: 行内バッジの縮まない規約を1箇所にする (Issue #311)",
+      "story": "Reviewed head 76bb8c46 frozen against main tip cb153de5. Main then advanced to 6afd3458 by merging PR #306 (CI workflow) and PR #320 (Issue #317, shared visually-hidden declaration). Because the branch had already integrated part of that main, and because #320 touched the same shared UI surface, the reviewed artifact set and the intervening artifact set intersect directly.",
+      "reviewed_head": "76bb8c46",
+      "frozen_base": "cb153de5aac6e615da7f5772197a27aad1fdd55e",
+      "advanced_base": "6afd3458e9db039243ae837f3ddb9a3642bc8013",
+      "ancestry": "ahead",
+      "ahead_by": 8,
+      "behind_by": 0,
+      "reviewed_artifacts": [
+        ".github/workflows/verify.yml",
+        "README.md",
+        "package.json",
+        "src/app/catalog/_components/EventDetail.module.css",
+        "src/app/catalog/_components/EventWriteForm.module.css",
+        "src/app/catalog/_components/FilterSheet.module.css",
+        "src/app/catalog/_components/InvitationCard.module.css",
+        "src/app/catalog/_components/__tests__/FinishingTouches.test.ts",
+        "src/app/schedule/_components/ScheduleWriteForm.module.css",
+        "src/app/tickets/_components/TicketOpportunityRow.module.css",
+        "src/app/tickets/_components/__tests__/TicketOpportunityRow.test.ts",
+        "src/ui/TriStateCheckbox.module.css",
+        "src/ui/WriteNotice.module.css",
+        "src/ui/WriteNotice.tsx",
+        "src/ui/__tests__/TriStateCheckbox.test.ts",
+        "src/ui/__tests__/WriteNotice.test.ts",
+        "src/ui/__tests__/visuallyHidden.test.ts",
+        "src/ui/row.module.css",
+        "src/ui/visuallyHidden.module.css"
+      ],
+      "intervening_artifacts": [
+        ".github/workflows/verify.yml",
+        "README.md",
+        "package.json",
+        "src/app/catalog/_components/EventWriteForm.module.css",
+        "src/app/catalog/_components/FilterSheet.module.css",
+        "src/app/schedule/_components/ScheduleWriteForm.module.css",
+        "src/app/tickets/_components/TicketOpportunityRow.module.css",
+        "src/app/tickets/_components/__tests__/TicketOpportunityRow.test.ts",
+        "src/ui/TriStateCheckbox.module.css",
+        "src/ui/WriteNotice.module.css",
+        "src/ui/WriteNotice.tsx",
+        "src/ui/__tests__/TriStateCheckbox.test.ts",
+        "src/ui/__tests__/WriteNotice.test.ts",
+        "src/ui/__tests__/visuallyHidden.test.ts",
+        "src/ui/visuallyHidden.module.css"
+      ],
+      "expected": {
+        "forward_only": true,
+        "artifact_overlap_non_empty": true,
+        "deterministic_facts_satisfied": false,
+        "carry_forward_with_independent_assessment": false,
+        "note": "Forward-only and completely acquired, but the two deltas touch shared artifacts. The mechanism removes this candidate before any semantic verdict is consulted."
+      }
+    },
+    {
+      "id": "pr-321-rewind-probe",
+      "pull_number": 321,
+      "title": "The same two commits compared in the other direction",
+      "story": "The identical pair of real commits, with the frozen base and the tip transposed — the shape a base branch reset or force-push would produce. GitHub reports the relation as `behind` with ahead_by 0.",
+      "reviewed_head": "57137c39",
+      "frozen_base": "ed53dd798a3ed3d28ea4e6de3b22214a61c9d5d2",
+      "advanced_base": "6afd3458e9db039243ae837f3ddb9a3642bc8013",
+      "ancestry": "behind",
+      "ahead_by": 0,
+      "behind_by": 13,
+      "reviewed_artifacts": [
+        "src/app/calendar/_components/MySelectedDayList.module.css",
+        "src/app/catalog/_components/EventLevelFallbackList.module.css",
+        "src/app/catalog/_components/SelectedDayList.module.css",
+        "src/ui/__tests__/Row.test.ts",
+        "src/ui/selectedDayList.module.css"
+      ],
+      "intervening_artifacts": [],
+      "expected": {
+        "forward_only": false,
+        "deterministic_facts_satisfied": false,
+        "carry_forward_with_independent_assessment": false,
+        "note": "A base that moved backwards is never a forward-only drift, whatever the artifact sets say."
+      }
+    }
+  ],
+  "semantic_observation": {
+    "note": "Case pr-321-forward-only-disjoint is also the clearest available argument for keeping the semantic half with the agent. Its two deltas are artifact-disjoint by path, yet PR #321 rewrites src/ui/selectedDayList.module.css while the intervening delta edits src/ui/__tests__/Row.test.ts — the test file of the very component whose presentation #321 consolidates. Both changes are also instances of the same in-flight convention (consolidating repeated small UI declarations), which main went on to write down as 8581089f docs(ux-ui). No path comparison can see any of that. A checker that read disjointness as semantic safety would have called this candidate safe."
+  }
+}

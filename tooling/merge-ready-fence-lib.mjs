@@ -20,6 +20,7 @@ export const FENCE_STATUSES = ["pass", "fail", "unknown"];
 export const FENCE_CHECK_IDS = [
   "target-head",
   "target-base",
+  "base-drift-carry-forward",
   "artifact-set",
   "skill-routing",
   "reviewer-completion",
@@ -233,6 +234,7 @@ export const MERGE_READY_FENCE_USAGE = `Usage: node tooling/merge-ready-fence.mj
   [--base-sha <sha>] [--artifact <path>]... [--artifacts-file <path>]
   [--verify-sha <sha>] [--required <reviewer-id>]... [--declared-skill <name>]...
   [--acknowledged <canonical_id>=<body_digest>]... [--acknowledged-file <path>]
+  [--verify-base-sha <sha>] [--drift-assessment <comment-id-or-url>]
   [--run-after <iso>] [--run-anchor-id <id>] [--record <path>] [--token <token>]`;
 
 const REPEATABLE_ARGS = new Map([
@@ -249,6 +251,14 @@ const SINGLE_ARGS = new Map([
   ["--target-sha", "targetSha"],
   ["--base-sha", "baseSha"],
   ["--verify-sha", "verifySha"],
+  // The base the deterministic verification was composed against. Only the
+  // safe-base-drift route reads it; omitting it leaves every existing check
+  // exactly as it was (Issue #102).
+  ["--verify-base-sha", "verifyBaseSha"],
+  // The durable PR comment carrying the agent semantic assessment of a base
+  // drift. Passing it is what requests the carry-forward route at all; there
+  // is no automatic discovery of an assessment comment.
+  ["--drift-assessment", "driftAssessment"],
   ["--artifacts-file", "artifactsFile"],
   ["--acknowledged-file", "acknowledgedFile"],
   ["--run-after", "runAfter"],
@@ -378,7 +388,7 @@ function checkTargetHead(evidence, inputs) {
 // `pass` for exactly the ordinary case this check exists to catch — the base
 // moved while the PR head stood still. `pr_base_sha` is kept in the detail as
 // a diagnostic fact, and is never consulted to reach a verdict.
-function checkTargetBase(evidence, inputs) {
+function checkTargetBase(evidence, inputs, carryForward) {
   const frozen = nonEmpty(inputs.baseSha);
   if (!frozen) return check("target-base", "unknown", ["frozen_base_missing"]);
   const metadata = evidence?.pr_metadata;
@@ -395,8 +405,17 @@ function checkTargetBase(evidence, inputs) {
   // No confirmed tip is `unknown`, never `pass`: an unreadable base ref is
   // the state in which the base is most likely to have moved unobserved.
   if (!tip) return check("target-base", "unknown", ["base_branch_tip_unavailable"], detail);
-  return shaEqual(tip, frozen)
-    ? check("target-base", "pass", [], detail)
+  if (shaEqual(tip, frozen)) return check("target-base", "pass", [], detail);
+  // A moved base is `fail` unless the safe-base-drift route below reached
+  // `carry_forward: true`, which it can only do when the reviewed head never
+  // moved, the advance was forward-only and completely acquired, the two
+  // artifact sets are disjoint, verification was re-run against the composed
+  // state, every other check on this acquisition already passes, and the agent
+  // recorded an in-scope `independent` semantic verdict (Issue #102). The
+  // carry-forward is named in the reason codes rather than left implicit: a
+  // pass reached this way is a different fact from a base that never moved.
+  return carryForward?.detail?.carry_forward === true
+    ? check("target-base", "pass", ["base_drift_carried_forward"], { ...detail, carry_forward: true })
     : check("target-base", "fail", ["target_base_moved"], detail);
 }
 
@@ -619,6 +638,315 @@ function checkAutocloseHygiene(evidence) {
 }
 
 // ---------------------------------------------------------------------------
+// Safe base drift carry-forward (Issue #102)
+//
+// One narrow lifecycle: a PR whose reviewed head has NOT moved, whose base
+// branch alone advanced forward. Everything below is a comparison between a
+// declared fact and an acquired fact. Nothing here decides whether a base
+// drift is semantically safe.
+//
+// That judgment — "is there a material semantic dependency between the
+// reviewed PR delta and the intervening base delta?" — is the agent's, and it
+// reaches this module only as an already-formed verdict written into a durable
+// comment on the PR. This module locates that comment, reads a fixed set of
+// fields out of it, and checks that those fields name THIS drift. It never
+// reads the rationale, and there is deliberately no path by which artifact
+// disjointness, a small delta, a clean merge, or green verification can
+// produce the verdict on the agent's behalf.
+// ---------------------------------------------------------------------------
+
+/**
+ * The marker that makes a conversation comment readable as a base-drift
+ * assessment, and the closed verdict vocabulary. A value outside the
+ * vocabulary is malformed, never a fourth meaning.
+ */
+export const BASE_DRIFT_ASSESSMENT_MARKER = "safe-base-drift-assessment";
+export const BASE_DRIFT_ASSESSMENT_VERDICTS = ["independent", "coupled", "unknown"];
+
+const ASSESSMENT_SHA_FIELDS = ["reviewed_head", "frozen_base", "current_base_tip"];
+const SHA_VALUE_PATTERN = "`?([0-9a-fA-F]{7,40})`?";
+const VERDICT_VALUE_PATTERN = "`?([A-Za-z][A-Za-z-]*)`?";
+const BASIS_VALUE_PATTERN = "(\\S.*?)";
+
+// Each field is read as `key: value` on its own line, tolerating the markdown
+// a comment body normally carries around it: list bullets, backticks, and bold
+// emphasis written on either side of the colon (`**key:** v` and `**key**: v`
+// are both ordinary renderings of the same line).
+function assessmentField(body, key, valuePattern) {
+  const pattern = new RegExp(
+    "^[ \\t]*(?:[-*+][ \\t]+)?(?:\\*\\*|__)?" +
+      key +
+      "(?:\\*\\*|__)?[ \\t]*:[ \\t]*(?:\\*\\*|__)?[ \\t]*" +
+      valuePattern +
+      "[ \\t]*(?:\\*\\*|__)?[ \\t]*$",
+    "gim",
+  );
+  const values = [...String(body ?? "").matchAll(pattern)].map((match) => match[1].trim());
+  // A second, differing value for the same field is malformed rather than
+  // first-wins or last-wins: an edit that appends a contradicting line must not
+  // be resolvable into either of its two readings by this parser.
+  const distinct = [...new Set(values)];
+  if (distinct.length !== 1) return { value: null, ambiguous: distinct.length > 1 };
+  return { value: distinct[0], ambiguous: false };
+}
+
+/**
+ * Reads the fixed fields of a base-drift assessment out of a comment body.
+ * Returns null when the body is not an assessment at all. Otherwise every
+ * field is a value or null, and `ambiguous_fields` names those that appeared
+ * more than once with differing values.
+ *
+ * `basis` is required to be present and non-empty and is NOT interpreted: it
+ * exists so the durable record carries the agent's reasoning for a later
+ * session to read, and so a verdict cannot be recorded as a bare flag.
+ */
+export function parseBaseDriftAssessment(body) {
+  const text = String(body ?? "");
+  if (!text.toLowerCase().includes(BASE_DRIFT_ASSESSMENT_MARKER)) return null;
+  const ambiguous = [];
+  const parsed = {};
+  for (const key of ASSESSMENT_SHA_FIELDS) {
+    const field = assessmentField(text, key, SHA_VALUE_PATTERN);
+    parsed[key] = field.value ? field.value.toLowerCase() : null;
+    if (field.ambiguous) ambiguous.push(key);
+  }
+  const verdict = assessmentField(text, "verdict", VERDICT_VALUE_PATTERN);
+  parsed.verdict = verdict.value ? verdict.value.toLowerCase() : null;
+  if (verdict.ambiguous) ambiguous.push("verdict");
+  const basis = assessmentField(text, "basis", BASIS_VALUE_PATTERN);
+  parsed.basis = basis.value ?? null;
+  if (basis.ambiguous) ambiguous.push("basis");
+  parsed.ambiguous_fields = ambiguous.sort();
+  return parsed;
+}
+
+/**
+ * Finds the declared assessment comment in the fresh acquisition. The locator
+ * is matched against the surface item's own id or locator: the fence never
+ * searches for "some comment that looks like an assessment", because that would
+ * let an assessment written for an earlier drift be picked up silently.
+ */
+function findAssessmentComment(evidence, locator) {
+  const surface = surfaceOf(evidence, "conversation_comments");
+  if (!surface || surface.fetch_status !== "fetched") {
+    return { comment: null, reason: "drift_assessment_surface_unavailable" };
+  }
+  const items = Array.isArray(surface.items) ? surface.items : [];
+  const found = items.find((item) => String(item?.id ?? "") === locator || nonEmpty(item?.locator) === locator) ?? null;
+  return found ? { comment: found, reason: null } : { comment: null, reason: "drift_assessment_not_found" };
+}
+
+// The existing obligations the carry-forward route is not allowed to relax.
+// Each must be `pass` on this same acquisition before a drift can be carried
+// forward, so the route can only ever be additive: it removes nothing and adds
+// base-drift-specific requirements. `target-base` is deliberately absent — it
+// is the check this route answers for, and depending on it would be circular.
+const CARRY_FORWARD_PREREQUISITES = [
+  "target-head",
+  "artifact-set",
+  "skill-routing",
+  "reviewer-completion",
+  "result-revision-coherence",
+  "acquisition-coverage",
+  "review-threads",
+  "verify-coherence",
+];
+
+function evaluateAssessment(evidence, inputs, facts, reasons) {
+  const locator = nonEmpty(inputs.driftAssessment);
+  const { comment, reason } = findAssessmentComment(evidence, locator);
+  if (!comment) {
+    reasons.unknown.push(reason);
+    return { locator, resolved: false };
+  }
+  const detail = {
+    locator,
+    comment_id: comment.id ?? null,
+    comment_locator: nonEmpty(comment.locator),
+    author: nonEmpty(comment.actor),
+    recorded_at: nonEmpty(comment.updated_at) ?? nonEmpty(comment.created_at),
+  };
+  // The body read here is the CURRENT one from this acquisition, so an
+  // assessment edited after it was written is evaluated as it now stands.
+  const parsed = parseBaseDriftAssessment(comment.body);
+  if (!parsed) {
+    reasons.unknown.push("drift_assessment_malformed");
+    return { ...detail, resolved: false };
+  }
+  if (parsed.ambiguous_fields.length > 0) {
+    reasons.unknown.push("drift_assessment_malformed");
+    return { ...detail, resolved: false, ambiguous_fields: parsed.ambiguous_fields };
+  }
+  const scope = {
+    reviewed_head: parsed.reviewed_head,
+    frozen_base: parsed.frozen_base,
+    current_base_tip: parsed.current_base_tip,
+  };
+  const expected = {
+    reviewed_head: nonEmpty(inputs.targetSha),
+    frozen_base: nonEmpty(inputs.baseSha),
+    current_base_tip: facts.current_base_tip_sha,
+  };
+  const result = {
+    ...detail,
+    resolved: true,
+    verdict: parsed.verdict,
+    scope,
+    expected_scope: expected,
+    basis_present: nonEmpty(parsed.basis) !== null,
+  };
+
+  // Scope binding first: an assessment that does not name this exact drift is
+  // not an assessment of it, whatever its verdict says. Without this, the
+  // verdict recorded for one base advance would silently authorise the next.
+  //
+  // A field the body never carried is malformed; a field that carries a
+  // different SHA is a mismatch. Both are ineligible, and the distinction is
+  // kept only so the reason code describes what the record actually looks
+  // like.
+  const absent = ASSESSMENT_SHA_FIELDS.filter((key) => scope[key] === null);
+  const mismatched = ASSESSMENT_SHA_FIELDS.filter((key) => scope[key] !== null && !shaEqual(scope[key], expected[key]));
+  if (absent.length > 0) {
+    reasons.unknown.push("drift_assessment_malformed");
+    result.absent_scope_fields = absent;
+  }
+  if (mismatched.length > 0) {
+    reasons.fail.push("drift_assessment_scope_mismatch");
+    result.scope_mismatch_fields = mismatched;
+  }
+  if (!result.basis_present) reasons.unknown.push("drift_assessment_basis_missing");
+
+  if (parsed.verdict === "coupled") {
+    reasons.fail.push("drift_assessment_semantic_coupling");
+  } else if (parsed.verdict === "unknown") {
+    reasons.unknown.push("drift_assessment_verdict_unknown");
+  } else if (parsed.verdict !== "independent") {
+    reasons.unknown.push("drift_assessment_malformed");
+  }
+  return result;
+}
+
+/**
+ * Whether the machine-checkable half of a safe base drift holds.
+ *
+ * `pass` with `detail.carry_forward === true` is the ONLY state in which
+ * checkTargetBase() accepts a moved base, and it requires all of: an explicitly
+ * declared assessment, a still-unchanged reviewed head, a forward-only advance,
+ * a completely acquired intervening delta, no artifact overlap with the reviewed
+ * set, verification freshly run against the composed state, every prerequisite
+ * check already passing, and an in-scope `independent` verdict. Anything
+ * missing, unreadable, or contradicted is `unknown` or `fail` — never a pass.
+ */
+function checkBaseDriftCarryForward(evidence, inputs, current, priorChecks) {
+  const locator = nonEmpty(inputs.driftAssessment);
+  const frozen = nonEmpty(inputs.baseSha);
+  const baseBranch = evidence?.base_branch;
+  const tip = baseBranch?.fetch_status === "fetched" ? nonEmpty(baseBranch.tip_sha) : null;
+  const drifted = frozen && tip ? !shaEqual(tip, frozen) : null;
+
+  // Not requested: this check must not be able to change any verdict a fence
+  // run would already have reached without it. The base drift itself is still
+  // reported by `target-base` exactly as before.
+  if (!locator) {
+    return check("base-drift-carry-forward", "pass", [], { requested: false, carry_forward: false, base_drifted: drifted });
+  }
+  const baseDetail = { requested: true, carry_forward: false, frozen_base_sha: frozen, current_base_tip_sha: tip };
+  if (drifted === null) {
+    return check("base-drift-carry-forward", "unknown", ["base_drift_undetermined"], { ...baseDetail, base_drifted: null });
+  }
+  if (drifted === false) {
+    return check("base-drift-carry-forward", "pass", ["base_drift_absent"], { ...baseDetail, base_drifted: false });
+  }
+
+  const reasons = { fail: [], unknown: [] };
+
+  // 1. Every existing obligation still holds on this same acquisition.
+  const prerequisites = [];
+  for (const id of CARRY_FORWARD_PREREQUISITES) {
+    const entry = priorChecks.find((candidate) => candidate.id === id) ?? null;
+    prerequisites.push({ id, status: entry?.status ?? null });
+    if (entry?.status === "pass") continue;
+    if (entry?.status === "fail") reasons.fail.push("carry_forward_precondition_failed:" + id);
+    else reasons.unknown.push("carry_forward_precondition_unknown:" + id);
+  }
+
+  // 2. Forward-only ancestry and 3. a completely acquired intervening delta,
+  // both out of the one base-delta acquisition.
+  const delta = evidence?.base_delta ?? null;
+  const deltaDetail = {
+    fetch_status: nonEmpty(delta?.fetch_status),
+    ancestry: nonEmpty(delta?.ancestry),
+    from_sha: nonEmpty(delta?.from_sha),
+    to_sha: nonEmpty(delta?.to_sha),
+    ahead_by: Number.isInteger(delta?.ahead_by) ? delta.ahead_by : null,
+    behind_by: Number.isInteger(delta?.behind_by) ? delta.behind_by : null,
+    artifact_count: Array.isArray(delta?.artifact_paths) ? delta.artifact_paths.length : null,
+  };
+  let interveningPaths = null;
+  if (delta?.fetch_status !== "fetched") {
+    // A comparison that could not be read is `unknown`, not `fail`: GitHub
+    // answers unrelated history with a 404, which is indistinguishable here
+    // from an outage. Both are ineligible; neither is a claim about the shape
+    // of the history.
+    reasons.unknown.push("intervening_delta_unavailable");
+  } else if (!shaEqual(delta.from_sha, frozen) || !shaEqual(delta.to_sha, tip)) {
+    // The comparison has to be the one this drift needs, not a stale endpoint.
+    reasons.unknown.push("intervening_delta_endpoint_mismatch");
+  } else if (delta.ancestry === "behind") {
+    reasons.fail.push("base_drift_rewind");
+  } else if (delta.ancestry === "diverged") {
+    reasons.fail.push("base_drift_diverged_history");
+  } else if (delta.ancestry !== "ahead") {
+    reasons.unknown.push("base_drift_ancestry_unknown");
+  } else if (!Array.isArray(delta.artifact_paths)) {
+    reasons.unknown.push("intervening_delta_incomplete");
+  } else {
+    interveningPaths = sortedUnique(delta.artifact_paths);
+  }
+
+  // 4. Direct artifact overlap between the reviewed set and the intervening
+  // set. Disjointness is reported as the machine fact it is; it is never read
+  // as a semantic conclusion, which is precisely why the verdict below is
+  // required independently of it.
+  let overlap = null;
+  if (current.paths === null) {
+    reasons.unknown.push(current.reason);
+  } else if (interveningPaths !== null) {
+    overlap = current.paths.filter((path) => interveningPaths.includes(path));
+    if (overlap.length > 0) reasons.fail.push("base_drift_artifact_overlap");
+  }
+
+  // 5. Verification freshly run against the composed state. The green recorded
+  // against the reviewed head at the OLD base is not converted into a green for
+  // the new composition: the caller declares which base the verification
+  // composed, and it must be the current tip.
+  const verifyBase = nonEmpty(inputs.verifyBaseSha);
+  if (!verifyBase) reasons.unknown.push("composed_verify_base_missing");
+  else if (!shaEqual(verifyBase, tip)) reasons.fail.push("composed_verify_base_stale");
+
+  // 6. The agent's semantic verdict, bound to this exact drift.
+  const assessment = evaluateAssessment(evidence, inputs, { current_base_tip_sha: tip }, reasons);
+
+  const detail = {
+    ...baseDetail,
+    base_drifted: true,
+    prerequisites,
+    intervening_delta: deltaDetail,
+    reviewed_artifact_count: current.paths === null ? null : current.paths.length,
+    artifact_overlap: overlap,
+    composed_verify_base_sha: verifyBase,
+    assessment,
+  };
+  if (reasons.fail.length > 0) {
+    return check("base-drift-carry-forward", "fail", [...reasons.fail, ...reasons.unknown], detail);
+  }
+  if (reasons.unknown.length > 0) {
+    return check("base-drift-carry-forward", "unknown", reasons.unknown, detail);
+  }
+  return check("base-drift-carry-forward", "pass", [], { ...detail, carry_forward: true });
+}
+
+// ---------------------------------------------------------------------------
 // Aggregate
 // ---------------------------------------------------------------------------
 
@@ -637,9 +965,13 @@ export function aggregateFenceStatus(checks) {
  */
 export function evaluateMergeReadyFence({ evidence, state, inputs = {} } = {}) {
   const current = currentArtifactPaths(evidence);
-  const checks = [
+  // Evaluation order is not emission order. The carry-forward route reads the
+  // verdicts of the checks it may not relax, and `target-base` reads the
+  // carry-forward verdict, so those two are evaluated last and spliced back
+  // into the declared FENCE_CHECK_IDS order below. `target-base` is not among
+  // the carry-forward prerequisites, so the dependency stays acyclic.
+  const independent = [
     checkTargetHead(evidence, inputs),
-    checkTargetBase(evidence, inputs),
     checkArtifactSet(current, inputs),
     checkSkillRouting(current, inputs),
     checkReviewerCompletion(state, inputs),
@@ -649,6 +981,9 @@ export function evaluateMergeReadyFence({ evidence, state, inputs = {} } = {}) {
     checkVerifyCoherence(inputs),
     checkAutocloseHygiene(evidence),
   ];
+  const carryForward = checkBaseDriftCarryForward(evidence, inputs, current, independent);
+  const byId = new Map([...independent, carryForward, checkTargetBase(evidence, inputs, carryForward)].map((entry) => [entry.id, entry]));
+  const checks = FENCE_CHECK_IDS.map((id) => byId.get(id));
   const status = aggregateFenceStatus(checks);
   return {
     schema: MERGE_READY_FENCE_SCHEMA_ID,

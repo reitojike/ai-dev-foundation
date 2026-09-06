@@ -479,6 +479,156 @@ export async function fetchBaseBranchTip(fetchImpl, token, owner, repo, prBody) 
   return { fetch_status: "fetched", failure: null, repo: baseRepoFullName, ref: baseRef, tip_sha: tipSha };
 }
 
+// ---------------------------------------------------------------------------
+// Intervening base delta (Issue #102)
+//
+// What entered the base branch between the base a review target was frozen
+// against and where that branch points now. Two facts come out of the same
+// single request: the ancestry relation between the two commits, and the set
+// of artifact paths the intervening commits touched.
+//
+// This is acquisition only. It does not compare the result to the PR's own
+// artifact set, does not decide whether a drift is safe, and does not decide
+// whether prior review evidence may be reused. Those stay with the deterministic
+// checker and, for the semantic half, with the agent (policy/core.md, Review
+// stopping rules).
+// ---------------------------------------------------------------------------
+
+// GitHub's compare endpoint truncates: at most 300 entries in `files` and at
+// most 250 in `commits`, with no flag on the response saying it happened. A
+// response sitting on either ceiling is reported as `partial` — a truncated
+// path list that claimed to be complete would let an artifact the base delta
+// actually touched pass an overlap check by being absent from it.
+const COMPARE_FILES_LIMIT = 300;
+const COMPARE_COMMITS_LIMIT = 250;
+
+// The relations GitHub's compare endpoint reports. Only "ahead" is an ordinary
+// forward-only advance of the base branch; the rest are named here so an
+// unrecognised value stays `null` (unknown) instead of being read as one of
+// them.
+export const BASE_DELTA_ANCESTRIES = ["ahead", "behind", "identical", "diverged"];
+
+function baseDeltaNotApplicable(note, extra = {}) {
+  return {
+    fetch_status: "not_applicable",
+    failure: null,
+    repo: null,
+    from_sha: null,
+    to_sha: null,
+    ancestry: null,
+    ahead_by: null,
+    behind_by: null,
+    total_commits: null,
+    artifact_paths: null,
+    note,
+    ...extra,
+  };
+}
+
+/**
+ * Compares the frozen base commit against the base branch's current tip.
+ *
+ * `not_applicable` when there is nothing to compare (no frozen base declared,
+ * no readable base ref, or the tip still equals the frozen base). `failed`
+ * when the comparison could not be read at all — which includes the unrelated
+ * -history case, where GitHub answers 404 rather than naming a relation.
+ * `partial` when the comparison was read but GitHub's own truncation means the
+ * changed-path list may be incomplete.
+ *
+ * `artifact_paths` is null for anything short of a complete list, so a caller
+ * can never mistake "not acquired" for "acquired and empty".
+ */
+export async function fetchBaseDelta(fetchImpl, token, owner, repo, prBody, frozenBaseSha, currentTipSha) {
+  const from = typeof frozenBaseSha === "string" ? frozenBaseSha.trim() : "";
+  const to = typeof currentTipSha === "string" ? currentTipSha.trim() : "";
+  if (from === "") return baseDeltaNotApplicable("no frozen base commit was declared");
+  if (to === "") return baseDeltaNotApplicable("base branch tip unavailable", { from_sha: from });
+  if (from.toLowerCase() === to.toLowerCase()) {
+    return baseDeltaNotApplicable("base branch tip still equals the frozen base", { from_sha: from, to_sha: to });
+  }
+
+  // Resolved on the repository the PR merges into, for the same reason
+  // fetchBaseBranchTip() does: the base ref lives there even when the head is
+  // a fork.
+  const baseOwner = prBody?.base?.repo?.owner?.login ?? owner;
+  const baseRepo = prBody?.base?.repo?.name ?? repo;
+  const baseRepoFullName = baseOwner + "/" + baseRepo;
+  const url = `${GITHUB_API_ROOT}/repos/${baseOwner}/${baseRepo}/compare/${encodeURIComponent(from)}...${encodeURIComponent(to)}`;
+
+  let body;
+  try {
+    ({ body } = await fetchRestPage(fetchImpl, token, url));
+  } catch (error) {
+    return {
+      fetch_status: "failed",
+      failure: error.failure ?? { status: null, message: error.message },
+      repo: baseRepoFullName,
+      from_sha: from,
+      to_sha: to,
+      ancestry: null,
+      ahead_by: null,
+      behind_by: null,
+      total_commits: null,
+      artifact_paths: null,
+    };
+  }
+
+  const ancestry = BASE_DELTA_ANCESTRIES.includes(body?.status) ? body.status : null;
+  const aheadBy = Number.isInteger(body?.ahead_by) ? body.ahead_by : null;
+  const behindBy = Number.isInteger(body?.behind_by) ? body.behind_by : null;
+  const totalCommits = Number.isInteger(body?.total_commits) ? body.total_commits : null;
+  const files = Array.isArray(body?.files) ? body.files : null;
+  const commits = Array.isArray(body?.commits) ? body.commits : null;
+  const result = {
+    fetch_status: "fetched",
+    failure: null,
+    repo: baseRepoFullName,
+    from_sha: from,
+    to_sha: to,
+    ancestry,
+    ahead_by: aheadBy,
+    behind_by: behindBy,
+    total_commits: totalCommits,
+    artifact_paths: null,
+  };
+
+  if (ancestry === null) {
+    return { ...result, fetch_status: "partial", failure: { status: null, message: "compare response carried no recognized status" } };
+  }
+  if (files === null) {
+    return { ...result, fetch_status: "partial", failure: { status: null, message: "compare response carried no file list" } };
+  }
+  if (files.some((item) => typeof item?.filename !== "string" || item.filename.trim() === "")) {
+    return { ...result, fetch_status: "partial", failure: { status: null, message: "compare response carried a file entry without a path" } };
+  }
+  // Either ceiling means the response may be a prefix of the real comparison.
+  // `total_commits` is checked against the returned `commits` array rather
+  // than only against the ceiling, so a comparison GitHub truncated below 250
+  // is caught too.
+  if (files.length >= COMPARE_FILES_LIMIT) {
+    return { ...result, fetch_status: "partial", failure: { status: null, message: `compare response returned ${files.length} files, at or above GitHub's ${COMPARE_FILES_LIMIT}-file ceiling` } };
+  }
+  if (commits !== null && totalCommits !== null && commits.length < totalCommits) {
+    return { ...result, fetch_status: "partial", failure: { status: null, message: `compare response returned ${commits.length} of ${totalCommits} commits` } };
+  }
+  if (commits !== null && commits.length >= COMPARE_COMMITS_LIMIT) {
+    return { ...result, fetch_status: "partial", failure: { status: null, message: `compare response returned ${commits.length} commits, at or above GitHub's ${COMPARE_COMMITS_LIMIT}-commit ceiling` } };
+  }
+
+  // Renames report the post-rename path in `filename` and the pre-rename path
+  // in `previous_filename`. Both are artifacts the base delta touched, so both
+  // enter the set — dropping the pre-rename path would hide a base change to
+  // exactly the path a reviewed PR still refers to.
+  const paths = new Set();
+  for (const item of files) {
+    paths.add(item.filename.trim());
+    if (typeof item.previous_filename === "string" && item.previous_filename.trim() !== "") {
+      paths.add(item.previous_filename.trim());
+    }
+  }
+  return { ...result, artifact_paths: [...paths].sort() };
+}
+
 function notApplicableSurface(note) {
   return { fetch_status: "not_applicable", count: null, pages_fetched: 0, items: [], failure: null, note };
 }
@@ -490,7 +640,7 @@ function notApplicableSurface(note) {
 // (fetched / partial / failed / not_applicable) and count independently —
 // a failure on one surface never becomes a 0 on another, and a 0 count is
 // only ever reported when the surface actually completed a fetch.
-export async function collectReviewEvidence({ owner, repo, pullNumber, token, fetchImpl = defaultFetch }) {
+export async function collectReviewEvidence({ owner, repo, pullNumber, token, fetchImpl = defaultFetch, frozenBaseSha = null }) {
   const restBase = `${GITHUB_API_ROOT}/repos/${owner}/${repo}`;
 
   let prBody = null;
@@ -511,6 +661,12 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     fetchPaginatedSurface(fetchImpl, token, `${restBase}/pulls/${pullNumber}/files?per_page=100`),
     fetchBaseBranchTip(fetchImpl, token, owner, repo, prBody),
   ]);
+
+  // The intervening base delta needs the base branch tip, so it is acquired
+  // after it rather than beside it (Issue #102). It is skipped entirely unless
+  // the caller declared the base its review target was frozen against — with
+  // nothing to compare from, there is no comparison to make.
+  const baseDelta = await fetchBaseDelta(fetchImpl, token, owner, repo, prBody, frozenBaseSha, baseBranch.tip_sha);
 
   // commit_status/check_runs are fetched for this snapshot's headSha only —
   // GitHub's status/check-runs endpoints are per-commit, with no "all
@@ -565,6 +721,10 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
   // arises when PR metadata already failed, which is counted once above.
   let fetchFailures = prMetadataFailure ? 1 : 0;
   if (baseBranch.fetch_status === "failed") fetchFailures += 1;
+  // A base delta that could not be read (or was truncated) is a real
+  // acquisition failure. `not_applicable` is not counted: it means there was
+  // nothing to compare, not that a comparison was attempted and lost.
+  if (baseDelta.fetch_status === "failed" || baseDelta.fetch_status === "partial") fetchFailures += 1;
   for (const surface of Object.values(surfaces)) {
     if (surface.fetch_status === "failed" || surface.fetch_status === "partial") fetchFailures += 1;
   }
@@ -604,6 +764,10 @@ export async function collectReviewEvidence({ owner, repo, pullNumber, token, fe
     // `pr_metadata.base_sha`, which is the base commit recorded on the PR
     // object at its last sync (Issue #82).
     base_branch: baseBranch,
+    // What entered the base branch between the frozen base and that tip
+    // (Issue #102). Present only when the caller declared a frozen base;
+    // otherwise `not_applicable` with a null path list.
+    base_delta: baseDelta,
     surfaces,
     fetch_failures: fetchFailures,
   };
@@ -637,6 +801,15 @@ export function formatHumanSummary(result) {
     lines.push(
       `Base branch: ${baseBranch?.fetch_status ?? "unavailable"} — ${baseBranch?.failure?.message ?? baseBranch?.note ?? "unknown error"}`,
     );
+  }
+  const baseDelta = result.base_delta;
+  if (baseDelta && baseDelta.fetch_status !== "not_applicable") {
+    const paths = Array.isArray(baseDelta.artifact_paths) ? `${baseDelta.artifact_paths.length} artifacts` : "artifact list unavailable";
+    const detail =
+      baseDelta.fetch_status === "fetched"
+        ? `${baseDelta.ancestry ?? "ancestry unknown"}, ${paths}`
+        : `${baseDelta.failure?.message ?? "unknown failure"}`;
+    lines.push(`Base delta: ${baseDelta.from_sha} -> ${baseDelta.to_sha} ${baseDelta.fetch_status} (${detail})`);
   }
   lines.push(`Snapshot fetched at: ${result.generated_at}`);
   lines.push("");

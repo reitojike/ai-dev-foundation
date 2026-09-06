@@ -697,6 +697,32 @@ Execution を再確立した上で、その target に必要な discovery を行
 よる target 変更は、既存の targeted closure（Executable）/ closure verification
 （Normative）の扱いに従います。
 
+#### Safe base drift の bounded な例外
+
+前段の規定には bounded な例外が 1 つだけあります。**reviewed head が review 時点から
+変わっておらず、base branch tip だけが forward に進んだ**場合に限り、その base drift を
+理由に prior review evidence を無効化せず、bounded に carry-forward できます。この例外が
+成立するのは、次の両方が揃うときだけです。
+
+- deterministic な前提が成立していること。何がその前提かは Merge-ready completion fence
+  が参照する checker が canonical source であり、判定手順を本節に置きません。
+- **agent が、reviewed PR delta と intervening base delta の間に material な semantic
+  dependency / coupling / interaction が無いと判断し、その判断と根拠を durable evidence
+  として記録していること。**
+
+この semantic 判断は agent が所有します。checker はこれを行いません。merge conflict が
+無いこと、artifact が重複しないこと、base delta が小さいこと、verification が green で
+あることは、いずれも fact であって semantic independence の証明ではありません。これらから
+semantic な安全性を推論してはいけません。
+
+semantic 判断が無い / `unknown` / coupling あり、または deterministic な前提のいずれかが
+`unknown` の場合、この例外は成立しません。その場合は前段の通常経路に戻り、current base を
+取り込んだ target について precondition check を再成立させ、Selection / Execution を
+再確立します。`unknown` を eligible へ変換しません。
+
+この例外は head の変化を扱いません。理由を問わず head が動いた場合は前段の通常経路です。
+review ceremony の縮小や required review 数の変更でもありません。
+
 closure Resolution で accepted fix が生じ、その fix を closure review で確認する
 cycle（Executable の targeted closure、Normative の closure verification のいずれも）が
 繰り返し発生する場合、無制限に継続せず、upstream task/design または policy/document

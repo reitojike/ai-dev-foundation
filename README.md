@@ -136,6 +136,14 @@ summary または `--json` machine-readable output を返す snapshot tool で�
 node tooling/review-evidence.mjs --repo <owner/repo> --pr <number> [--json]
 ```
 
+`collectReviewEvidence()` に `frozenBaseSha` を渡した場合は、その base から base branch
+の現在の tip までの **intervening base delta**（ancestry relation と changed artifact
+set）も同じ acquisition で取得し、`base_delta` として返します（Issue #102。Merge-ready
+fence が渡します）。base が動いていない場合と `frozenBaseSha` 未指定の場合は request を
+発行せず `not_applicable` を返します。provider 側の 300 files / 250 commits の truncation
+に達した comparison は `partial` として報告し、`artifact_paths` を `null` のままにします
+（不完全な path list を完全なものとして扱わないため）。
+
 GitHub token は `--token`、`GH_TOKEN`、`GITHUB_TOKEN`、`gh auth token` の順で
 解決します。surface ごとに `fetch_status`（`fetched` / `partial` / `failed` /
 `not_applicable`）と count を独立に報告し、あるsurfaceのfetch failureを他
@@ -222,6 +230,8 @@ node tooling/merge-ready-fence.mjs --repo <owner/repo> --pr <number> \
   [--verify-sha <deterministic verify を実行した SHA>] \
   [--required <reviewer-id>]... [--declared-skill review-code]... \
   [--acknowledged-file <path>] [--acknowledged <canonical_id>=<body_digest>]... \
+  [--verify-base-sha <composed verify した base SHA>] \
+  [--drift-assessment <assessment comment の id または URL>] \
   [--run-after <ISO timestamp>] [--run-anchor-id <id>] [--record <path>] [--token <token>]
 ```
 
@@ -266,8 +276,54 @@ exit 2 の 2 つの経路は stdout の有無で区別できます。
 | `result-revision-coherence` | 到着済み result の current `body_digest` が acknowledged と一致 | 未 acknowledge / digest 変化 | coverage incomplete / identity 不明 |
 | `acquisition-coverage` | `coverage_complete == true` | — | `false` |
 | `review-threads` | unresolved thread 0 件 | 1 件以上（outdated でも同じ） | resolution state 未取得 |
+| `base-drift-carry-forward` | `--drift-assessment` 未指定（route を要求していない）/ base drift 無し / 下記の条件がすべて成立 | rewind・diverged history・artifact overlap・composed verify の stale・semantic verdict が `coupled` / scope mismatch・prerequisite check の fail | intervening delta 取得不能 or 不完全・ancestry 不明・composed verify base 未宣言・assessment 不在 / malformed / verdict `unknown` / basis 無し・prerequisite check の unknown |
 | `verify-coherence` | `--verify-sha == --target-sha` | 不一致 | `--verify-sha` 未指定 |
 | `autoclose-hygiene` | current PR body に closing keyword 無し | 有り | metadata 取得失敗 |
+
+### Safe base drift carry-forward
+
+`base-drift-carry-forward` は、**reviewed head が動いておらず base branch tip だけが
+forward に進んだ**場合に限り、prior review evidence を bounded に carry-forward できる
+かを判定します（Issue #102）。`--drift-assessment` を渡さない限りこの route には入らず、
+その場合 fence の挙動は従来と完全に同じです（`target-base` が `target_base_moved` で
+fail）。
+
+この check が `pass` になるのは、次がすべて成立するときだけです。
+
+- `target-head` / `artifact-set` / `skill-routing` / `reviewer-completion` /
+  `result-revision-coherence` / `acquisition-coverage` / `review-threads` /
+  `verify-coherence` が同じ acquisition 上で `pass`
+- frozen base -> current base tip の ancestry が forward-only（`ahead`）
+- intervening base delta の changed artifact set が完全に取得できている
+- reviewed artifact set と intervening artifact set が直接重複しない
+- `--verify-base-sha` が current base tip と一致する（old base の green を composed
+  state の green へ変換しない）
+- `--drift-assessment` が指す PR comment が、この drift の 3 SHA を名指しした上で
+  `verdict: independent` と非空の `basis` を持つ
+
+`pass` した場合のみ `target-base` は `base_drift_carried_forward` として `pass` します。
+判断が依拠した fact は `base-drift-carry-forward.detail` にすべて残ります。
+
+**checker は semantic な安全性を判断しません。** artifact が重複しないこと、delta が
+小さいこと、verification が green であることは fact であって semantic independence の
+証明ではなく、checker はそこから `independent` を導きません。その判断は agent が所有し、
+下記の durable record として fence へ渡します。手順は `skills/review-code.md` の
+`## Safe base drift`、規範は `policy/core.md` の Review stopping rules が持ちます。
+
+```text
+## safe-base-drift-assessment
+
+reviewed_head: <reviewed head SHA>
+frozen_base: <freeze 時の base SHA>
+current_base_tip: <current base branch tip SHA>
+verdict: independent | coupled | unknown
+basis: <判断の根拠>
+```
+
+3 つの SHA は scope binding です。別の drift へ向けて書かれた assessment は scope
+mismatch として拒否されます。`basis` の内容を fence は解釈せず、存在のみを要求します
+（verdict だけの bare な記録を durable evidence として認めないため）。fence は comment の
+**現在の本文**を読むため、後から編集した場合は編集後の内容で評価されます。
 
 `reviewer-completion` は Issue #74 の `evaluateReviewerTargetStates()` の出力を消費
 するだけで、provider marker parser を持ちません。`result-revision-coherence` は

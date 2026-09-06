@@ -370,6 +370,82 @@ required/expected review の消化根拠にしてはいけません。この区�
     判断であり、`policy/core.md` の Merge-ready completion fence が定めます。
     review-relevant な state 変化があった場合の fence 無効化も同節が定めます。
 
+    fence が `target-base` を `target_base_moved` で fail させ、かつ `target-head` が
+    pass している場合（reviewed head は不変で base branch tip だけが進んだ場合）は、
+    次の `## Safe base drift` へ進めます。それ以外の drift はこの分岐に入りません。
+
+## Safe base drift（reviewed head unchanged）
+
+`policy/core.md` の Review stopping rules / Safe base drift の bounded な例外を、
+finite な手順として表したものです。規範的な条件は同節が持ちます。
+
+**既定は通常経路です。** current base を取り込んだ target について precondition check を
+再成立させ、Selection / Execution を再確立してから先へ進みます。以下は、その再確立を
+省いてよい bounded な例外に入るときだけ実施します。
+
+前提として次の 3 つがすべて成立していること。ひとつでも欠ければ通常経路へ戻ります。
+
+- fence の `target-head` が pass（reviewed head が review 時点から動いていない）
+- fence が fail させたのは `target-base` の `target_base_moved` だけである
+- accepted finding の fix / verification 由来の correction / rebase 等、head を動かす
+  理由がこの drift に含まれていない
+
+1. **composed state を fresh に verify する** — reviewed head と current base tip を
+   composed した状態に対して、手順 1 と同じ deterministic verify を実行し直します。
+   old base 時点の green を composed state の green として持ち越しません。composed した
+   base の SHA を記録します。
+
+2. **semantic assessment を判断する** — 問いは 1 つです。
+
+   > reviewed PR delta と intervening base delta の間に、material な semantic
+   > dependency / coupling / interaction があるか。
+
+   intervening delta は fence output の `base-drift-carry-forward.detail.intervening_delta`
+   が endpoint と artifact 数を、`artifact_overlap` が直接の重複を fact として示します。
+   **これらは fact であって結論ではありません。** merge conflict が無いこと、artifact が
+   重複しないこと、delta が小さいこと、tests が green であることのいずれも、semantic
+   independence の証明として扱わないでください。確信が持てない場合の答えは `unknown` で
+   あり、`unknown` は通常経路です。
+
+3. **assessment を durable record として投稿する** — reviewer capability record の
+   `durable_record.posting` に従い、PR へ新規 comment を 1 件投稿します。既存 comment の
+   in-place 編集はしません。fence はこの comment の **現在の本文**を読むため、後から
+   編集した場合はその編集後の内容で評価されます。
+
+   ```text
+   ## safe-base-drift-assessment
+
+   reviewed_head: <reviewed head SHA>
+   frozen_base: <freeze 時の base SHA>
+   current_base_tip: <current base branch tip SHA>
+   verdict: independent | coupled | unknown
+   basis: <なぜ semantic dependency が無い / あると判断したかの根拠>
+   ```
+
+   3 つの SHA は、この drift だけを指すための scope binding です。別の drift に対して
+   書いた assessment は、fence が scope mismatch として拒否します。`basis` は fence が
+   解釈しません。後続 session が「何を根拠に判断したか」を復元できるように書きます。
+
+4. **fence を再実行する** — 手順 13 の引数に次の 2 つを加えます。`--base-sha` は
+   **freeze 時の base のまま**にします（drift 自体が評価対象のため、current tip へ
+   書き換えると carry-forward ではなく再 freeze になります）。
+
+   ```text
+     --verify-base-sha <手順 1 で composed した base SHA> \
+     --drift-assessment <手順 3 で投稿した comment の id または URL>
+   ```
+
+   `--drift-assessment` を渡さない限り carry-forward 経路には入りません。fence が
+   `pass` を返した場合、`target-base` の reason code は `base_drift_carried_forward` に
+   なり、`base-drift-carry-forward.detail` に判断が依拠した fact がすべて残ります。
+   これを durable evidence として記録します。
+
+   `fail` / `unknown` はどちらも carry-forward 不成立です。`unknown` を `pass` として
+   扱わず、通常経路（current base を取り込んだ target の再確立）へ戻ります。
+
+この分岐は required review 数を変えず、review ceremony を縮小せず、head が動いた case を
+扱いません。
+
 ## 停止条件
 
 Executable artifact の review flow を、`policy/core.md` の Review stopping rules が
