@@ -348,3 +348,77 @@ test("materialized consumer skill bundle includes foundation-change.md (#112)", 
   const source = await readFile(path.join(root, "skills", "foundation-change.md"), "utf8");
   assert.equal(materialized, source);
 });
+
+// #112: the moved procedural headings must actually leave the generated
+// consumer artifact, not just gain new Kernel headings alongside stale
+// leftovers from a broken sync.
+test("generated consumer AGENTS.md does not carry the moved Observation procedural detail (#112)", async () => {
+  const agents = await readFile(path.join(root, "test", "fixtures", "consumer", "AGENTS.md"), "utf8");
+
+  assert.ok(!agents.includes("### Observation classification"));
+  assert.ok(!agents.includes("### Observation recording"));
+  assert.ok(!agents.includes("### Observation から Change Proposal への昇格"));
+});
+
+// #112: the widened "## 責務の分離" delegation clause must stay a closed,
+// bounded enumeration of exactly the two named cases (review-execution-only,
+// and trigger-fired-or-uncertain), not an open-ended class an agent could
+// read as license to delegate arbitrary rules to arbitrary skills.
+test("core policy's widened canonical ownership delegation clause stays a closed, bounded enumeration (#112)", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+
+  assert.ok(
+    containsText(
+      core,
+      "policy は、次の二つの場合に限り、conditional にのみ必要となる必須事項・禁止事項について、その canonical ownership を Foundation-owned な skill へ明示的に委譲してよいです。",
+    ),
+  );
+  assert.ok(containsText(core, "review 実行 agent のみが必要とする場合"));
+  assert.ok(
+    containsText(core, "特定の trigger 発火時（および発火したかどうか不明な場合）にのみ必要となる場合"),
+  );
+
+  for (const condition of [
+    "policy 自身が、委譲先の skill を one-hop pointer として名指しする",
+    "同じ規範的なルールを policy と skill の両方に重複して記述しない",
+    "この委譲は個別に列挙した対象にのみ適用し、任意のルールを一般的に skill へ移してよいことを意味しない",
+    "generalized loader / registry / routing framework / DSL を新設しない",
+  ]) {
+    assert.ok(containsText(core, condition), `missing delegation condition: ${condition}`);
+  }
+
+  // The enumeration must not carry a trailing "等" (etc.) or other
+  // open-ended qualifier right after the two named cases — that would
+  // contradict "個別に列挙した対象にのみ適用".
+  const delegationIntroIndex = core.indexOf("policy は、次の二つの場合に限り");
+  assert.ok(delegationIntroIndex !== -1);
+  const delegationClauseSlice = core.slice(delegationIntroIndex, delegationIntroIndex + 400);
+  assert.doesNotMatch(
+    delegationClauseSlice,
+    /場合等/,
+    "the two-case enumeration must be closed, not suffixed with an open-ended 等",
+  );
+});
+
+// #112 Safety scenario 6: Review Protocol tasks must be able to satisfy the
+// Foundation Change justification conditions from the Kernel alone. They
+// must not need to load skills/foundation-change.md, and must not duplicate
+// or depend on its content.
+test("review skills do not need to load or duplicate skills/foundation-change.md (#112 safety scenario 6)", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  for (const [name, skill] of [
+    ["review-code.md", reviewCode],
+    ["review-doc.md", reviewDoc],
+  ]) {
+    assert.ok(
+      !skill.includes("foundation-change"),
+      `${name} must not reference skills/foundation-change.md; the Review lane gets the justification conditions from the Kernel alone`,
+    );
+    assert.ok(
+      !skill.includes("Foundation Change の正当化条件"),
+      `${name} must not duplicate the Foundation Change justification conditions`,
+    );
+  }
+});

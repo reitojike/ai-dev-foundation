@@ -22,11 +22,15 @@
 同じ規範的なルールを Skill、Profile、generated adapter の source に再記述せず、
 所有するルールを参照してください。
 
-policy は、review 実行 agent のみが必要とする場合、または特定の trigger
-発火時（および発火したかどうか不明な場合）にのみ必要となる場合等、
-conditional にのみ必要となる必須事項・禁止事項について、その canonical
-ownership を Foundation-owned な skill へ明示的に委譲してよいです。この
-委譲は次をすべて満たす場合に限ります。
+policy は、次の二つの場合に限り、conditional にのみ必要となる必須事項・
+禁止事項について、その canonical ownership を Foundation-owned な skill へ
+明示的に委譲してよいです。
+
+1. review 実行 agent のみが必要とする場合
+2. 特定の trigger 発火時（および発火したかどうか不明な場合）にのみ
+   必要となる場合
+
+この委譲は次をすべて満たす場合に限ります。
 
 - policy 自身が、委譲先の skill を one-hop pointer として名指しする
 - 委譲後も policy に、その conditional な状況が成立していない Task でも
@@ -710,8 +714,10 @@ detail の canonical source は `.ai-dev-foundation/skills/foundation-change.md`
 - 専用の ledger / database / schema、GitHub label 体系、bot / collector /
   dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は
   Observation handling の一部にしません。
-- Task closure と Observation（下記）、および Foundation Change の
-  正当化条件（下記）
+
+これに加え、下記の Task closure と Observation の fail-closed hook、
+および Foundation Change の正当化条件も、本 Kernel が保持する minimum
+safety boundary です。
 
 ### Task closure と Observation
 
