@@ -38,8 +38,6 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     "## Review Protocol",
     "### Artifact classification",
     "### Review contracts",
-    "#### Selection Contract",
-    "#### Execution Contract",
     "#### Acquisition & Validity Contract",
     "#### Resolution Contract",
     "### Review Adapter boundary",
@@ -48,6 +46,14 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   ]) {
     assert.ok(core.includes(heading), `missing Review Protocol heading: ${heading}`);
   }
+
+  // #110 C-1: Selection Contract and Execution Contract's own headings no
+  // longer live in the Kernel — their procedural detail moved to the
+  // Foundation-owned review skill (see the "skill owns the Review contracts
+  // procedural detail" test below). Only the Kernel-retained invariant
+  // subsets of Acquisition & Validity Contract and Resolution Contract stay.
+  assert.ok(!core.includes("#### Selection Contract"));
+  assert.ok(!core.includes("#### Execution Contract"));
 
   // Artifact classification
   for (const artifactClass of ["**Executable**", "**Normative**", "**Informational**"]) {
@@ -109,21 +115,6 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     "this fix is a merge/completion gate, not a new precondition for starting closure",
   );
 
-  // Pass the selected commit range to Execution: Execution Contract's
-  // target field is bound to Selection's expected target (SHA or commit range),
-  // not reduced to a bare "target SHA" that Selection's range would silently
-  // narrow down to. Since Step 9 (2nd discovery) and Step 10 (targeted closure)
-  // both already say "Execution Contract に従って", fixing the Contract's own
-  // definition is enough to cover them without restating range semantics there.
-  assert.ok(
-    containsText(core, "Selection で確定した expected target SHA / commit range"),
-  );
-  assert.doesNotMatch(
-    core,
-    /#### Execution Contract\s*\n\s*-\s*trigger 方法\s*\n\s*-\s*target SHA\s*\n/,
-    "Execution Contract must not regress to a bare, Selection-unbound 'target SHA' field",
-  );
-
   // Invalidate discovery on artifact-set-only target changes: the
   // review target is explicitly defined as the (SHA/range, artifact set)
   // pair, and the Execution Contract propagates the confirmed artifact set
@@ -144,21 +135,6 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "precondition evidence、discovery evidence、closure evidence はいずれも target-specific であり、確定した target と一致しない evidence を review / closure / merge の根拠にしません。",
     ),
   );
-  assert.ok(
-    containsText(core, "Selection で確定した target artifact set"),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "Selection Contract で確定した expected target（SHA / commit range）と target artifact set は、Execution で reviewer の trigger へ渡し、実際に渡した target と artifact set を記録します。",
-    ),
-  );
-  assert.doesNotMatch(
-    core,
-    /#### Execution Contract\s*\n\s*-\s*trigger 方法\s*\n\s*-\s*Selection で確定した expected target SHA \/ commit range\s*\n\s*-\s*required context\s*\n/,
-    "Execution Contract must not regress to omitting the confirmed target artifact set field",
-  );
-
   // Principle B (review evidence is target-specific): discovery evidence, not just
   // precondition evidence, does not carry over to a new target unless the change
   // was the accepted-fix-driven closure path.
@@ -201,50 +177,18 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
       "acquisition の record は、後続 session から独立に recoverable な場所へpersist されて初めて durable evidence です。",
     ),
   );
-  // An existing provider surface that
-  // already carries enough information in a later-session-recoverable form
-  // counts as the record itself — this must not be read as requiring every
-  // already-durable run to additionally post a normalized record.
-  //
-  // Root-cause fix: the first two
-  // closure attempts hand-enumerated which elements the surface must carry
-  // (target, then +artifact set), and each round a reviewer found one more
-  // Validity/Completion element missing from the hand-kept list (required
-  // context accessibility was still absent after round 2). Rather than
-  // enumerate a 3rd time, this defers to "Completion と Validity の要求事項"
-  // as a whole, so no future element can be missing from this sufficiency
-  // bar without also being missing from the Contract's own definition above.
+  // #110 C-1: the detailed sufficiency-bar mechanics for what counts as
+  // independently-recoverable persistence moved to the Foundation-owned
+  // review skill (see "skill owns the Review contracts procedural detail"
+  // below). The Kernel keeps only the top-level persistence requirement
+  // (asserted above) and the record-schema-is-not-evidence invariant
+  // (asserted below).
   assert.ok(
-    containsText(
-      core,
-      "本 Contract が定義する Completion と Validity の要求事項を独立に判定できるだけの情報が",
-    ),
-  );
-  assert.ok(
-    containsText(
+    !containsText(
       core,
       "reviewer mechanism が外部から確認可能な surface へ残す結果に、その判定に必要な情報が既に含まれていれば、その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
     ),
-  );
-  // Root-cause fix #2: the first root-cause fix
-  // still let the no-surface fallback path point at the bare record schema,
-  // whose `validity` field is only a self-asserted conclusion — so a later
-  // session had no way to independently re-derive it, unlike the surface
-  // branch which requires independently-judgable raw information. Unify both
-  // branches under one bar (enough info to independently judge Completion/
-  // Validity) so the schema's summary fields can never again be mistaken for
-  // a substitute for the evidence behind them.
-  assert.ok(
-    containsText(
-      core,
-      "含まれていない場合（reviewer mechanism 自身がそのような surface へ結果を残さない場合、例えば実装 session 内で動く subagent review を含む）は、上記の record schema の各 field に加え、Completion と Validity の要求事項",
-    ),
-  );
-  assert.ok(
-    containsText(
-      core,
-      "を独立に判定できる情報を、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
-    ),
+    "Kernel must not carry the migrated durable-evidence sufficiency mechanics",
   );
   assert.ok(
     containsText(
@@ -277,31 +221,14 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.ok(containsText(core, "reviewed SHA / range が intended target と一致している"));
   assert.ok(containsText(core, "quota / timeout / structural な execution / acquisition failure がない"));
 
-  // Acquisition record schema fields
-  for (const field of [
-    '"reviewer"',
-    '"target_sha"',
-    '"status"',
-    '"validity"',
-    '"finding_count"',
-    '"result_locator"',
-    '"started_at"',
-    '"completed_at"',
-    '"failure"',
-  ]) {
-    assert.ok(core.includes(field), `missing record schema field: ${field}`);
-  }
-
-  // The record's target_sha is the reviewed/observed target, not the Selection
-  // Contract's expected target, and completed-but-invalid must be expressible via
-  // status/validity together, without expanding the schema beyond this one field.
+  // #110 C-1: the raw JSON record schema example and the target_sha /
+  // validity field-level explanation are review-execution detail that moved
+  // to the Foundation-owned review skill (see below). The Kernel keeps only
+  // the completed-but-invalid expressibility consequence (asserted next).
   assert.ok(
-    containsText(
-      core,
-      "record の `target_sha` は、Selection Contract の expected target（SHA / commit range）ではなく、実際に reviewed された SHA / range（observed target）を表します。",
-    ),
+    !core.includes('"target_sha": "..."'),
+    "Kernel must not carry the migrated Acquisition & Validity record schema example",
   );
-  assert.ok(containsText(core, "`validity` は少なくとも `valid` / `invalid` / `unknown` を表現します。"));
   assert.ok(
     containsText(core, "この場合、record は `status: completed` かつ `validity: invalid` として表現します。"),
   );
@@ -332,22 +259,15 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
     ),
   );
 
-  // Resolution Contract
+  // #110 C-1: the Resolution Contract's triage-category / message-bus /
+  // technical-dispute / P0-P1-dismiss / drip-fix / batch-fix / scope-creep
+  // procedural bullets moved to the Foundation-owned review skill (see below).
+  // The Kernel keeps only the stage-independence and ancestor-scope bullets
+  // (asserted in the "Review stopping rules" block further down).
   assert.ok(
-    containsText(
-      core,
-      "fix / false-positive / needs-verification / technical-dispute / intent-question へ triage する",
-    ),
+    !containsText(core, "accepted finding は drip fix せず、root-cause を確認した上で batch で fix する"),
+    "Kernel must not carry the migrated Resolution Contract procedural bullets",
   );
-  assert.ok(containsText(core, "human を raw finding の message bus にしない"));
-  assert.ok(containsText(core, "pure technical dispute は technical adjudication で解決する"));
-  assert.ok(containsText(core, "human escalation は product intent / authority に限る"));
-  assert.ok(
-    containsText(core, "P0/P1 相当の重大 finding を dismiss する場合は、必要に応じて独立 reviewer の確認を要求する"),
-  );
-  assert.ok(containsText(core, "accepted finding は drip fix せず、root-cause を確認した上で batch で fix する"));
-  assert.ok(containsText(core, "fix 後は全 discovery をやり直さず、targeted closure を基本とする"));
-  assert.ok(containsText(core, "review を新しい scope の探索に使わない"));
 
   // Review Adapter boundary
   for (const fn of ["trigger()", "pollCompletion()", "collectOutputs()", "normalizeFindings()"]) {
@@ -527,6 +447,102 @@ test("core policy defines the provider-neutral Review Protocol", async () => {
   assert.doesNotMatch(core, /(?<!\.ai-dev-foundation\/)skills\/review-doc\.md/);
 });
 
+// #110 C-1 (progressive disclosure, Review contracts): Selection Contract,
+// Execution Contract, and the procedural (non-invariant) portions of
+// Acquisition & Validity Contract / Resolution Contract moved from the
+// Kernel to skills/review-code.md's `## Review contracts` section. Every
+// assertion below previously ran against `policy/core.md`; the semantics are
+// unchanged, only the canonical location moved.
+test("review-code skill owns the Review contracts procedural detail (#110 C-1)", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+
+  for (const heading of [
+    "## Review contracts",
+    "### Selection Contract",
+    "### Execution Contract",
+    "### Acquisition & Validity Contract",
+    "### Resolution Contract",
+  ]) {
+    assert.ok(reviewCode.includes(heading), `missing Review contracts heading: ${heading}`);
+  }
+
+  // Execution Contract
+  assert.ok(containsText(reviewCode, "Selection で確定した expected target SHA / commit range"));
+  assert.ok(containsText(reviewCode, "Selection で確定した target artifact set"));
+  assert.doesNotMatch(
+    reviewCode,
+    /### Execution Contract\s*\n\s*-\s*trigger 方法\s*\n\s*-\s*target SHA\s*\n/,
+    "Execution Contract must not regress to a bare, Selection-unbound 'target SHA' field",
+  );
+  assert.doesNotMatch(
+    reviewCode,
+    /### Execution Contract\s*\n\s*-\s*trigger 方法\s*\n\s*-\s*Selection で確定した expected target SHA \/ commit range\s*\n\s*-\s*required context\s*\n/,
+    "Execution Contract must not regress to omitting the confirmed target artifact set field",
+  );
+  assert.ok(
+    containsText(
+      reviewCode,
+      "Selection Contract で確定した expected target（SHA / commit range）と target artifact set は、Execution で reviewer の trigger へ渡し、実際に渡した target と artifact set を記録します。",
+    ),
+  );
+
+  // Selection Contract's expected review set membership algorithm (the
+  // detailed field-by-field mechanics; merge-ready-fence.test.mjs covers the
+  // subset the Merge-ready completion fence depends on).
+  assert.ok(containsText(reviewCode, "expected review set は、agent が選択した reviewer だけでは閉じません"));
+  assert.ok(
+    containsText(reviewCode, "consumer が reviewer を required / configured automatic / advisory のいずれとして宣言"),
+  );
+
+  // Acquisition & Validity Contract's record schema and field-level detail
+  for (const field of [
+    '"reviewer"',
+    '"target_sha"',
+    '"status"',
+    '"validity"',
+    '"finding_count"',
+    '"result_locator"',
+    '"started_at"',
+    '"completed_at"',
+    '"failure"',
+  ]) {
+    assert.ok(reviewCode.includes(field), `missing record schema field: ${field}`);
+  }
+  assert.ok(
+    containsText(
+      reviewCode,
+      "record の `target_sha` は、Selection Contract の expected target（SHA / commit range）ではなく、実際に reviewed された SHA / range（observed target）を表します。",
+    ),
+  );
+  assert.ok(containsText(reviewCode, "`validity` は少なくとも `valid` / `invalid` / `unknown` を表現します"));
+
+  // Resolution Contract's procedural bullets (triage categories, message-bus,
+  // technical-dispute routing, P0/P1 dismiss confirmation, drip-fix
+  // prohibition, batch-fix, scope-creep prohibition). The stage-independence
+  // and ancestor-scope invariants stay Kernel-retained (see the first test).
+  assert.ok(
+    containsText(
+      reviewCode,
+      "fix / false-positive / needs-verification / technical-dispute / intent-question へ triage する",
+    ),
+  );
+  assert.ok(containsText(reviewCode, "human を raw finding の message bus にしない"));
+  assert.ok(containsText(reviewCode, "pure technical dispute は technical adjudication で解決する"));
+  assert.ok(containsText(reviewCode, "human escalation は product intent / authority に限る"));
+  assert.ok(
+    containsText(
+      reviewCode,
+      "P0/P1 相当の重大 finding を dismiss する場合は、必要に応じて独立 reviewer の確認を要求する",
+    ),
+  );
+  assert.ok(containsText(reviewCode, "accepted finding は drip fix せず、root-cause を確認した上で batch で fix する"));
+  assert.ok(containsText(reviewCode, "fix 後は全 discovery をやり直さず、targeted closure を基本とする"));
+  assert.ok(containsText(reviewCode, "review を新しい scope の探索に使わない"));
+
+  // Provider-neutral: the moved content must not hard-code provider specifics.
+  assert.doesNotMatch(reviewCode, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+});
+
 // #51 Phase 1 (progressive disclosure canary): the artifact-class review finite
 // flow — the phase-specific part of the former Kernel `Review stopping rules`
 // section — is owned by the Foundation-owned review skills, not by the Kernel.
@@ -600,7 +616,7 @@ test("review skills own the artifact-class review finite flow (#51 Phase 1)", as
   assert.ok(
     containsText(
       reviewCode,
-      "targeted closure の finding を Resolution Contract（`policy/core.md`）に従って triage します。unresolved の finding がある間は merge しません。",
+      "targeted closure の finding を、上記 `## Review contracts` の Resolution Contract に従って triage します。unresolved の finding がある間は merge しません。",
     ),
   );
 
@@ -1143,15 +1159,32 @@ test("review skills document procedure without duplicating normative rules", asy
   // asserted where they actually live.
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
+  // #110 C-1: Selection/Execution/Acquisition & Validity/Resolution Contract
+  // procedural detail (the record schema, the drip-fix prohibition, etc.) is
+  // now canonically owned by review-code.md's `## Review contracts` section,
+  // not by policy/core.md. review-code.md legitimately carries this content;
+  // review-doc.md must still defer to it instead of duplicating it.
+  assert.ok(
+    reviewCode.includes('"target_sha": "..."'),
+    "review-code.md must own the Acquisition & Validity record schema (#110 C-1)",
+  );
+  assert.ok(
+    /drip fix/.test(reviewCode),
+    "review-code.md must own the Resolution Contract's drip-fix prohibition (#110 C-1)",
+  );
+  assert.doesNotMatch(
+    reviewDoc,
+    /"target_sha": "\.\.\."/,
+    "review-doc.md must not duplicate the Acquisition & Validity record schema from review-code.md",
+  );
+  assert.doesNotMatch(
+    reviewDoc,
+    /drip fix/,
+    "review-doc.md must reference review-code.md's Resolution Contract instead of restating drip fix",
+  );
+
   for (const skill of [reviewCode, reviewDoc]) {
     assert.ok(skill.includes("policy/core.md"), "skill must reference policy/core.md");
-    assert.doesNotMatch(
-      skill,
-      /"target_sha": "\.\.\."/,
-      "skill must not duplicate the Acquisition & Validity record schema from policy",
-    );
-    // Neither skill restates the drip-fix prohibition; both defer to Resolution Contract.
-    assert.doesNotMatch(skill, /drip fix/, "skill must reference Resolution Contract instead of restating drip fix");
 
     // A distributed skill's many `policy/core.md` references must be resolvable
     // from consumer context, where no `policy/core.md` file ships — only the
@@ -1206,7 +1239,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "reviewer mechanism 自身が外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、`policy/core.md` の Acquisition & Validity Contract が定める durable evidence の要求を、その手段で満たします。",
+      "reviewer mechanism 自身が外部から確認可能な surface へ結果を残さない場合（例: 実装 session 内で動く subagent review）は、本 skill の `## Review contracts`（Acquisition & Validity Contract）が定める durable evidence の要求を、その手段で満たします。",
     ),
   );
   assert.ok(
@@ -1233,24 +1266,23 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "`policy/core.md` の Acquisition & Validity Contract が定める durable evidence の要求を、その手段で満たします。何を persist すれば足りるかは同 Contract が定めます。",
+      "本 skill の `## Review contracts`（Acquisition & Validity Contract）が定める durable evidence の要求を、その手段で満たします。何を persist すれば足りるかは同 Contract が定めます。",
     ),
   );
-  // Both halves of the rule stay stated — but in the Kernel, once, instead of
-  // being re-enumerated in the skill where the copy could drift. The
-  // no-surface fallback must still demand evidence, not just conformance to
-  // the bare record schema (whose `validity` field is only a self-asserted
-  // conclusion a later session can't independently re-derive).
+  // #110 C-1: the sufficiency-bar mechanics (existing-surface counts as
+  // recoverable / no-surface fallback demands independently-judgable info)
+  // moved to the skill's own `## Review contracts` section, where they are
+  // stated once instead of being re-enumerated against the Kernel.
   assert.ok(
     containsText(
-      core,
+      reviewCode,
       "その surface 自体をこの record の recoverable な representation として扱ってよく、別途 record を post し直す必要はありません。",
     ),
   );
   assert.ok(
     containsText(
-      core,
-      "上記の record schema の各 field に加え、Completion と Validity の要求事項を独立に判定できる情報を、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
+      reviewCode,
+      "情報を、そのような場所へ明示的に persist しない限り、session 終了後には recoverable な evidence として扱いません。",
     ),
   );
   assert.ok(
@@ -1364,7 +1396,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewCode,
-      "targeted closure の finding を Resolution Contract（`policy/core.md`）に従って triage します。unresolved の finding がある間は merge しません。",
+      "targeted closure の finding を、上記 `## Review contracts` の Resolution Contract に従って triage します。unresolved の finding がある間は merge しません。",
     ),
   );
   assert.ok(
@@ -1752,7 +1784,13 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "closure verification（手順 7）の finding を Resolution Contract（`policy/core.md`）に従って triage します。unresolved の finding がある間は review procedure を完了としません。",
+      "closure verification（手順 7）の finding を、",
+    ),
+  );
+  assert.ok(
+    containsText(
+      reviewDoc,
+      "`## Review contracts` の Resolution Contract に従って triage します。unresolved の finding がある間は review procedure を完了としません。",
     ),
   );
   assert.ok(containsText(reviewDoc, "accepted な closure finding があれば、手順 6〜7 と同じ procedure"));
@@ -1907,7 +1945,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "Selection Contract（`policy/core.md`）をこの closure review run に適用します。",
+      "Selection Contract\n   （`.ai-dev-foundation/skills/review-code.md` の `## Review contracts`）を\n   この closure review run に適用します。",
     ),
   );
   assert.ok(
@@ -1921,7 +1959,7 @@ test("review skills document procedure without duplicating normative rules", asy
   assert.ok(
     containsText(
       reviewDoc,
-      "確定した closure artifact set を、直近の mechanical-check evidence がカバーしていることを確認します。確認できない場合は、確定した closure target に対して mechanical check を再実行してから、Execution Contract（`policy/core.md`）を closure review run に適用します。",
+      "確定した closure artifact set を、直近の mechanical-check evidence がカバーしていることを確認します。確認できない場合は、確定した closure target に対して mechanical check を再実行してから、Execution Contract\n   （`.ai-dev-foundation/skills/review-code.md` の `## Review contracts`）を\n   closure review run に適用します。",
     ),
   );
 

@@ -1,9 +1,14 @@
 # review-doc skill
 
 このファイルは `policy/core.md` の Review Protocol（Artifact classification の
-Normative、Review contracts、Review stopping rules）を使った実行手順です。規範的な
-ルールはここで再定義せず、`policy/core.md` を参照します。本 skill と policy が
-矛盾する場合は policy が優先します。
+Normative、Review contracts、Review stopping rules）を使った実行手順です。
+`policy/core.md` が保持する minimum safety boundary はここで再定義せず、
+`policy/core.md` を参照します。本 skill と policy が矛盾する場合は policy が優先
+します。Selection Contract / Execution Contract、Acquisition & Validity Contract /
+Resolution Contract の手続き的 detail の canonical source は Foundation リポジトリの
+`skills/review-code.md`（consumer には `.ai-dev-foundation/skills/review-code.md`
+として配布）の `## Review contracts` section です。本 skill ではこれらの Contract を
+重複定義しません。
 Normative artifact の review 手順（`## 手順` と `## 停止条件` の finite flow）の
 canonical source は本 skill であり、`policy/core.md` には置きません。
 
@@ -55,11 +60,13 @@ repository root を基準に明示的に渡します。ここでは重複定義�
    check が対象とした document / artifact scope を必要な精度で記録した
    上で、markdown の形式チェック（lint / format / link 切れ等、repository
    が持つ機械的な check）を実行します。
-2. **Selection** — Selection Contract（`policy/core.md`）に従い、target SHA /
-   range、target artifact set、reviewer / capability、required review 数、
-   および expected review set を確定します。expected review set は自分が
-   trigger した reviewer だけでは閉じません。閉じ方と、member とした根拠の
-   記録は Selection Contract（`policy/core.md`）に従います。
+2. **Selection** — Selection Contract（`.ai-dev-foundation/skills/review-code.md`
+   の `## Review contracts`）に従い、target SHA / range、target artifact set、
+   reviewer / capability、required review 数、および expected review set を
+   確定します。expected review set は自分が trigger した reviewer だけでは
+   閉じません。閉じ方と、member とした根拠の記録は Selection Contract
+   （`.ai-dev-foundation/skills/review-code.md` の `## Review contracts`）に
+   従います。
    **Mixed classification の場合は、required な review skill をすべて宣言します。**
    手順 1 の mechanical check 対象と確定した target の一致、および宣言した routing と
    changed artifact set の整合は、手順 9 の fence が機械判定します。手順の各所で
@@ -95,7 +102,9 @@ repository root を基準に明示的に渡します。ここでは重複定義�
    手順 3 の anchor をそのまま使い回しません）、closure verification と手順 9 の fence
    ではその closure run の anchor を使います。
 4. **Acquisition & Validity 確認** — Acquisition & Validity Contract
-   （`policy/core.md`）に従い、target SHA / range、target artifact set、
+   （`policy/core.md` の target completion state 等の invariant、および
+   `.ai-dev-foundation/skills/review-code.md` の `## Review contracts` の
+   手続き的 detail）に従い、target SHA / range、target artifact set、
    completion、acquisition、validity を確認します。
    Selection Contract で required とした review 数ぶんの `validity: valid`
    な run が揃うまで triage へ進みません。
@@ -104,8 +113,9 @@ repository root を基準に明示的に渡します。ここでは重複定義�
    required 数の valid run が揃うことは triage へ進むための gate ですが、
    finding の集約対象は valid な run に限りません。ancestor target に対する run の
    ように `validity: valid` でない run であっても、そこで既に発見された finding は
-   Resolution Contract（`policy/core.md`）の対象です。`validity` は evidence 軸の
-   判定であり、finding を捨ててよい根拠ではありません。
+   Resolution Contract（`.ai-dev-foundation/skills/review-code.md` の
+   `## Review contracts`）の対象です。`validity` は evidence 軸の判定であり、
+   finding を捨ててよい根拠ではありません。
    run record の `status` / `validity` とは別に、各 reviewer の target completion
    state を判定します。positive completion evidence の target-bound 要件、binding へ
    使う field / surface の安定性要件、および binding が成立しない場合の扱いは、
@@ -128,11 +138,13 @@ repository root を基準に明示的に渡します。ここでは重複定義�
 7. **Closure** — accepted finding の fix によって target SHA / range または
    target artifact set が変わった場合のみ行います。修正後の target に
    対して手順 1 の mechanical check を再実行し、成功したらその SHA / range を
-   closure target として re-freeze し、Selection Contract（`policy/core.md`）を
+   closure target として re-freeze し、Selection Contract
+   （`.ai-dev-foundation/skills/review-code.md` の `## Review contracts`）を
    この closure review run に適用します。
    確定した closure artifact set を、直近の mechanical-check evidence が
    カバーしていることを確認します。確認できない場合は、確定した closure target に
-   対して mechanical check を再実行してから、Execution Contract（`policy/core.md`）を
+   対して mechanical check を再実行してから、Execution Contract
+   （`.ai-dev-foundation/skills/review-code.md` の `## Review contracts`）を
    closure review run に適用します。この closure run を起動した時点で、手順 3 と
    同様にこの run 専用の run anchor を新たに記録します。
    その上で、triage した finding に対応しているかの closure verification
@@ -157,8 +169,10 @@ repository root を基準に明示的に渡します。ここでは重複定義�
    この branch でも、手順 9 の merge-ready fence を通る前に review completion /
    merge-ready を宣言しません。fence の要否は accepted fix の有無ではなく、
    その宣言を行うかどうかで決まります。
-8. **Closure Resolution** — closure verification（手順 7）の finding を
-   Resolution Contract（`policy/core.md`）に従って triage します。
+8. **Closure Resolution** — closure verification（手順 7）の finding を、
+   Foundation リポジトリの `skills/review-code.md`（consumer には
+   `.ai-dev-foundation/skills/review-code.md` として配布）の
+   `## Review contracts` の Resolution Contract に従って triage します。
    unresolved の finding がある間は review procedure を完了としません。
    accepted な closure finding があれば、手順 6〜7 と同じ procedure（fix ->
    mechanical check -> closure verification -> closure Acquisition &

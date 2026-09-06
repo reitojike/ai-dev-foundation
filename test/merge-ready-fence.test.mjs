@@ -702,8 +702,15 @@ test("fence blocks while a finding on a review surface has not been triaged", ()
 // review skills so the two cannot drift apart silently.
 // ---------------------------------------------------------------------------
 
-test("core policy states the expected review set closure rule", async () => {
-  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+// #110 C-1: Selection Contract's expected review set membership algorithm
+// moved from the Kernel to skills/review-code.md's `## Review contracts`
+// section. The Merge-ready completion fence (policy/core.md, unaffected by
+// this move) uses the required/expected/optional vocabulary these rules
+// define, but a review-executing agent has always already MUST-loaded this
+// skill (Skill routing contract) before reaching the fence, so the
+// one-hop-reachable detail can move without weakening the fence.
+test("review-code skill states the expected review set closure rule", async () => {
+  const core = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
 
   assert.ok(containsText(core, "expected review set は、agent が選択した reviewer だけでは閉じません"));
   assert.ok(containsText(core, "consumer が configured automatic reviewer として明示している"));
@@ -759,8 +766,8 @@ test("core policy states the expected review set closure rule", async () => {
   assert.ok(containsText(core, "actual finding が観測された場合、その finding は Resolution Contract の対象です"));
 });
 
-test("a required member cannot be exempted by declaring non-participation", async () => {
-  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+test("review-code skill: a required member cannot be exempted by declaring non-participation", async () => {
+  const core = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
 
   assert.ok(
     containsText(core, "expected / optional の member については、その reviewer の target completion state を理由に blocker としません"),
@@ -799,6 +806,7 @@ test("core policy separates run record state from target completion state", asyn
 
 test("core policy requires target-bound positive completion evidence on stable fields", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
 
   assert.ok(containsText(core, "positive completion evidence は target-bound です"));
   assert.ok(containsText(core, "その target への resolvable な参照を持つ positive completion evidence"));
@@ -811,7 +819,10 @@ test("core policy requires target-bound positive completion evidence on stable f
   assert.ok(
     containsText(core, "review target の移動に追随して値が変化する field / surface を binding の根拠にしてはいけません"),
   );
-  assert.ok(containsText(core, "target completion state とその binding の根拠"));
+  // #110 C-1: the recording-duty phrasing for "target completion state とその
+  // binding の根拠" moved to review-code.md's `## Review contracts` section
+  // alongside the rest of the persist-location paragraph it belongs to.
+  assert.ok(containsText(reviewCode, "target completion state とその binding の根拠"));
   assert.ok(
     containsText(
       core,
@@ -828,6 +839,7 @@ test("core policy requires target-bound positive completion evidence on stable f
 
 test("core policy defines the merge-ready completion fence without overriding stopping rules", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
 
   assert.ok(core.includes("#### Merge-ready completion fence"));
 
@@ -935,12 +947,15 @@ test("core policy defines the merge-ready completion fence without overriding st
   assert.ok(containsText(core, "ここで待つ対象は run record state であり、target completion state ではありません"));
 
   // The residual-limitation sentence must not re-assert current-target-only
-  // membership after the carry-over rule above it.
+  // membership after the carry-over rule above it. #110 C-1: this sentence is
+  // Selection Contract's own text (not the fence's), and moved to
+  // review-code.md's `## Review contracts` section along with the rest of
+  // Selection Contract.
   assert.ok(
-    containsText(core, "**この review flow のいずれの target 上にも**まだ review participation evidence を出していない reviewer"),
+    containsText(reviewCode, "**この review flow のいずれの target 上にも**まだ review participation evidence を出していない reviewer"),
   );
   assert.ok(
-    containsText(core, "ancestor target で participation evidence を出している reviewer は、上記の carry-over により member です"),
+    containsText(reviewCode, "ancestor target で participation evidence を出している reviewer は、上記の carry-over により member です"),
   );
   assert.ok(
     containsText(core, "agent の内心の申告（「この member の沈黙には依拠していない」等）で満たしたことにしてはいけません"),
@@ -1090,7 +1105,6 @@ test("both skills reference the Kernel rules rather than restating them", async 
   const kernelSentences = [
     "全 member が final target で completed であることを要求するものではありません",
     "同じ reviewer による final target の full re-review を強制しません",
-    "review target 上に presence があるだけでは足りず",
     "review target の移動に追随して値が変化する field / surface を binding の根拠にしてはいけません",
     // the review-doc paraphrase of the same rule
     "review target の移動に追随して値が変化するものを根拠にしません",
@@ -1114,6 +1128,13 @@ test("both skills reference the Kernel rules rather than restating them", async 
     );
   }
 
+  // #110 C-1: "review target 上に presence があるだけでは足りず" is no longer a
+  // Kernel-only rule the skills must avoid restating — Selection Contract's
+  // membership algorithm (which states it) is now canonically owned by
+  // review-code.md itself, and review-doc.md correctly does not duplicate it.
+  assert.ok(containsText(code, "review target 上に presence があるだけでは足りず"));
+  assert.ok(!containsText(doc, "review target 上に presence があるだけでは足りず"));
+
   assert.ok(containsText(code, "は、いずれも `policy/core.md` が定めます"));
   assert.ok(containsText(code, "`policy/core.md` の Merge-ready completion fence が定めます"));
   assert.ok(
@@ -1123,7 +1144,11 @@ test("both skills reference the Kernel rules rather than restating them", async 
 
 test("the Kernel states the fence without hard-coding provider specifics", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
-  const added = core.slice(core.indexOf("#### Selection Contract"));
+  // #110 C-1 moved "#### Selection Contract" out of the Kernel; the fence and
+  // its surrounding Merge readiness section are the actual subject of this
+  // guard, so anchor on that heading instead.
+  const added = core.slice(core.indexOf("### Merge readiness and merge authority"));
+  assert.ok(added.length > 0);
 
   for (const providerToken of [
     "Codex",
