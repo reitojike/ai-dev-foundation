@@ -60,7 +60,11 @@ non-zero で終了し、`node tooling/bootstrap-next-supabase.mjs --consumer <pa
 忘れると、この quality profile の drift 検知だけが non-zero になります。
 
 `check` は最後に、`policy/core.md`・`skills/*.md`・生成した `AGENTS.md` の byte 数を
-advisory として標準出力へ出します。threshold は持たず、exit code にも影響しません。
+`Artifact sizes (advisory, no threshold)` として標準出力へ出します。さらに、生成した
+`AGENTS.md` が Codex Local CLI / Desktop Local/Worktree の current default startup
+project-doc budget（32 KiB）を超える場合は、trusted consumer projectで
+`project_doc_max_bytes` を明示するための bounded advisoryを出します。いずれの
+advisoryも exit code には影響しません。
 
 同梱の reference consumer は `npm test` で検証できます。
 
