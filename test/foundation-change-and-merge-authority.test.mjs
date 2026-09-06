@@ -320,10 +320,14 @@ test("skills/foundation-change.md owns Observation classification/recording/prom
     assert.ok(foundationChange.includes(field), `Observation record must express: ${field}`);
   }
 
+  // #113 Claude review: the ledger/dashboard prohibition is a Kernel
+  // minimum safety boundary sentence; the skill must reference it, not
+  // restate it verbatim (that would violate the delegation's own
+  // no-duplication condition in policy/core.md's 責務の分離).
   assert.ok(
     containsText(
       foundationChange,
-      "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
+      "ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しを Observation handling の一部にしないことは `policy/core.md` の minimum safety boundary です。本 skill では複製しません。",
     ),
   );
 
@@ -436,6 +440,35 @@ test("review skills do not need to load or duplicate skills/foundation-change.md
     assert.ok(
       !skill.includes("Foundation Change の正当化条件"),
       `${name} must not duplicate the Foundation Change justification conditions`,
+    );
+  }
+});
+
+// #113 Claude review: skills/foundation-change.md's own delegation rule
+// (policy/core.md's 責務の分離, "同じ規範的なルールを policy と skill の
+// 両方に重複して記述しない") must not be violated by the skill it applies
+// to. Lock the specific Kernel minimum-safety-boundary sentences that were
+// found verbatim-duplicated in skills/foundation-change.md, so a future
+// edit can't silently reintroduce the duplication.
+test("skills/foundation-change.md does not verbatim-duplicate Kernel minimum safety boundary sentences (#113)", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+  const foundationChange = await readFile(path.join(root, "skills", "foundation-change.md"), "utf8");
+
+  for (const kernelSentence of [
+    "Observation trigger の発火は、自動的に Foundation Issue を作りません。",
+    "Observation は work item ではありません。",
+    "専用の ledger / database / schema、GitHub label 体系、bot / collector /",
+    "記録義務の対象にしない軽微な事象について省略できるのは記録だけであり、classification の完了は省略しません。",
+    "単発の friction、style、prompt nicety、効率改善のみを理由に、自動的に",
+    "change class や review 強度は、固定の provider 名へ結びつけません。",
+  ]) {
+    assert.ok(
+      containsText(core, kernelSentence),
+      `sanity check: sentence must actually be in core.md: ${kernelSentence}`,
+    );
+    assert.ok(
+      !containsText(foundationChange, kernelSentence),
+      `skills/foundation-change.md must not verbatim-duplicate this Kernel sentence, only reference policy/core.md: ${kernelSentence}`,
     );
   }
 });

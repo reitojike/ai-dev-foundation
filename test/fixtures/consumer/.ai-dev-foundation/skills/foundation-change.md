@@ -54,8 +54,11 @@ ownership を軸に、次の 4 分類のいずれかへ分類します。
 
 ## Observation recording
 
-Observation trigger の発火は、自動的に Foundation Issue を作りません。
-Observation は work item ではありません。
+Observation が自動的に Foundation Issue や work item にならないこと、および
+ledger / database / schema、GitHub label 体系、bot / collector / dashboard /
+statistics、自動 Issue 生成、定期棚卸しを Observation handling の一部にしない
+ことは `policy/core.md` の minimum safety boundary です。本 skill では
+複製しません。
 
 将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task
 の canonical Issue へ、少なくとも次を短く記録します。
@@ -68,13 +71,12 @@ Observation は work item ではありません。
 - Promotion signal（何が起きれば再評価するか）
 
 consumer-local で完結し、将来参照価値もない軽微な事象は、この記録義務の
-対象にしません。専用の ledger / database / schema、GitHub label 体系、
-bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの
-mandatory 化は Observation handling の一部にしません。
+対象にしません。
 
-Task closure との関係は `policy/core.md` の Task closure と Observation に
-従います。記録義務の対象にしない軽微な事象について省略できるのは記録だけで
-あり、classification の完了は省略しません。
+Task closure との関係、および記録義務の対象にしない軽微な事象でも
+classification の完了は省略しないという fail-closed hook は
+`policy/core.md` の Task closure と Observation に従います。本 skill では
+複製しません。
 
 ## Change Proposal
 
@@ -104,6 +106,7 @@ signal になり得ます。
 - consumer-local workaround では canonical semantics の fork が必要に
   なる
 
-change class や review 強度は、固定の provider 名へ結びつけません。単発の
-friction、style、prompt nicety、効率改善のみを理由に、自動的に mandatory
-化しません。
+change class や review 強度を固定の provider 名へ結びつけないこと、および
+単発の friction、style、prompt nicety、効率改善のみを理由に自動的に
+mandatory 化しないことは `policy/core.md` の minimum safety boundary です。
+本 skill では複製しません。
