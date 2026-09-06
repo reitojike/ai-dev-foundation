@@ -30,6 +30,20 @@
 同じ規範的なルールを Skill、Profile、generated adapter の source に再記述せず、
 所有するルールを参照してください。
 
+policy は、review 実行 agent のみが必要とする conditional な必須事項・禁止事項
+について、その canonical ownership を Foundation-owned な skill へ明示的に
+委譲してよいです。この委譲は次をすべて満たす場合に限ります。
+
+- policy 自身が、委譲先の skill を one-hop pointer として名指しする
+- 委譲後も policy に、review を実行しない Task でも成立していなければ
+  ならない minimum safety boundary（authority 分離、fail-closed な
+  uncertainty rule 等）が残る
+- 同じ規範的なルールを policy と skill の両方に重複して記述しない
+
+この場合、skill が記述する必須事項・禁止事項は policy の複製ではなく、
+委譲された canonical source です。委譲していない規範的なルールについては、
+上記の原則どおり skill は複製しません。
+
 ## Generated adapters
 
 `AGENTS.md` は三つの composition input から生成されます。直接編集しないでください。
