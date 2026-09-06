@@ -216,10 +216,10 @@ review evidence を bounded に carry-forward できます。
 `unknown` を eligible へ変換しないこと、いずれも同一に適用します。
 
 Normative review で異なるのは、composed state に対して再実行する precondition check の
-中身だけです。deterministic verify ではなく、**手順 1 の mechanical check**（`npm run
-check:fixture` 等、その document の class が要求するもの）を reviewed head と current
-base tip を composed した状態に対して実行し直し、その base SHA を
-`--verify-base-sha` として渡します。old base 時点の結果を composed state の結果として
+中身だけです。deterministic verify ではなく、**本 skill の `## 手順` の手順 1 が定める
+mechanical check**（`npm run check:fixture` 等、その document の class が要求するもの）を
+reviewed head と current base tip を composed した状態に対して実行し直し、その base SHA
+を `--verify-base-sha` として渡します。old base 時点の結果を composed state の結果として
 持ち越しません。
 
 fence が照合するのは、宣言された SHA が current base tip と一致することだけです。

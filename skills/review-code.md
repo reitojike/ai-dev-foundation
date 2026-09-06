@@ -392,7 +392,7 @@ finite な手順として表したものです。規範的な条件は同節が�
 
 1. **composed state に対して precondition check を fresh に実行する** — reviewed head と
    current base tip を composed した状態に対して、artifact classification が要求する
-   precondition check を実行し直します（Executable なら手順 1 と同じ deterministic
+   precondition check を実行し直します（Executable なら `## 手順` の手順 1 と同じ deterministic
    verify、Normative なら `skills/review-doc.md` の mechanical check）。old base 時点の
    green を composed state の green として持ち越しません。composed した base の SHA を
    記録します。
@@ -432,13 +432,13 @@ finite な手順として表したものです。規範的な条件は同節が�
    書いた assessment は、fence が scope mismatch として拒否します。`basis` は fence が
    解釈しません。後続 session が「何を根拠に判断したか」を復元できるように書きます。
 
-4. **fence を再実行する** — 手順 13 の引数に次の 2 つを加えます。`--base-sha` は
+4. **fence を再実行する** — `## 手順` の手順 13 の引数に次の 2 つを加えます。`--base-sha` は
    **freeze 時の base のまま**にします（drift 自体が評価対象のため、current tip へ
    書き換えると carry-forward ではなく再 freeze になります）。
 
    ```text
-     --verify-base-sha <手順 1 で composed した base SHA> \
-     --drift-assessment <手順 3 で投稿した comment の id または URL>
+     --verify-base-sha <本節の手順 1 で composed した base SHA> \
+     --drift-assessment <本節の手順 3 で投稿した comment の id または URL>
    ```
 
    `--drift-assessment` を渡さない限り carry-forward 経路には入りません。fence が
@@ -452,7 +452,7 @@ finite な手順として表したものです。規範的な条件は同節が�
 この分岐は required review 数を変えず、review ceremony を縮小せず、head が動いた case を
 扱いません。
 
-Normative artifact のみを target とする review では、手順 1 の precondition が
+Normative artifact のみを target とする review では、本節の手順 1 の precondition が
 `skills/review-doc.md` の mechanical check になる点だけが異なります。それ以外
 （assessment record の形式、scope binding、fence の引数、fail-closed の扱い）は
 同一です。`skills/review-doc.md` の `## Safe base drift` を参照してください。
