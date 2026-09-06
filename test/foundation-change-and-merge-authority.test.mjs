@@ -200,6 +200,33 @@ test("core policy keeps the minimum Foundation Change Kernel safety boundary (#2
     ),
   );
 
+  // #113 Codex P2 follow-up: a second consumer-only canonical-source
+  // reference survived in the Foundation Change justification section
+  // (Change Proposal field / promotion signal detail) after the first
+  // MUST-load pointer fix. It must also branch by context.
+  assert.ok(
+    containsText(
+      core,
+      "canonical source は、consumer context では `.ai-dev-foundation/skills/foundation-change.md`、Foundation リポジトリ自身の Task では `skills/foundation-change.md` です。",
+    ),
+  );
+
+  // Repo-wide regression guard: every reference to the consumer-distributed
+  // `.ai-dev-foundation/skills/foundation-change.md` path in core.md must be
+  // paired with the Foundation-repository-self path `skills/foundation-change.md`
+  // nearby, so a future addition of a new consumer-only reference doesn't
+  // silently reintroduce the same unreachable-pointer defect.
+  const consumerOnlyPointerCount = (core.match(/`\.ai-dev-foundation\/skills\/foundation-change\.md`/g) ?? [])
+    .length;
+  // This pattern only matches a bare `skills/foundation-change.md` (backtick
+  // immediately before "skills/"), so it does not also match inside the
+  // consumer path above (which has a backtick before ".ai-dev-foundation/").
+  const selfContextPointerCount = (core.match(/`skills\/foundation-change\.md`/g) ?? []).length;
+  assert.ok(
+    selfContextPointerCount >= consumerOnlyPointerCount,
+    `every consumer-context foundation-change.md pointer in core.md must be paired with a Foundation-self-context pointer (consumer-only refs: ${consumerOnlyPointerCount}, self-context refs: ${selfContextPointerCount})`,
+  );
+
   // Observation is not a work item and does not auto-create a Foundation
   // Issue; it is recorded on the originating consumer Task's canonical Issue.
   assert.ok(

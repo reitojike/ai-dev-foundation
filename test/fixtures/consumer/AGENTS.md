@@ -754,8 +754,9 @@ mandatory な Foundation change は、原則として次のいずれかで正当
 
 Change Proposal が表現すべき field 定義、および Observation classification
 から本節の 3 条件への昇格を促す detailed promotion signal の canonical
-source は `.ai-dev-foundation/skills/foundation-change.md` です。change
-class や review 強度は、固定の provider 名へ結びつけません。
+source は、consumer context では `.ai-dev-foundation/skills/foundation-change.md`、
+Foundation リポジトリ自身の Task では `skills/foundation-change.md` です。
+change class や review 強度は、固定の provider 名へ結びつけません。
 
 ## Technology profile: Next.js + Supabase
 
