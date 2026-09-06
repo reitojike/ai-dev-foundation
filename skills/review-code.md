@@ -2,10 +2,16 @@
 
 このファイルは `policy/core.md` の Review Protocol（Artifact classification の
 Executable、Review contracts、Review Adapter boundary、Failure / retry、Review
-stopping rules）を使った実行手順です。規範的なルールはここで再定義せず、
-`policy/core.md` を参照します。本 skill と policy が矛盾する場合は policy が優先します。
-Executable artifact の review 手順（`## 手順` と `## 停止条件` の finite flow）の
-canonical source は本 skill であり、`policy/core.md` には置きません。
+stopping rules）を使った実行手順です。`policy/core.md` が保持する minimum safety
+boundary（CI status ≠ review completion、0 findings の positive evidence 要件、
+target completion state / run record state の区別、merge execution authority の
+分離等）はここで再定義せず、`policy/core.md` を参照します。本 skill と policy が
+矛盾する場合は policy が優先します。
+Executable artifact の review 手順（`## 手順` と `## 停止条件` の finite flow）、
+および Selection Contract / Execution Contract、Acquisition & Validity Contract /
+Resolution Contract の手続き的 detail（`## Review contracts` section。membership
+確定手順、trigger 手順、record schema、durable evidence の persist 手順、triage
+category 等）の canonical source は本 skill であり、`policy/core.md` には置きません。
 
 この skill の canonical source は Foundation リポジトリの `policy/core.md` および
 `skills/review-code.md` です。consumer には `.ai-dev-foundation/skills/review-code.md`
@@ -22,6 +28,184 @@ review target は Selection Contract に従い、candidate SHA、applicable な
 場合は commit range、および target artifact set を含みます。以降の手順で
 SHA について述べる箇所は、commit range や target artifact set を使う
 review でも同じ意味で適用します。
+
+## Review contracts
+
+Review は次の 4 つの provider-neutral な contract で表現します。provider 差分は
+Review Adapter boundary（`policy/core.md`）へ閉じ込め、ここに固定しません。本
+section は Selection Contract / Execution Contract / Acquisition & Validity
+Contract / Resolution Contract の手続き的 detail の canonical source です。
+`policy/core.md` の Review Protocol が保持する minimum safety boundary（CI status
+≠ review completion、0 findings の positive evidence 要件、target completion
+state / run record state の区別、reviewed target の binding が確認できない場合は
+`unknown`、一致しない場合は `invalid`、Resolution Contract の stage 非依存性・
+ancestor target scope、merge execution authority の分離）と矛盾する場合は
+`policy/core.md` が優先します。review-doc.md（Normative artifact の review）も
+これらの Contract は本 section を canonical source として参照し、重複定義しません。
+
+### Selection Contract
+
+- artifact classification
+- reviewer / capability の選択
+- required review 数
+- expected review set（下記）
+- target artifact set
+- expected target SHA / commit range
+
+**expected review set は、agent が選択した reviewer だけでは閉じません。** agent が
+選択していなくても、その repository / review target に対して review を行う reviewer が
+存在し得ます。Selection では次の和集合を expected review set として確定します。
+
+1. **required** — Selection Contract で明示的に required とした reviewer。
+   required review 数を満たす対象であり、その review obligation は merge /
+   review completion の blocker です。
+2. **expected** — required ではないが、次のいずれかに該当する reviewer。
+   required review 数には算入しませんが、その review obligation は merge /
+   review completion の blocker です。
+   - consumer が configured automatic reviewer として明示している
+   - 取得済み evidence が、その actor による review 行為をその review target 上で
+     識別させる。**この判定は current target に限りません。** 同じ review flow の
+     中で、ancestor target を含むいずれかの target 上で review 行為を識別できた
+     actor は、以降の target でも expected member として残ります。target が移動
+     しただけで member から外してはいけません
+3. **optional / advisory** — consumer が advisory と宣言した reviewer。target
+   completion state が `unknown` であること自体は blocker にしません。ただし actual
+   finding が観測された場合、その finding は Resolution Contract の対象です。
+
+一つの actor が複数の class の条件を満たす場合、**consumer による明示的な宣言が
+observed evidence に優先します**。consumer が advisory と宣言した reviewer は、実際に
+review 行為を行っても optional のままです（その finding は Resolution Contract の対象
+です）。consumer が required と宣言した reviewer は、他の条件にかかわらず required です。
+
+consumer が reviewer を required / configured automatic / advisory のいずれとして宣言
+するかは、consumer-owned な **reviewer capability record** に置きます。Kernel はこの
+record が存在すること、および Selection がそれを参照することを要求します。record の
+schema / template と、その存在 / parse / 最小妥当性の check は Foundation tooling /
+profile 側が提供し、record の内容は consumer-owned のままです。record は portfolio 上の
+default を表すものであり、当該 Task の required / expected obligation の正本ではありません。
+それは従来どおり Selection Contract が確定します。
+
+2 の後者について、actor を expected member とする根拠は、その surface item 自体が
+**review participation として識別できる**ことです。review target 上に presence が
+あるだけでは足りず、次は単独では expected member 化の根拠になりません。
+
+- 通常の human comment（議論・質問・進捗報告等）
+- CI actor（workflow / status / check の author であること）
+- review 以外の目的で投稿する bot
+
+どの surface item が review participation を構成するかの識別は Review Adapter
+boundary の責務です。Kernel は上記の membership 境界と、**その actor を expected
+member とした根拠を記録すること**のみを要求し、provider 名や surface 名の固定列挙を
+持ちません。
+
+reviewer が非参加を positive に宣言している場合、その状態を `unknown` と区別して
+表現してよく、**expected / optional の member については、その reviewer の target
+completion state を理由に blocker としません**。
+
+**非参加の宣言は、その reviewer が既に出した finding の Resolution obligation を
+discharge しません。** ancestor target で出した finding についても同じです。非参加の
+宣言が免除するのは、その target について新たな completion evidence を得ることだけです。
+
+**required member は非参加の宣言によって blocker から外れません。** required とした
+reviewer が非参加を宣言した場合、その required review obligation は消えず、valid な
+代替 run を得るか、Selection Contract を明示的に変更して required 構成を確定し直す
+まで、merge / review completion へ進みません。非参加の宣言を、required review 数の
+gate を迂回する経路にしてはいけません。
+
+expected review set は、consumer が明示しておらず、かつ**この review flow のいずれの
+target 上にも**まだ review participation evidence を出していない reviewer を含め
+られません。ancestor target で participation evidence を出している reviewer は、
+上記の carry-over により member です。この residual
+limitation を、reviewer の不在を `0 findings` とみなす根拠にしてはいけません。
+configured automatic reviewer を明示するかどうかは consumer-owned な選択です。
+
+### Execution Contract
+
+- trigger 方法
+- Selection で確定した expected target SHA / commit range
+- Selection で確定した target artifact set
+- required context
+- timeout / retry policy
+
+Selection Contract で確定した expected target（SHA / commit range）と
+target artifact set は、Execution で reviewer の trigger へ渡し、実際に
+渡した target と artifact set を記録します。commit range を選択した場合に
+head SHA だけへ黙って縮退させないのと同様に、target artifact set も途中で
+黙って縮小・変更しません。
+
+provider 固有の surface や capability は adapter/profile 側へ置き、Kernel に固定しません。
+
+### Acquisition & Validity Contract
+
+review run ごとに少なくとも次を記録可能にします。
+
+```json
+{
+  "reviewer": "...",
+  "target_sha": "...",
+  "status": "completed",
+  "validity": "valid",
+  "finding_count": 0,
+  "result_locator": "...",
+  "started_at": "...",
+  "completed_at": "...",
+  "failure": null
+}
+```
+
+record の `target_sha` は、Selection Contract の expected target（SHA / commit
+range）ではなく、実際に reviewed された SHA / range（observed target）を表します。
+`validity` は少なくとも `valid` / `invalid` / `unknown` を表現します（`policy/core.md`
+の Completion / Validity 要求事項参照）。
+
+acquisition の record は、後続 session から独立に recoverable な場所へ
+persist されて初めて durable evidence です。review を行った
+agent/session が終了した後、別の後続 session が session の記憶に頼らず、
+Acquisition & Validity Contract が定義する Completion と Validity の要求事項を
+独立に判定できるだけの情報が、その後続 session からアクセス可能な場所（PR/Issue
+上の comment 等）に存在しない限り、その run を merge / review completion
+の根拠として扱いません。reviewer mechanism が外部から確認可能な surface
+へ残す結果に、その判定に必要な情報が既に含まれていれば、その surface
+自体をこの record の recoverable な representation として扱ってよく、
+別途 record を post し直す必要はありません。含まれていない場合
+（reviewer mechanism 自身がそのような surface へ結果を残さない場合、
+例えば実装 session 内で動く subagent review を含む）は、上記の record
+schema の各 field に加え、Completion と Validity の要求事項を独立に判定できる
+情報を、そのような場所へ明示的に persist しない限り、session 終了後には
+recoverable な evidence として扱いません。
+
+triage した review result の revision は、判断の対象です。review result は
+in-place で編集され得ます。completion evidence を保ったまま内容だけが変わった場合、
+その reviewer の target completion state は変わりません。したがって、ある run を
+merge / review completion の根拠とするには、triage / Resolution の対象とした result の
+revision が、判断時点の current revision と同一であることを確認します。この確認は
+deterministic な同一性の照合であり、finding の意味を読み直すことを要求しません。
+（`policy/core.md`: current revision が異なる場合、その result はまだ triage されて
+いない result として扱います。）
+
+Acquisition & Validity Contract および Selection Contract が「記録すること」を
+要求する事項——各 actor の membership class とその根拠、target completion state と
+その binding の根拠、triage の対象とした result の revision、および current target の
+clean / discovery evidence として採用した run——は、個々の run record schema ではなく、
+その review stage の Selection / fence 記録として persist します。これらは run 単位
+ではなく reviewer 単位・stage 単位の情報であるためです。
+
+### Resolution Contract
+
+- finding を fix / false-positive / needs-verification / technical-dispute /
+  intent-question へ triage する
+- human を raw finding の message bus にしない
+- pure technical dispute は technical adjudication で解決する
+- human escalation は product intent / authority に限る
+- P0/P1 相当の重大 finding を dismiss する場合は、
+  必要に応じて独立 reviewer の確認を要求する
+- accepted finding は drip fix せず、root-cause を確認した上で batch で fix する
+- fix 後は全 discovery をやり直さず、targeted closure を基本とする
+- review を新しい scope の探索に使わない
+
+discovery（2nd full discovery を含む）と targeted closure / closure verification の
+stage 非依存性、および ancestor target で発見された finding の scope は
+`policy/core.md` の Resolution Contract（Kernel-retained invariant）が定めます。
 
 ## Foundation helper の実行（consumer cwd）
 
@@ -310,9 +494,9 @@ required/expected review の消化根拠にしてはいけません。この区�
     closure 用 Selection Contract で required とした review 数ぶんの valid
     な closure run が揃うまで Closure Resolution へ進みません。不足する
     run の扱いは Failure / retry（`policy/core.md`）に従います。
-12. **Closure Resolution** — targeted closure の finding を Resolution
-    Contract（`policy/core.md`）に従って triage します。unresolved の
-    finding がある間は merge しません。
+12. **Closure Resolution** — targeted closure の finding を、上記
+    `## Review contracts` の Resolution Contract に従って triage します。
+    unresolved の finding がある間は merge しません。
     accepted な closure finding があれば、手順 7 と同じ batch fix
     semantics でまとめて fix し、手順 8 と同じ deterministic verify を
     行います。
@@ -439,11 +623,11 @@ provider 固有 adapter がまだ無い間は、`trigger()` / `pollCompletion()`
   として扱い、`unknown` / `in-flight` を terminal failure にしません。
 - `collectOutputs()`: 同じ helper の `--json` output を durable evidence として保存
   します。reviewer mechanism 自身が外部から確認可能な surface へ結果を残さない場合
-  （例: 実装 session 内で動く subagent review）は、`policy/core.md` の Acquisition &
-  Validity Contract が定める durable evidence の要求を、その手段で満たします。何を
-  persist すれば足りるかは同 Contract が定めます。
+  （例: 実装 session 内で動く subagent review）は、本 skill の `## Review contracts`
+  （Acquisition & Validity Contract）が定める durable evidence の要求を、その手段で
+  満たします。何を persist すれば足りるかは同 Contract が定めます。
 - `normalizeFindings()`: finding の意味付けと Resolution はこの skill の機械判定へ
-  複製せず、`policy/core.md` の Resolution Contract に従います。
+  複製せず、`## Review contracts` の Resolution Contract に従います。
 
 record が、結果を durable な GitHub surface へ残す trigger 経路を宣言している場合は、
 その経路を preferred route として使います。宣言された経路が unavailable / unsuitable で、
