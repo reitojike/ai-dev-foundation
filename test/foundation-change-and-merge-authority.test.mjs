@@ -351,10 +351,15 @@ test("skills/foundation-change.md owns Observation classification/recording/prom
   // minimum safety boundary sentence; the skill must reference it, not
   // restate it verbatim (that would violate the delegation's own
   // no-duplication condition in policy/core.md's 責務の分離).
+  //
+  // #113 Codex P2 follow-up: the reference text must not drop "mandatory
+  // 化" — core.md only forbids *making ledger/dashboard mandatory*, not
+  // ever using one; a paraphrase that omits "mandatory 化" reads as an
+  // absolute ban and is stricter than the Kernel actually requires.
   assert.ok(
     containsText(
       foundationChange,
-      "ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しを Observation handling の一部にしないことは `policy/core.md` の minimum safety boundary です。本 skill では複製しません。",
+      "専用の ledger / dashboard 等の mandatory 化を Observation handling の一部にしないことは `policy/core.md` の minimum safety boundary です。本 skill では複製しません。",
     ),
   );
 

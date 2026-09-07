@@ -6,8 +6,8 @@ minimum safety boundary（Observation trigger 5 条件、Observation は自動�
 Foundation Issue や work item にならないこと、Task closure と Observation の
 fail-closed hook、Foundation Change の正当化 3 条件、単発の friction / style /
 prompt nicety / 効率改善のみで mandatory 化しないこと、ledger / dashboard /
-自動 Issue 生成等の禁止）はここで再定義せず、`policy/core.md` を参照します。
-本 skill と policy が矛盾する場合は policy が優先します。
+自動 Issue 生成等の mandatory 化の禁止）はここで再定義せず、`policy/core.md`
+を参照します。本 skill と policy が矛盾する場合は policy が優先します。
 
 Observation classification の 4 分類、Observation recording の procedure・
 field、Change Proposal が表現すべき field 定義、および Observation から
@@ -55,9 +55,8 @@ ownership を軸に、次の 4 分類のいずれかへ分類します。
 ## Observation recording
 
 Observation が自動的に Foundation Issue や work item にならないこと、および
-ledger / database / schema、GitHub label 体系、bot / collector / dashboard /
-statistics、自動 Issue 生成、定期棚卸しを Observation handling の一部にしない
-ことは `policy/core.md` の minimum safety boundary です。本 skill では
+専用の ledger / dashboard 等の mandatory 化を Observation handling の一部に
+しないことは `policy/core.md` の minimum safety boundary です。本 skill では
 複製しません。
 
 将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task
