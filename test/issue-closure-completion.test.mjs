@@ -20,7 +20,10 @@ function containsText(haystack, needle) {
 // consumer AGENTS.md, since composeAgents() embeds core.md verbatim and this
 // boundary must not silently drift between the two.
 function assertIssueClosureKernelBoundary(text, label) {
-  assert.ok(text.includes("### Issue closure and Acceptance Criteria completion"), `${label}: missing heading`);
+  assert.ok(
+    text.includes("### Issue closure and Acceptance Criteria completion"),
+    `${label}: missing heading`,
+  );
 
   // This must stay a distinct contract from Review Protocol's merge-readiness:
   // review completion does not stand in for Acceptance Criteria confirmation.
@@ -55,7 +58,10 @@ function assertIssueClosureKernelBoundary(text, label) {
     `${label}: missing act-shaped MUST-load trigger`,
   );
   assert.ok(
-    containsText(text, "判断がつかない場合を「適用不要」と解釈して silent skip してはいけません。"),
+    containsText(
+      text,
+      "判断がつかない場合を「適用不要」と解釈して silent skip してはいけません。",
+    ),
     `${label}: missing fail-closed uncertainty rule`,
   );
   assert.ok(
@@ -113,7 +119,7 @@ function assertIssueClosureKernelBoundary(text, label) {
   assert.ok(
     containsText(
       text,
-      "auto-close keyword（例: PR 本文の \"Closes #N\"）によって Acceptance Criteria 確認前に Issue が自動 close される運用を、標準運用にしません。",
+      'auto-close keyword（例: PR 本文の "Closes #N"）によって Acceptance Criteria 確認前に Issue が自動 close される運用を、標準運用にしません。',
     ),
     `${label}: missing auto-close-not-standard statement`,
   );
@@ -125,11 +131,17 @@ test("core policy keeps the minimum Issue closure Kernel safety boundary (#32, #
   assertIssueClosureKernelBoundary(core, "policy/core.md");
 
   // Stays provider-neutral, like the rest of the Kernel.
-  assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+  assert.doesNotMatch(
+    core,
+    /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i,
+  );
 });
 
 test("generated consumer AGENTS.md reflects the Issue closure Kernel safety boundary", async () => {
-  const agents = await readFile(path.join(root, "test", "fixtures", "consumer", "AGENTS.md"), "utf8");
+  const agents = await readFile(
+    path.join(root, "test", "fixtures", "consumer", "AGENTS.md"),
+    "utf8",
+  );
 
   assertIssueClosureKernelBoundary(agents, "test/fixtures/consumer/AGENTS.md");
 });
@@ -164,7 +176,10 @@ test("core policy delegates the 5-step closure procedure detail to skills/task-c
 });
 
 test("skills/task-closure.md owns the 5-step closure procedure detail (#114)", async () => {
-  const taskClosure = await readFile(path.join(root, "skills", "task-closure.md"), "utf8");
+  const taskClosure = await readFile(
+    path.join(root, "skills", "task-closure.md"),
+    "utf8",
+  );
 
   assert.ok(taskClosure.includes("## Closure procedure"));
   assert.ok(taskClosure.includes("## Close authority が無い場合"));
@@ -179,7 +194,10 @@ test("skills/task-closure.md owns the 5-step closure procedure detail (#114)", a
   );
   assert.ok(containsText(taskClosure, "Acceptance Criteria evidence 照合"));
   assert.ok(
-    containsText(taskClosure, "「実装が完了したように見える」という印象だけでは充足の根拠にしません。"),
+    containsText(
+      taskClosure,
+      "「実装が完了したように見える」という印象だけでは充足の根拠にしません。",
+    ),
   );
   assert.ok(containsText(taskClosure, "checkbox 更新"));
   assert.ok(
@@ -215,7 +233,10 @@ test("skills/task-closure.md owns the 5-step closure procedure detail (#114)", a
     ),
   );
 
-  assert.doesNotMatch(taskClosure, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+  assert.doesNotMatch(
+    taskClosure,
+    /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i,
+  );
 });
 
 // #114 (#112 lesson): the Kernel MUST-load pointer must name both the
@@ -224,9 +245,16 @@ test("skills/task-closure.md owns the 5-step closure procedure detail (#114)", a
 test("core policy's task-closure pointer resolves in both consumer and Foundation-self context (#114)", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
-  const consumerOnlyPointerCount = (core.match(/`\.ai-dev-foundation\/skills\/task-closure\.md`/g) ?? []).length;
-  const selfContextPointerCount = (core.match(/`skills\/task-closure\.md`/g) ?? []).length;
-  assert.ok(consumerOnlyPointerCount > 0, "sanity check: consumer-context pointer must exist");
+  const consumerOnlyPointerCount = (
+    core.match(/`\.ai-dev-foundation\/skills\/task-closure\.md`/g) ?? []
+  ).length;
+  const selfContextPointerCount = (
+    core.match(/`skills\/task-closure\.md`/g) ?? []
+  ).length;
+  assert.ok(
+    consumerOnlyPointerCount > 0,
+    "sanity check: consumer-context pointer must exist",
+  );
   assert.ok(
     selfContextPointerCount >= consumerOnlyPointerCount,
     `every consumer-context task-closure.md pointer in core.md must be paired with a Foundation-self-context pointer (consumer-only refs: ${consumerOnlyPointerCount}, self-context refs: ${selfContextPointerCount})`,
@@ -239,7 +267,10 @@ test("core policy's task-closure pointer resolves in both consumer and Foundatio
 // sentences it references.
 test("policy/core.md and skills/task-closure.md do not verbatim-duplicate each other's canonical content (#114)", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
-  const taskClosure = await readFile(path.join(root, "skills", "task-closure.md"), "utf8");
+  const taskClosure = await readFile(
+    path.join(root, "skills", "task-closure.md"),
+    "utf8",
+  );
 
   for (const skillOwnedDetail of [
     "checkbox 更新は見た目上の cleanup ではなく、Task Contract completion evidence の一部として扱います。",
@@ -259,9 +290,12 @@ test("policy/core.md and skills/task-closure.md do not verbatim-duplicate each o
     "evidence 不足または未達で判断できない Acceptance Criteria が 1 件でも残る場合、その項目を勝手に check せず、Issue も close しません。",
     "Issue に Acceptance Criteria が存在しない場合、close のために新たな Acceptance Criteria を捏造しません。",
     "Issue close の execution authority は、Merge readiness and merge authority と同じ分離に従います。",
-    "auto-close keyword（例: PR 本文の \"Closes #N\"）によって Acceptance Criteria 確認前に Issue が自動 close される運用を、標準運用にしません。",
+    'auto-close keyword（例: PR 本文の "Closes #N"）によって Acceptance Criteria 確認前に Issue が自動 close される運用を、標準運用にしません。',
   ]) {
-    assert.ok(containsText(core, kernelSentence), `sanity check: sentence must actually be in core.md: ${kernelSentence}`);
+    assert.ok(
+      containsText(core, kernelSentence),
+      `sanity check: sentence must actually be in core.md: ${kernelSentence}`,
+    );
     assert.ok(
       !containsText(taskClosure, kernelSentence),
       `skills/task-closure.md must not verbatim-duplicate this Kernel sentence, only reference policy/core.md: ${kernelSentence}`,
@@ -271,10 +305,21 @@ test("policy/core.md and skills/task-closure.md do not verbatim-duplicate each o
 
 test("materialized consumer skill bundle includes task-closure.md (#114)", async () => {
   const materialized = await readFile(
-    path.join(root, "test", "fixtures", "consumer", ".ai-dev-foundation", "skills", "task-closure.md"),
+    path.join(
+      root,
+      "test",
+      "fixtures",
+      "consumer",
+      ".ai-dev-foundation",
+      "skills",
+      "task-closure.md",
+    ),
     "utf8",
   );
-  const source = await readFile(path.join(root, "skills", "task-closure.md"), "utf8");
+  const source = await readFile(
+    path.join(root, "skills", "task-closure.md"),
+    "utf8",
+  );
   assert.equal(materialized, source);
 });
 
@@ -282,7 +327,10 @@ test("materialized consumer skill bundle includes task-closure.md (#114)", async
 // consumer artifact, not just gain new Kernel headings alongside stale
 // leftovers from a broken sync.
 test("generated consumer AGENTS.md does not carry the moved closure procedural detail (#114)", async () => {
-  const agents = await readFile(path.join(root, "test", "fixtures", "consumer", "AGENTS.md"), "utf8");
+  const agents = await readFile(
+    path.join(root, "test", "fixtures", "consumer", "AGENTS.md"),
+    "utf8",
+  );
 
   assert.ok(
     !containsText(
@@ -308,9 +356,18 @@ test("generated consumer AGENTS.md does not carry the moved closure procedural d
 // task-closure.md or duplicate its content — mirrors the #112 safety
 // scenario 6 pattern for the Review lane.
 test("review skills do not need to load or duplicate skills/task-closure.md (#114 safety scenario 1)", async () => {
-  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
-  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
-  const foundationChange = await readFile(path.join(root, "skills", "foundation-change.md"), "utf8");
+  const reviewCode = await readFile(
+    path.join(root, "skills", "review-code.md"),
+    "utf8",
+  );
+  const reviewDoc = await readFile(
+    path.join(root, "skills", "review-doc.md"),
+    "utf8",
+  );
+  const foundationChange = await readFile(
+    path.join(root, "skills", "foundation-change.md"),
+    "utf8",
+  );
 
   for (const [name, skill] of [
     ["review-code.md", reviewCode],
