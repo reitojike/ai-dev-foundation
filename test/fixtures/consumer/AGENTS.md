@@ -221,45 +221,36 @@ Review が完了していても、Issue Task Contract 上の Acceptance Criteria
 よいことにはなりません。canonical Issue を completed として close する判断は、この
 節に従います。
 
-canonical Issue を completed として close する前に、少なくとも次を行います。
+canonical Issue を completed として close しようとする場合、または close 手順の
+適用要否が判断つかない場合は、`.ai-dev-foundation/skills/task-closure.md` を
+**MUST load** します。判断がつかない場合を「適用不要」と解釈して silent skip しては
+いけません。**この path は consumer context のものです。Foundation リポジトリ自身の
+Task では、同じ canonical source である `skills/task-closure.md` を同じ条件で MUST
+load します。**
 
-1. **canonical context の再取得** — close しようとする session 自身の記憶や過去の
-   長文 handoff をそのまま正としてはいけません。close 直前に、current Issue 本文
-   （canonical Task Contract）と、merge 済み current main または applicable branch
-   の状態を再取得します。
-2. **Acceptance Criteria evidence 照合** — Acceptance Criteria を 1 項目ずつ、
-   実装・test・PR・review・merge 後の状態等の evidence と個別に照合します。「実装が
-   完了したように見える」という印象だけでは充足の根拠にしません。
-3. **checkbox 更新** — evidence で明確に充足を確認できた項目だけ checkbox を更新
-   します。checkbox 更新は見た目上の cleanup ではなく、Task Contract completion
-   evidence の一部として扱います。
-4. **未達・判断不能な項目の扱い** — evidence 不足または未達で判断できない Acceptance
-   Criteria が 1 件でも残る場合、その項目を勝手に check せず、Issue も close しません。
-   Issue に Acceptance Criteria が存在しない場合、close のために新たな Acceptance
-   Criteria を捏造しません。
-5. **completion comment** — final SHA、verification 結果、review evidence
-   （Review Protocol の Acquisition & Validity Contract に従う record / result
-   locator を含む）、および未解決事項を、Issue 上の completion comment として
-   記録します。
+5-step closure procedure（canonical context の再取得手順、Acceptance Criteria
+evidence 照合手順、checkbox 更新手順、未達・判断不能時の procedure detail、
+completion comment の field / record locator detail）、推奨する sequence、close
+authority が無い場合の completion-comment / handoff procedure detail、および
+closure-specific no-new-machinery detail の canonical source は、consumer context
+では `.ai-dev-foundation/skills/task-closure.md`、Foundation リポジトリ自身の Task
+では `skills/task-closure.md` です。本節はこれらの手続き的 detail を複製しません。
 
-推奨する sequence は次のとおりです。
+本節が、closure 判断に至っていない Task でも成立していなければならない minimum
+safety boundary として保持するのは次のとおりです。
 
-`merge/current main 確認 -> Acceptance Criteria evidence 照合 -> checkbox 更新 ->
-completion comment -> Issue close`
-
-Issue close の execution authority は、Merge readiness and merge authority と同じ
-分離に従います。current Task、Execution Envelope、または explicit な authority が
-close の実行を許可している場合に限り、agent は Issue を close してよいです。authority
-が明示されていない場合、または別 authority の承認が必要な場合、agent は Issue 本文の
-編集や close を実行せず、どの Acceptance Criteria がどの evidence で満たされているか
-（または未達か）を手順 5 の completion comment として明示的に残した上で停止し、
-authority escalation / handoff します。
-
-auto-close keyword（例: PR 本文の "Closes #N"）によって Acceptance Criteria 確認前に
-Issue が自動 close される運用を、標準運用にしません。
-
-この protocol は、GitHub Issue checkbox 専用 bot、generalized project-management
-workflow engine、または新しい orchestrator を要求しません。
+- evidence 不足または未達で判断できない Acceptance Criteria が 1 件でも残る場合、
+  その項目を勝手に check せず、Issue も close しません。Issue に Acceptance
+  Criteria が存在しない場合、close のために新たな Acceptance Criteria を捏造
+  しません。
+- Issue close の execution authority は、Merge readiness and merge authority と
+  同じ分離に従います。current Task、Execution Envelope、または explicit な
+  authority が close の実行を許可している場合に限り、agent は Issue を close して
+  よいです。authority が明示されていない場合、または別 authority の承認が必要な
+  場合、agent は Issue 本文の編集や close を実行せず、evidence-supported な
+  completion state を記録した上で停止し、authority escalation / handoff します。
+- auto-close keyword（例: PR 本文の "Closes #N"）によって Acceptance Criteria
+  確認前に Issue が自動 close される運用を、標準運用にしません。
 
 ## Review Protocol
 
