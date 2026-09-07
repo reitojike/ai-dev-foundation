@@ -22,15 +22,24 @@
 同じ規範的なルールを Skill、Profile、generated adapter の source に再記述せず、
 所有するルールを参照してください。
 
-policy は、review 実行 agent のみが必要とする conditional な必須事項・禁止事項
-について、その canonical ownership を Foundation-owned な skill へ明示的に
-委譲してよいです。この委譲は次をすべて満たす場合に限ります。
+policy は、次の二つの場合に限り、conditional にのみ必要となる必須事項・
+禁止事項について、その canonical ownership を Foundation-owned な skill へ
+明示的に委譲してよいです。
+
+1. review 実行 agent のみが必要とする場合
+2. 特定の trigger 発火時（および発火したかどうか不明な場合）にのみ
+   必要となる場合
+
+この委譲は次をすべて満たす場合に限ります。
 
 - policy 自身が、委譲先の skill を one-hop pointer として名指しする
-- 委譲後も policy に、review を実行しない Task でも成立していなければ
-  ならない minimum safety boundary（authority 分離、fail-closed な
-  uncertainty rule 等）が残る
+- 委譲後も policy に、その conditional な状況が成立していない Task でも
+  成立していなければならない minimum safety boundary（authority 分離、
+  fail-closed な uncertainty rule 等）が残る
 - 同じ規範的なルールを policy と skill の両方に重複して記述しない
+- この委譲は個別に列挙した対象にのみ適用し、任意のルールを一般的に skill へ
+  移してよいことを意味しない。委譲のために generalized loader / registry /
+  routing framework / DSL を新設しない
 
 この場合、skill が記述する必須事項・禁止事項は policy の複製ではなく、
 委譲された canonical source です。委譲していない規範的なルールについては、
@@ -682,47 +691,37 @@ Task 実行中に少なくとも次のいずれかを観測した場合、Founda
 4. provider / runtime の実挙動が、Task で依拠した前提と食い違う
 5. 同一 root cause と思われる friction / workaround を以前にも観測している
 
-### Observation classification
+### Observation handling — canonical ownership delegation
 
-Observation trigger が発火したら、症状の重大度ではなく root cause /
-ownership を軸に、次の 4 分類のいずれかへ分類します。
+Observation trigger が発火した場合、または発火したかどうか判断がつかない
+場合は、`.ai-dev-foundation/skills/foundation-change.md` を **MUST load**
+します。判断がつかない場合を「trigger なし」と解釈して silent skip しては
+いけません。**この path は consumer context のものです。Foundation
+リポジトリ自身の Task では、同じ canonical source である
+`skills/foundation-change.md` を同じ条件で MUST load します。**
 
-- `consumer-local`: product / domain / consumer 固有で自然に閉じる
-- `provider/runtime`: 外部 provider / runtime の挙動で、Foundation
-  contract 自体の欠陥ではない
-- `Foundation candidate`: shared problem / improvement candidate に
-  なり得るが、Foundation-owned な rule / profile / tooling / artifact
-  自体が誤った挙動を要求・生成・許容していると確認されたわけではない
-  （Foundation-owned だと分かっていても、確認された defect ではない
-  改善余地を含む）
-- `canonical defect candidate`: Foundation-owned な rule / profile /
-  tooling / artifact 自体が誤った挙動を要求・生成・許容していると
-  確認できる場合に限る（正しく機能している manual step を自動化・
-  簡略化できるという改善余地だけでは、この分類に含めない）
+Observation の 4 分類（root cause / ownership を軸にした定義と境界）、
+Observation recording の procedure・field、Change Proposal が表現すべき
+field 定義、および Observation から Change Proposal への昇格 signal の
+detail の canonical source は、consumer context では
+`.ai-dev-foundation/skills/foundation-change.md`、Foundation リポジトリ
+自身の Task では `skills/foundation-change.md` です。本節はこれらの
+手続き的 detail を複製しません。
 
-`provider/runtime` に分類した Observation でも、Foundation がその挙動を
-誤って恒久前提として固定している場合は、Foundation 側の candidate として
-再評価します。
+本節が、Foundation Change に関与しない Task でも成立していなければ
+ならない minimum safety boundary として保持するのは次のとおりです。
 
-### Observation recording
+- Observation trigger の発火は、自動的に Foundation Issue を作りません。
+  Observation は work item ではありません。
+- 単発の friction、style、prompt nicety、効率改善のみを理由に、自動的に
+  mandatory 化しません（詳細は Foundation Change の正当化条件を参照）。
+- 専用の ledger / database / schema、GitHub label 体系、bot / collector /
+  dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は
+  Observation handling の一部にしません。
 
-Observation trigger の発火は、自動的に Foundation Issue を作りません。
-Observation は work item ではありません。
-
-将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task
-の canonical Issue へ、少なくとも次を短く記録します。
-
-- Observed / evidence locator
-- Classification
-- Impact
-- Local handling
-- Foundation action: `none` / `observe` / `change proposal candidate`
-- Promotion signal（何が起きれば再評価するか）
-
-consumer-local で完結し、将来参照価値もない軽微な事象は、この記録義務の
-対象にしません。専用の ledger / database / schema、GitHub label 体系、
-bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの
-mandatory 化は Observation handling の一部にしません。
+これに加え、下記の Task closure と Observation の fail-closed hook、
+および Foundation Change の正当化条件も、本 Kernel が保持する minimum
+safety boundary です。
 
 ### Task closure と Observation
 
@@ -745,29 +744,8 @@ mandatory な Foundation change は、原則として次のいずれかで正当
 して条項を足すかどうかの判定にも、そのまま適用します。文言の曖昧さや網羅性の不足を
 指摘する finding は、実運用で misjudgment が観測された場合に限り accept します。
 
-Change Proposal は、少なくとも次を表現できるものとします。
-
-- Problem
-- Evidence
-- Proposed Change
-- Expected Effect
-- Trade-off
-- Scope
-- Success Criterion
-
-### Observation から Change Proposal への昇格
-
-Observation classification は、本節の 3 つの Foundation Change 正当化
-条件を置き換えず、緩和しません。特に次は強い promotion signal になり
-得ます。
-
-- Foundation 自身の material defect が実証された
-- material defect を deterministically 防止できる
-- 同一 root cause が recurring / escaped failure になった
-- correctness のための mandatory manual ritual が定着した
-- consumer-local workaround では canonical semantics の fork が必要に
-  なる
-
-change class や review 強度は、固定の provider 名へ結びつけません。単発の
-friction、style、prompt nicety、効率改善のみを理由に、自動的に mandatory
-化しません。
+Change Proposal が表現すべき field 定義、および Observation classification
+から本節の 3 条件への昇格を促す detailed promotion signal の canonical
+source は、consumer context では `.ai-dev-foundation/skills/foundation-change.md`、
+Foundation リポジトリ自身の Task では `skills/foundation-change.md` です。
+change class や review 強度は、固定の provider 名へ結びつけません。

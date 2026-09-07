@@ -30,6 +30,9 @@ test("core policy defines the Foundation Change Protocol", async () => {
     assert.ok(core.includes(reason), `missing Foundation Change justification: ${reason}`);
   }
 
+  // #112: Change Proposal field definitions are canonically owned by
+  // skills/foundation-change.md, not restated in core.md.
+  const foundationChange = await readFile(path.join(root, "skills", "foundation-change.md"), "utf8");
   for (const field of [
     "Problem",
     "Evidence",
@@ -39,13 +42,13 @@ test("core policy defines the Foundation Change Protocol", async () => {
     "Scope",
     "Success Criterion",
   ]) {
-    assert.ok(core.includes(field), `Change Proposal must express: ${field}`);
+    assert.ok(foundationChange.includes(field), `Change Proposal must express: ${field}`);
   }
 
   assert.ok(
     containsText(
       core,
-      "単発の friction、style、prompt nicety、効率改善のみを理由に、自動的に mandatory 化しません。",
+      "単発の friction、style、prompt nicety、効率改善のみを理由に、自動的に mandatory 化しません",
     ),
   );
 
@@ -135,14 +138,20 @@ test("core policy separates merge-readiness from merge execution authority", asy
   );
 });
 
-test("core policy defines a minimal Observation handling entry point (#20)", async () => {
+test("core policy keeps the minimum Foundation Change Kernel safety boundary (#20, #112)", async () => {
   const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
 
   assert.ok(core.includes("### Observation trigger"));
-  assert.ok(core.includes("### Observation classification"));
-  assert.ok(core.includes("### Observation recording"));
+  assert.ok(core.includes("### Observation handling — canonical ownership delegation"));
   assert.ok(core.includes("### Task closure と Observation"));
-  assert.ok(core.includes("### Observation から Change Proposal への昇格"));
+  assert.ok(core.includes("### Foundation Change の正当化条件"));
+
+  // #112: classification/recording/promotion procedural detail is no longer
+  // duplicated as its own heading in the Kernel; it is delegated to
+  // skills/foundation-change.md.
+  assert.ok(!core.includes("### Observation classification"));
+  assert.ok(!core.includes("### Observation recording"));
+  assert.ok(!core.includes("### Observation から Change Proposal への昇格"));
 
   // Observation trigger stays event-driven: five concrete conditions, not a
   // blanket per-Task retrospective requirement.
@@ -162,35 +171,60 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     ),
   );
 
-  // Minimal four-way classification, judged by root cause/ownership rather
-  // than severity.
-  for (const label of [
-    "`consumer-local`",
-    "`provider/runtime`",
-    "`Foundation candidate`",
-    "`canonical defect candidate`",
-  ]) {
-    assert.ok(core.includes(label), `missing Observation classification: ${label}`);
-  }
-  assert.ok(containsText(core, "症状の重大度ではなく root cause / ownership を軸に"));
-
-  // `Foundation candidate` is not exclusive
-  // to unconfirmed ownership — a Foundation-owned shared improvement
-  // candidate that is not a confirmed defect belongs here too.
-  // `canonical defect candidate` is limited strictly to confirmed defective
-  // behavior; a correctly-functioning manual step that could be automated
-  // does not qualify (Issue #20's original semantic contract).
+  // #112: trigger 発火時、または発火したかどうか不明な場合は
+  // skills/foundation-change.md を MUST load する fail-closed one-hop pointer.
   assert.ok(
     containsText(
       core,
-      "Foundation-owned だと分かっていても、確認された defect ではない改善余地を含む",
+      "Observation trigger が発火した場合、または発火したかどうか判断がつかない場合は、`.ai-dev-foundation/skills/foundation-change.md` を **MUST load** します。",
+    ),
+  );
+  assert.ok(
+    containsText(core, "判断がつかない場合を「trigger なし」と解釈して silent skip してはいけません。"),
+  );
+
+  // #113 Codex P2: the MUST-load pointer named only the consumer-distributed
+  // path, so a Task running inside the Foundation repository itself could
+  // not resolve it to the canonical skills/foundation-change.md. Both
+  // contexts must be named explicitly, without a generalized resolver.
+  assert.ok(
+    containsText(
+      core,
+      "この path は consumer context のものです。Foundation リポジトリ自身の Task では、同じ canonical source である `skills/foundation-change.md` を同じ条件で MUST load します。",
     ),
   );
   assert.ok(
     containsText(
       core,
-      "正しく機能している manual step を自動化・簡略化できるという改善余地だけでは、この分類に含めない",
+      "consumer context では `.ai-dev-foundation/skills/foundation-change.md`、Foundation リポジトリ自身の Task では `skills/foundation-change.md` です。",
     ),
+  );
+
+  // #113 Codex P2 follow-up: a second consumer-only canonical-source
+  // reference survived in the Foundation Change justification section
+  // (Change Proposal field / promotion signal detail) after the first
+  // MUST-load pointer fix. It must also branch by context.
+  assert.ok(
+    containsText(
+      core,
+      "canonical source は、consumer context では `.ai-dev-foundation/skills/foundation-change.md`、Foundation リポジトリ自身の Task では `skills/foundation-change.md` です。",
+    ),
+  );
+
+  // Repo-wide regression guard: every reference to the consumer-distributed
+  // `.ai-dev-foundation/skills/foundation-change.md` path in core.md must be
+  // paired with the Foundation-repository-self path `skills/foundation-change.md`
+  // nearby, so a future addition of a new consumer-only reference doesn't
+  // silently reintroduce the same unreachable-pointer defect.
+  const consumerOnlyPointerCount = (core.match(/`\.ai-dev-foundation\/skills\/foundation-change\.md`/g) ?? [])
+    .length;
+  // This pattern only matches a bare `skills/foundation-change.md` (backtick
+  // immediately before "skills/"), so it does not also match inside the
+  // consumer path above (which has a backtick before ".ai-dev-foundation/").
+  const selfContextPointerCount = (core.match(/`skills\/foundation-change\.md`/g) ?? []).length;
+  assert.ok(
+    selfContextPointerCount >= consumerOnlyPointerCount,
+    `every consumer-context foundation-change.md pointer in core.md must be paired with a Foundation-self-context pointer (consumer-only refs: ${consumerOnlyPointerCount}, self-context refs: ${selfContextPointerCount})`,
   );
 
   // Observation is not a work item and does not auto-create a Foundation
@@ -200,54 +234,18 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
   );
   assert.ok(containsText(core, "Observation は work item ではありません。"));
 
-  // Recording is a mandatory obligation (not merely a recordable capability)
-  // when the future-reuse-value condition is met: "記録できることを要求します"
-  // reads as capability-only and lets required evidence be omitted at Task
-  // closure.
-  assert.ok(
-    containsText(
-      core,
-      "将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task の canonical Issue へ、少なくとも次を短く記録します。",
-    ),
-  );
-  for (const field of [
-    "Observed / evidence locator",
-    "Classification",
-    "Impact",
-    "Local handling",
-    "Foundation action",
-    "Promotion signal",
-  ]) {
-    assert.ok(core.includes(field), `Observation record must express: ${field}`);
-  }
-
   // Out of Scope for #20: no ledger/bot/dashboard/auto-issue/periodic-audit
-  // machinery, and no new tooling files were added to implement it.
+  // machinery stays a Kernel-retained anti-overbuilding invariant even after
+  // the recording procedure itself moved to the skill (#112).
   assert.ok(
     containsText(
       core,
       "専用の ledger / database / schema、GitHub label 体系、bot / collector / dashboard / statistics、自動 Issue 生成、定期棚卸しの mandatory 化は Observation handling の一部にしません。",
     ),
   );
-  // An exact directory-equality check, a filename-token pattern, and a dynamic
-  // merge-base diff were each tried and each had a real failure mode (fails
-  // on unrelated future tooling additions; false-positives/negatives on
-  // filenames; or, for the merge-base diff, silently becomes a *permanent*
-  // "no one may ever add a tooling file" gate on this test file long after
-  // this PR merges, since `git merge-base HEAD main` re-resolves on every
-  // future branch that happens to reuse this code). Whether this specific
-  // PR added new tooling files is a one-time historical fact about this
-  // PR's landing, not an evergreen property this file can assert on every
-  // future checkout — so it is not encoded as an automated regression check
-  // here. It was instead verified once, out of band, via
-  // `git diff --stat <PR base>..HEAD -- tooling` returning no changes, and
-  // is reported as evidence in the PR itself. The canonical, permanent
-  // contract asserted below is the policy text prohibiting this machinery.
 
   // Task closure collects only triggers that already fired; it is not a new
-  // improvement-discovery step. It also does not force recording of
-  // observations the recording contract exempts: the closure gate must not
-  // conflict with the recording exemption.
+  // improvement-discovery step.
   assert.ok(
     containsText(
       core,
@@ -273,12 +271,104 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     ),
   );
 
+  // The pre-existing justification conditions are general Foundation Change
+  // Protocol content, not Task-closure-specific, and must not nest under the
+  // "### Task closure と Observation" heading.
+  const taskClosureHeadingIndex = core.indexOf("### Task closure と Observation");
+  const justificationHeadingIndex = core.indexOf("### Foundation Change の正当化条件");
+  const justificationReasonIndex = core.indexOf("既存の mandatory / manual step を置き換える");
+  assert.ok(taskClosureHeadingIndex !== -1 && justificationHeadingIndex !== -1);
+  assert.ok(
+    taskClosureHeadingIndex < justificationHeadingIndex &&
+      justificationHeadingIndex < justificationReasonIndex,
+    "the 3 justification conditions must sit under their own heading, after Task closure, not nested inside it",
+  );
+
+  assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+});
+
+test("skills/foundation-change.md owns Observation classification/recording/promotion detail (#112)", async () => {
+  const foundationChange = await readFile(path.join(root, "skills", "foundation-change.md"), "utf8");
+
+  assert.ok(foundationChange.includes("## Observation classification"));
+  assert.ok(foundationChange.includes("## Observation recording"));
+  assert.ok(foundationChange.includes("## Change Proposal"));
+  assert.ok(foundationChange.includes("## Observation から Change Proposal への昇格"));
+
+  // Minimal four-way classification, judged by root cause/ownership rather
+  // than severity.
+  for (const label of [
+    "`consumer-local`",
+    "`provider/runtime`",
+    "`Foundation candidate`",
+    "`canonical defect candidate`",
+  ]) {
+    assert.ok(foundationChange.includes(label), `missing Observation classification: ${label}`);
+  }
+  assert.ok(containsText(foundationChange, "症状の重大度ではなく root cause / ownership を軸に"));
+
+  // `Foundation candidate` is not exclusive
+  // to unconfirmed ownership — a Foundation-owned shared improvement
+  // candidate that is not a confirmed defect belongs here too.
+  // `canonical defect candidate` is limited strictly to confirmed defective
+  // behavior; a correctly-functioning manual step that could be automated
+  // does not qualify (Issue #20's original semantic contract).
+  assert.ok(
+    containsText(
+      foundationChange,
+      "Foundation-owned だと分かっていても、確認された defect ではない改善余地を含む",
+    ),
+  );
+  assert.ok(
+    containsText(
+      foundationChange,
+      "正しく機能している manual step を自動化・簡略化できるという改善余地だけでは、この分類に含めない",
+    ),
+  );
+
+  // Recording is a mandatory obligation (not merely a recordable capability)
+  // when the future-reuse-value condition is met: "記録できることを要求します"
+  // reads as capability-only and lets required evidence be omitted at Task
+  // closure.
+  assert.ok(
+    containsText(
+      foundationChange,
+      "将来の Foundation 判断へ再利用する価値がある場合、発生した consumer Task の canonical Issue へ、少なくとも次を短く記録します。",
+    ),
+  );
+  for (const field of [
+    "Observed / evidence locator",
+    "Classification",
+    "Impact",
+    "Local handling",
+    "Foundation action",
+    "Promotion signal",
+  ]) {
+    assert.ok(foundationChange.includes(field), `Observation record must express: ${field}`);
+  }
+
+  // #113 Claude review: the ledger/dashboard prohibition is a Kernel
+  // minimum safety boundary sentence; the skill must reference it, not
+  // restate it verbatim (that would violate the delegation's own
+  // no-duplication condition in policy/core.md's 責務の分離).
+  //
+  // #113 Codex P2 follow-up: the reference text must not drop "mandatory
+  // 化" — core.md only forbids *making ledger/dashboard mandatory*, not
+  // ever using one; a paraphrase that omits "mandatory 化" reads as an
+  // absolute ban and is stricter than the Kernel actually requires.
+  assert.ok(
+    containsText(
+      foundationChange,
+      "専用の ledger / dashboard 等の mandatory 化を Observation handling の一部にしないことは `policy/core.md` の minimum safety boundary です。本 skill では複製しません。",
+    ),
+  );
+
   // Observation classification supplements, and does not replace or relax,
   // the existing three Foundation Change justification conditions.
   assert.ok(
     containsText(
-      core,
-      "Observation classification は、本節の 3 つの Foundation Change 正当化条件を置き換えず、緩和しません。",
+      foundationChange,
+      "Observation classification は、`policy/core.md` の 3 つの Foundation Change 正当化条件を置き換えず、緩和しません。",
     ),
   );
   for (const signal of [
@@ -288,36 +378,129 @@ test("core policy defines a minimal Observation handling entry point (#20)", asy
     "correctness のための mandatory manual ritual が定着した",
     "consumer-local workaround では canonical semantics の fork が必要に",
   ]) {
-    assert.ok(core.includes(signal), `missing Observation promotion signal: ${signal}`);
+    assert.ok(foundationChange.includes(signal), `missing Observation promotion signal: ${signal}`);
   }
 
-  // The pre-existing justification conditions and Change Proposal fields are general Foundation
-  // Change Protocol content, not Task-closure-specific, and must not nest under the
-  // "### Task closure と Observation" heading (which "### Observation から
-  // Change Proposal への昇格" still refers back to as "本節の 3 つの...
-  // 正当化条件").
-  const taskClosureHeadingIndex = core.indexOf("### Task closure と Observation");
-  const justificationHeadingIndex = core.indexOf("### Foundation Change の正当化条件");
-  const justificationReasonIndex = core.indexOf("既存の mandatory / manual step を置き換える");
-  const promotionHeadingIndex = core.indexOf("### Observation から Change Proposal への昇格");
-  assert.ok(taskClosureHeadingIndex !== -1 && justificationHeadingIndex !== -1);
-  assert.ok(
-    taskClosureHeadingIndex < justificationHeadingIndex &&
-      justificationHeadingIndex < justificationReasonIndex &&
-      justificationReasonIndex < promotionHeadingIndex,
-    "the 3 justification conditions must sit under their own heading, between Task closure and Observation promotion, not nested inside either",
-  );
-
-  assert.doesNotMatch(core, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
+  assert.doesNotMatch(foundationChange, /Codex|CodeRabbit|claude-[a-z0-9-]+|gpt-[a-z0-9-]+/i);
 });
 
 test("generated consumer AGENTS.md reflects the Observation handling contract", async () => {
   const agents = await readFile(path.join(root, "test", "fixtures", "consumer", "AGENTS.md"), "utf8");
 
   assert.ok(agents.includes("### Observation trigger"));
-  assert.ok(agents.includes("### Observation classification"));
-  assert.ok(agents.includes("### Observation recording"));
+  assert.ok(agents.includes("### Observation handling — canonical ownership delegation"));
   assert.ok(agents.includes("### Task closure と Observation"));
   assert.ok(agents.includes("### Foundation Change の正当化条件"));
-  assert.ok(agents.includes("### Observation から Change Proposal への昇格"));
+});
+
+test("materialized consumer skill bundle includes foundation-change.md (#112)", async () => {
+  const materialized = await readFile(
+    path.join(root, "test", "fixtures", "consumer", ".ai-dev-foundation", "skills", "foundation-change.md"),
+    "utf8",
+  );
+  const source = await readFile(path.join(root, "skills", "foundation-change.md"), "utf8");
+  assert.equal(materialized, source);
+});
+
+// #112: the moved procedural headings must actually leave the generated
+// consumer artifact, not just gain new Kernel headings alongside stale
+// leftovers from a broken sync.
+test("generated consumer AGENTS.md does not carry the moved Observation procedural detail (#112)", async () => {
+  const agents = await readFile(path.join(root, "test", "fixtures", "consumer", "AGENTS.md"), "utf8");
+
+  assert.ok(!agents.includes("### Observation classification"));
+  assert.ok(!agents.includes("### Observation recording"));
+  assert.ok(!agents.includes("### Observation から Change Proposal への昇格"));
+});
+
+// #112: the widened "## 責務の分離" delegation clause must stay a closed,
+// bounded enumeration of exactly the two named cases (review-execution-only,
+// and trigger-fired-or-uncertain), not an open-ended class an agent could
+// read as license to delegate arbitrary rules to arbitrary skills.
+test("core policy's widened canonical ownership delegation clause stays a closed, bounded enumeration (#112)", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+
+  assert.ok(
+    containsText(
+      core,
+      "policy は、次の二つの場合に限り、conditional にのみ必要となる必須事項・禁止事項について、その canonical ownership を Foundation-owned な skill へ明示的に委譲してよいです。",
+    ),
+  );
+  assert.ok(containsText(core, "review 実行 agent のみが必要とする場合"));
+  assert.ok(
+    containsText(core, "特定の trigger 発火時（および発火したかどうか不明な場合）にのみ必要となる場合"),
+  );
+
+  for (const condition of [
+    "policy 自身が、委譲先の skill を one-hop pointer として名指しする",
+    "同じ規範的なルールを policy と skill の両方に重複して記述しない",
+    "この委譲は個別に列挙した対象にのみ適用し、任意のルールを一般的に skill へ移してよいことを意味しない",
+    "generalized loader / registry / routing framework / DSL を新設しない",
+  ]) {
+    assert.ok(containsText(core, condition), `missing delegation condition: ${condition}`);
+  }
+
+  // The enumeration must not carry a trailing "等" (etc.) or other
+  // open-ended qualifier right after the two named cases — that would
+  // contradict "個別に列挙した対象にのみ適用".
+  const delegationIntroIndex = core.indexOf("policy は、次の二つの場合に限り");
+  assert.ok(delegationIntroIndex !== -1);
+  const delegationClauseSlice = core.slice(delegationIntroIndex, delegationIntroIndex + 400);
+  assert.doesNotMatch(
+    delegationClauseSlice,
+    /場合等/,
+    "the two-case enumeration must be closed, not suffixed with an open-ended 等",
+  );
+});
+
+// #112 Safety scenario 6: Review Protocol tasks must be able to satisfy the
+// Foundation Change justification conditions from the Kernel alone. They
+// must not need to load skills/foundation-change.md, and must not duplicate
+// or depend on its content.
+test("review skills do not need to load or duplicate skills/foundation-change.md (#112 safety scenario 6)", async () => {
+  const reviewCode = await readFile(path.join(root, "skills", "review-code.md"), "utf8");
+  const reviewDoc = await readFile(path.join(root, "skills", "review-doc.md"), "utf8");
+
+  for (const [name, skill] of [
+    ["review-code.md", reviewCode],
+    ["review-doc.md", reviewDoc],
+  ]) {
+    assert.ok(
+      !skill.includes("foundation-change"),
+      `${name} must not reference skills/foundation-change.md; the Review lane gets the justification conditions from the Kernel alone`,
+    );
+    assert.ok(
+      !skill.includes("Foundation Change の正当化条件"),
+      `${name} must not duplicate the Foundation Change justification conditions`,
+    );
+  }
+});
+
+// #113 Claude review: skills/foundation-change.md's own delegation rule
+// (policy/core.md's 責務の分離, "同じ規範的なルールを policy と skill の
+// 両方に重複して記述しない") must not be violated by the skill it applies
+// to. Lock the specific Kernel minimum-safety-boundary sentences that were
+// found verbatim-duplicated in skills/foundation-change.md, so a future
+// edit can't silently reintroduce the duplication.
+test("skills/foundation-change.md does not verbatim-duplicate Kernel minimum safety boundary sentences (#113)", async () => {
+  const core = await readFile(path.join(root, "policy", "core.md"), "utf8");
+  const foundationChange = await readFile(path.join(root, "skills", "foundation-change.md"), "utf8");
+
+  for (const kernelSentence of [
+    "Observation trigger の発火は、自動的に Foundation Issue を作りません。",
+    "Observation は work item ではありません。",
+    "専用の ledger / database / schema、GitHub label 体系、bot / collector /",
+    "記録義務の対象にしない軽微な事象について省略できるのは記録だけであり、classification の完了は省略しません。",
+    "単発の friction、style、prompt nicety、効率改善のみを理由に、自動的に",
+    "change class や review 強度は、固定の provider 名へ結びつけません。",
+  ]) {
+    assert.ok(
+      containsText(core, kernelSentence),
+      `sanity check: sentence must actually be in core.md: ${kernelSentence}`,
+    );
+    assert.ok(
+      !containsText(foundationChange, kernelSentence),
+      `skills/foundation-change.md must not verbatim-duplicate this Kernel sentence, only reference policy/core.md: ${kernelSentence}`,
+    );
+  }
 });
